@@ -1,0 +1,81 @@
+name: Deploy testnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: "Network"
+        required: true
+        type: choice
+        options:
+          - base-sepolia
+          - robinhood-testnet
+      broadcast:
+        description: "Really send the transactions (leave off for a dry run first)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-testnet
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Get libraries
+        run: |
+          mkdir -p lib
+          git clone -q --depth 1 --branch v1.9.6 https://github.com/foundry-rs/forge-std lib/forge-std
+          git clone -q --depth 1 --branch v5.1.0 https://github.com/OpenZeppelin/openzeppelin-contracts lib/openzeppelin-contracts
+          git clone -q https://github.com/Uniswap/v4-periphery lib/v4-periphery
+          cd lib/v4-periphery
+          git -c advice.detachedHead=false checkout -q 9969eec44cfdf07e24b41de47f40276a58401976
+          git submodule update -q --init --depth 1 lib/v4-core lib/permit2
+          cd lib/v4-core && git submodule update -q --init --depth 1 lib/solmate
+
+      - name: Pick network
+        id: net
+        run: |
+          if [ "${{ inputs.chain }}" = "base-sepolia" ]; then
+            echo "rpc=${{ secrets.BASE_SEPOLIA_RPC }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "rpc=${{ secrets.ROBINHOOD_TESTNET_RPC }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy
+        env:
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_KEY }}
+          CURVE: test
+        run: |
+          if [ "${{ inputs.broadcast }}" = "true" ]; then
+            forge script script/Deploy.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow
+          else
+            echo "DRY RUN: nothing is sent."
+            forge script script/Deploy.s.sol --rpc-url "${{ steps.net.outputs.rpc }}"
+          fi
+
+      - name: Save addresses
+        if: ${{ inputs.broadcast }}
+        run: |
+          cd ..
+          git config user.name "arkhampad-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add contracts/deployments/*.json
+          git commit -m "Testnet deployment: ${{ inputs.chain }}" || echo "Nothing to save."
+          git pull --rebase
+          git push
