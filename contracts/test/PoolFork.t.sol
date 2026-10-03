@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {console2} from "forge-std/console2.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -17,9 +18,14 @@ abstract contract ForkBase is PoolFlow {
 
     function _setup(string memory rpcEnv, address pm_, address posm_, address usdc_) internal {
         string memory rpc = vm.envOr(rpcEnv, string(""));
-        if (bytes(rpc).length == 0) return;
+        if (bytes(rpc).length == 0) {
+            // On GitHub (CI=true) a missing RPC is a setup error, not a skip.
+            require(!vm.envOr("CI", false), string.concat("missing secret ", rpcEnv));
+            return;
+        }
         vm.createSelectFork(rpc);
         on = true;
+        console2.log("forked chain", block.chainid, "at block", block.number);
         pm = IPoolManager(pm_);
         posm = IPositionManager(posm_);
         permit2 = IAllowanceTransfer(PERMIT2);
