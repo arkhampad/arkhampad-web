@@ -1,13 +1,13 @@
 // ArkhamPad indexer: reads coin launches, curve trades, graduations and
 // promotions from every configured chain and writes them to Postgres (Supabase).
 // Env: DATABASE_URL, one RPC URL per chain (see chains.json -> rpcEnv),
-//      optional CHAINS_FILE, POLL_SECONDS (default 4), BLOCK_RANGE (overrides chains.json blockRange).
+//      optional CHAINS_FILE, POLL_SECONDS (overrides chains.json pollSeconds), BLOCK_RANGE (overrides chains.json blockRange).
 import fs from "node:fs";
 import http from "node:http";
 import pg from "pg";
 import { createPublicClient, http as viemHttp, parseAbiItem, getAddress } from "viem";
 
-const POLL = Number(process.env.POLL_SECONDS || 4) * 1000;
+const POLL_DEFAULT = process.env.POLL_SECONDS ? Number(process.env.POLL_SECONDS) * 1000 : null;
 const RANGE_DEFAULT = process.env.BLOCK_RANGE ? BigInt(process.env.BLOCK_RANGE) : null;
 const CHAINS = JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./chains.json", import.meta.url), "utf8"));
 const SUPPLY = 1_000_000_000; // every coin has a fixed 1B supply
@@ -50,18 +50,25 @@ async function syncChain(c, client) {
       try { return await fn(); }
       catch (err) { throw new Error(`${label} [${from}-${to}]: ${err.shortMessage || err.message}${err.details ? " | " + err.details : ""}`); }
     };
-    const created = await call("getLogs CoinCreated", () => client.getLogs({ address: c.hub, event: EV.created, fromBlock: from, toBlock: to }));
-    // Curve events are read only from our own curves (known ones + those created in this range).
+    // One getLogs call for everything we watch (hub + promote + our curves), which
+    // keeps RPC usage low. Curves created inside this range get a second call.
+    const ALL = [EV.created, EV.trade, EV.full, EV.graduated, EV.promoted];
+    const CURVE_EVENTS = [EV.trade, EV.full, EV.graduated];
     const known = (await pool.query("select curve from coins where chain_id=$1", [c.chainId])).rows.map((r) => getAddress(r.curve));
-    const curveAddrs = [...new Set([...known, ...created.map((e) => getAddress(e.args.curve))])];
-    let trades = [], fulls = [], grads = [];
-    for (let i = 0; i < curveAddrs.length; i += 200) {
-      const address = curveAddrs.slice(i, i + 200);
-      trades = trades.concat(await call("getLogs Trade", () => client.getLogs({ address, event: EV.trade, fromBlock: from, toBlock: to })));
-      fulls = fulls.concat(await call("getLogs CurveFull", () => client.getLogs({ address, event: EV.full, fromBlock: from, toBlock: to })));
-      grads = grads.concat(await call("getLogs Graduated", () => client.getLogs({ address, event: EV.graduated, fromBlock: from, toBlock: to })));
+    const watched = [c.hub, ...(c.promote ? [c.promote] : []), ...known];
+    let logs = [];
+    for (let i = 0; i < watched.length; i += 500) {
+      const address = watched.slice(i, i + 500);
+      logs = logs.concat(await call("getLogs", () => client.getLogs({ address, events: ALL, fromBlock: from, toBlock: to })));
     }
-    const promos = c.promote ? await call("getLogs Promoted", () => client.getLogs({ address: c.promote, event: EV.promoted, fromBlock: from, toBlock: to })) : [];
+    const isHub = (e) => lc(e.address) === lc(c.hub);
+    const created = logs.filter((e) => e.eventName === "CoinCreated" && isHub(e));
+    const fresh = created.map((e) => getAddress(e.args.curve)).filter((a) => !known.includes(a));
+    if (fresh.length) logs = logs.concat(await call("getLogs new curves", () => client.getLogs({ address: fresh, events: CURVE_EVENTS, fromBlock: from, toBlock: to })));
+    const trades = logs.filter((e) => e.eventName === "Trade");
+    const fulls = logs.filter((e) => e.eventName === "CurveFull");
+    const grads = logs.filter((e) => e.eventName === "Graduated");
+    const promos = c.promote ? logs.filter((e) => e.eventName === "Promoted" && lc(e.address) === lc(c.promote)) : [];
     const blocks = new Map();
     const ts = async (bn) => {
       if (!blocks.has(bn)) blocks.set(bn, new Date(Number((await client.getBlock({ blockNumber: bn })).timestamp) * 1000));
@@ -167,7 +174,7 @@ async function loop(c) {
       if (process.env.ONCE) { process.exitCode = 1; return; }
     }
     if (process.env.ONCE) return;
-    await new Promise((r) => setTimeout(r, POLL));
+    await new Promise((r) => setTimeout(r, POLL_DEFAULT ?? (c.pollSeconds || 5) * 1000));
   }
 }
 

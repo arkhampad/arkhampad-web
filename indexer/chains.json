@@ -7,7 +7,9 @@
     "promote": "0x84A9a3A2b2568d5B0dd1A06deAaB494121CF7aEC",
     "poolBuilder": "0x43Ca3cEe078d8cb8528915B16e8bDcc9aDBe6090",
     "startBlock": 47643729,
-    "blockRange": 500
+    "blockRange": 10,
+    "pollSeconds": 12,
+    "note": "Alchemy free tier allows 10 blocks per getLogs; raise blockRange after upgrading to PAYG"
   },
   {
     "name": "robinhood-testnet",
@@ -17,6 +19,7 @@
     "promote": "0xC11622d1E479B9821a551E2040bC3Aff7cdf6736",
     "poolBuilder": "0x75656d8d2A59293DBdA4178F11Af6EE506ef60dD",
     "startBlock": 11837771,
-    "blockRange": 5000
+    "blockRange": 5000,
+    "pollSeconds": 5
   }
 ]
