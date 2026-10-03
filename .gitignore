@@ -5,3 +5,7 @@ out/
 !.env.example
 *.log
 .DS_Store
+contracts/lib/
+contracts/out/
+contracts/cache/
+contracts/broadcast/

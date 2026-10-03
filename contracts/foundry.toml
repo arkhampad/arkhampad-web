@@ -1,0 +1,26 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc_version = "0.8.26"
+optimizer = true
+optimizer_runs = 400
+via_ir = true
+evm_version = "cancun"
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
+remappings = [
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "forge-std/=lib/forge-std/src/",
+]
+
+[fuzz]
+runs = 512
+
+[rpc_endpoints]
+base_sepolia = "${BASE_SEPOLIA_RPC}"
+robinhood_testnet = "${ROBINHOOD_TESTNET_RPC}"
+
+[lint]
+lint_on_build = false
