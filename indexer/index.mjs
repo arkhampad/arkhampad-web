@@ -41,17 +41,27 @@ async function lastBlock(chainId, start) {
 
 async function syncChain(c, client) {
   const RANGE = RANGE_DEFAULT ?? BigInt(c.blockRange || 500);
-  const head = await client.getBlockNumber();
+  const head = await client.getBlockNumber().catch((err) => { throw new Error(`getBlockNumber: ${err.shortMessage || err.message}${err.details ? " | " + err.details : ""}`); });
   let from = (await lastBlock(c.chainId, c.startBlock)) + 1n;
   while (from <= head) {
     const to = from + RANGE - 1n > head ? head : from + RANGE - 1n;
-    const [created, trades, fulls, grads, promos] = await Promise.all([
-      client.getLogs({ address: c.hub, event: EV.created, fromBlock: from, toBlock: to }),
-      client.getLogs({ event: EV.trade, fromBlock: from, toBlock: to }),
-      client.getLogs({ event: EV.full, fromBlock: from, toBlock: to }),
-      client.getLogs({ event: EV.graduated, fromBlock: from, toBlock: to }),
-      c.promote ? client.getLogs({ address: c.promote, event: EV.promoted, fromBlock: from, toBlock: to }) : [],
-    ]);
+    // One labelled call at a time, so an RPC error says exactly which request failed.
+    const call = async (label, fn) => {
+      try { return await fn(); }
+      catch (err) { throw new Error(`${label} [${from}-${to}]: ${err.shortMessage || err.message}${err.details ? " | " + err.details : ""}`); }
+    };
+    const created = await call("getLogs CoinCreated", () => client.getLogs({ address: c.hub, event: EV.created, fromBlock: from, toBlock: to }));
+    // Curve events are read only from our own curves (known ones + those created in this range).
+    const known = (await pool.query("select curve from coins where chain_id=$1", [c.chainId])).rows.map((r) => getAddress(r.curve));
+    const curveAddrs = [...new Set([...known, ...created.map((e) => getAddress(e.args.curve))])];
+    let trades = [], fulls = [], grads = [];
+    for (let i = 0; i < curveAddrs.length; i += 200) {
+      const address = curveAddrs.slice(i, i + 200);
+      trades = trades.concat(await call("getLogs Trade", () => client.getLogs({ address, event: EV.trade, fromBlock: from, toBlock: to })));
+      fulls = fulls.concat(await call("getLogs CurveFull", () => client.getLogs({ address, event: EV.full, fromBlock: from, toBlock: to })));
+      grads = grads.concat(await call("getLogs Graduated", () => client.getLogs({ address, event: EV.graduated, fromBlock: from, toBlock: to })));
+    }
+    const promos = c.promote ? await call("getLogs Promoted", () => client.getLogs({ address: c.promote, event: EV.promoted, fromBlock: from, toBlock: to })) : [];
     const blocks = new Map();
     const ts = async (bn) => {
       if (!blocks.has(bn)) blocks.set(bn, new Date(Number((await client.getBlock({ blockNumber: bn })).timestamp) * 1000));
@@ -141,7 +151,7 @@ async function syncChain(c, client) {
 
 const status = {};
 async function loop(c) {
-  const rpc = process.env[c.rpcEnv];
+  const rpc = (process.env[c.rpcEnv] || "").trim();
   if (!rpc) { log(`${c.name}: ${c.rpcEnv} not set, skipped`); return; }
   const client = createPublicClient({ transport: viemHttp(rpc, { retryCount: 3, timeout: 20_000 }) });
   c.hub = getAddress(c.hub);
@@ -154,6 +164,7 @@ async function loop(c) {
     } catch (err) {
       status[c.name] = { ok: false, at: new Date().toISOString(), error: String(err.shortMessage || err.message) };
       log(`${c.name}: error`, err.shortMessage || err.message);
+      if (process.env.ONCE) { process.exitCode = 1; return; }
     }
     if (process.env.ONCE) return;
     await new Promise((r) => setTimeout(r, POLL));
