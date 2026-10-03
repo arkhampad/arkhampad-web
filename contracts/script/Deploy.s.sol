@@ -52,8 +52,16 @@ contract Deploy is Script {
         revert("no salt");
     }
 
+    /// @dev Accepts the private key with or without the 0x prefix (MetaMask exports it without).
+    function _key() internal view returns (uint256) {
+        string memory raw = vm.envString("PRIVATE_KEY");
+        bytes memory b = bytes(raw);
+        if (b.length >= 2 && b[0] == "0" && (b[1] == "x" || b[1] == "X")) return vm.parseUint(raw);
+        return vm.parseUint(string.concat("0x", raw));
+    }
+
     function run() external {
-        uint256 key = vm.envUint("PRIVATE_KEY");
+        uint256 key = _key();
         address deployer = vm.addr(key);
         address admin = vm.envOr("ADMIN", deployer);
         address treasury = vm.envOr("TREASURY", deployer);
