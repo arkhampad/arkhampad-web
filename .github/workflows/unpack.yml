@@ -1,0 +1,65 @@
+name: Unpack uploaded package
+
+# Drop an update-N.zip into the root of the repo with "Add file > Upload files".
+# This job extracts it in place, makes sure the site still compiles,
+# deletes the zip and commits the result.
+on:
+  push:
+    paths:
+      - "update-*.zip"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: unpack-package
+  cancel-in-progress: false
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the repository
+        uses: actions/checkout@v4
+
+      - name: Extract packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          found=0
+          for pkg in update-*.zip; do
+            found=1
+            echo "::group::$pkg"
+            unzip -Z1 "$pkg"
+            if unzip -Z1 "$pkg" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+              echo "::error::$pkg contains a path outside the repository"; exit 1
+            fi
+            unzip -o -q "$pkg" -d .
+            git rm -q --cached "$pkg" 2>/dev/null || true
+            rm -f "$pkg"
+            echo "::endgroup::"
+          done
+          [ "$found" = 1 ] || echo "No package found."
+
+      - name: Compile the site
+        if: hashFiles('web/package.json') != ''
+        working-directory: web
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          rm -rf node_modules .next out
+
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name "arkhampad-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Nothing changed."; exit 0; fi
+          git commit -m "Unpack package"
+          git pull --rebase
+          git push
