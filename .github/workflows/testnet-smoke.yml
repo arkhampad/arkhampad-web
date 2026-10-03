@@ -1,0 +1,91 @@
+name: Testnet smoke
+
+# Real-network check: makes a real coin + trades on the chosen testnet,
+# then runs the indexer against that chain into a throwaway database and
+# checks that every number came through correctly.
+on:
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: "Network"
+        required: true
+        type: choice
+        options:
+          - base-sepolia
+          - robinhood-testnet
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: pw
+          POSTGRES_DB: ap
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Get libraries
+        working-directory: contracts
+        run: |
+          mkdir -p lib
+          git clone -q --depth 1 --branch v1.9.6 https://github.com/foundry-rs/forge-std lib/forge-std
+          git clone -q --depth 1 --branch v5.1.0 https://github.com/OpenZeppelin/openzeppelin-contracts lib/openzeppelin-contracts
+          git clone -q https://github.com/Uniswap/v4-periphery lib/v4-periphery
+          cd lib/v4-periphery
+          git -c advice.detachedHead=false checkout -q 9969eec44cfdf07e24b41de47f40276a58401976
+          git submodule update -q --init --depth 1 lib/v4-core lib/permit2
+          cd lib/v4-core && git submodule update -q --init --depth 1 lib/solmate
+
+      - name: Pick network
+        id: net
+        run: |
+          if [ "${{ inputs.chain }}" = "base-sepolia" ]; then
+            echo "rpc=${{ secrets.BASE_SEPOLIA_RPC }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "rpc=${{ secrets.ROBINHOOD_TESTNET_RPC }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Make a real coin and trades
+        working-directory: contracts
+        env:
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_KEY }}
+        run: forge script script/Smoke.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Index the chain into a test database
+        working-directory: indexer
+        env:
+          DATABASE_URL: postgres://postgres:pw@localhost:5432/ap
+          BASE_SEPOLIA_RPC: ${{ secrets.BASE_SEPOLIA_RPC }}
+          ROBINHOOD_TESTNET_RPC: ${{ secrets.ROBINHOOD_TESTNET_RPC }}
+          ONCE: "1"
+        run: |
+          sudo apt-get -qq install -y postgresql-client >/dev/null
+          psql "$DATABASE_URL" -q -c "create role anon nologin; create role authenticated nologin;"
+          psql "$DATABASE_URL" -q -v ON_ERROR_STOP=1 -f ../db/001_schema.sql
+          npm ci --no-audit --no-fund
+          node -e 'const c=require("./chains.json").filter(x=>x.name===process.argv[1]);require("fs").writeFileSync("/tmp/chains.json",JSON.stringify(c))' "${{ inputs.chain }}"
+          CHAINS_FILE=/tmp/chains.json node index.mjs
+
+      - name: Check the numbers
+        env:
+          DATABASE_URL: postgres://postgres:pw@localhost:5432/ap
+        run: |
+          psql "$DATABASE_URL" -c "select chain_id, symbol, phase, round(start_mc_usd,2) start_mc, round(mc_usd,4) mc, trades_count, round(volume_usd,4) volume from coins order by created_block desc limit 5;"
+          psql "$DATABASE_URL" -c "select left(trader,12) trader, is_buy, round(usdc,4) usdc, round(fee,4) fee, round(mc_usd,4) mc from trades order by block desc, log_index desc limit 6;"
+          n=$(psql "$DATABASE_URL" -tA -c "select count(*) from coins where symbol='SMOKE' and trades_count>=3")
+          if [ "$n" -lt 1 ]; then echo "::error::The smoke coin and its 3 trades were not indexed"; exit 1; fi
+          echo "OK: real coin and trades indexed on ${{ inputs.chain }}"
