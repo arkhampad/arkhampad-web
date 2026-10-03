@@ -20,6 +20,7 @@ const EV = {
   promoted: parseAbiItem("event Promoted(address indexed coin, uint256 indexed chainId, address indexed payer, uint8 plan, uint256 seconds_, uint256 price)"),
 };
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const usd = (x) => Number(x) / 1e6;
 const tok = (x) => Number(x) / 1e18;
 const lc = (a) => a.toLowerCase();
@@ -46,9 +47,19 @@ async function syncChain(c, client) {
   while (from <= head) {
     const to = from + RANGE - 1n > head ? head : from + RANGE - 1n;
     // One labelled call at a time, so an RPC error says exactly which request failed.
+    // Rate limits (HTTP 429) are waited out with growing pauses; other errors stop the round.
     const call = async (label, fn) => {
-      try { return await fn(); }
-      catch (err) { throw new Error(`${label} [${from}-${to}]: ${err.shortMessage || err.message}${err.details ? " | " + err.details : ""}`); }
+      for (let attempt = 0; ; attempt++) {
+        try { return await fn(); }
+        catch (err) {
+          const text = `${err.shortMessage || err.message} ${err.details || ""}`;
+          if (/too many requests|429|rate limit|exceeded/i.test(text) && attempt < 8) {
+            await sleep(Math.min(30_000, 1000 * 2 ** attempt));
+            continue;
+          }
+          throw new Error(`${label} [${from}-${to}]: ${err.shortMessage || err.message}${err.details ? " | " + err.details : ""}`);
+        }
+      }
     };
     // One getLogs call for everything we watch (hub + promote + our curves), which
     // keeps RPC usage low. Curves created inside this range get a second call.
@@ -71,7 +82,7 @@ async function syncChain(c, client) {
     const promos = c.promote ? logs.filter((e) => e.eventName === "Promoted" && lc(e.address) === lc(c.promote)) : [];
     const blocks = new Map();
     const ts = async (bn) => {
-      if (!blocks.has(bn)) blocks.set(bn, new Date(Number((await client.getBlock({ blockNumber: bn })).timestamp) * 1000));
+      if (!blocks.has(bn)) blocks.set(bn, new Date(Number((await call("getBlock", () => client.getBlock({ blockNumber: bn }))).timestamp) * 1000));
       return blocks.get(bn);
     };
     const db = await pool.connect();
@@ -153,6 +164,7 @@ async function syncChain(c, client) {
       db.release();
     }
     from = to + 1n;
+    if (c.rangeDelayMs) await sleep(c.rangeDelayMs); // stay under the RPC's requests-per-second limit
   }
 }
 
