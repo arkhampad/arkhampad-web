@@ -14,4 +14,6 @@ interface IPadHub {
     function admin() external view returns (address);
     function buysPaused() external view returns (bool);
     function treasury() external view returns (address);
+    function isCurve(address curve) external view returns (bool);
+    function curveOf(address coin) external view returns (address);
 }

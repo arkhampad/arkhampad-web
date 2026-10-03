@@ -9,10 +9,25 @@ optimizer = true
 optimizer_runs = 400
 via_ir = true
 evm_version = "cancun"
-fs_permissions = [{ access = "read-write", path = "./deployments" }]
+fs_permissions = [{ access = "read-write", path = "./deployments" }, { access = "read", path = "./out" }]
+gas_limit = "3000000000"
+# Uniswap's own contracts (used only by the tests) need their own optimizer settings.
+additional_compiler_profiles = [
+  { name = "v4core", via_ir = true, optimizer_runs = 44444444 },
+  { name = "posm", via_ir = true, optimizer_runs = 500 },
+]
+compilation_restrictions = [
+  { paths = "test/v4/ImportPoolManager.sol", optimizer_runs = 44444444 },
+  { paths = "lib/v4-periphery/lib/v4-core/src/PoolManager.sol", optimizer_runs = 44444444 },
+  { paths = "test/v4/ImportPositionManager.sol", optimizer_runs = 500 },
+  { paths = "lib/v4-periphery/src/PositionManager.sol", optimizer_runs = 500 },
+]
 remappings = [
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
   "forge-std/=lib/forge-std/src/",
+  "@uniswap/v4-core/=lib/v4-periphery/lib/v4-core/",
+  "@uniswap/v4-periphery/=lib/v4-periphery/",
+  "permit2/=lib/v4-periphery/lib/permit2/",
 ]
 
 [fuzz]
@@ -21,6 +36,7 @@ runs = 512
 [rpc_endpoints]
 base_sepolia = "${BASE_SEPOLIA_RPC}"
 robinhood_testnet = "${ROBINHOOD_TESTNET_RPC}"
+base = "${BASE_RPC}"
 
 [lint]
 lint_on_build = false
