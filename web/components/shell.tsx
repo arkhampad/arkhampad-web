@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { trades } from "@/lib/mock";
 import { IBell, IChart, IHome, IPlus, ISearch, IUser } from "./icons";
-import { LoginModal, FundsModal } from "./modals";
+import { LoginModal, FundsModal, WelcomeModal } from "./modals";
 
 type Ctx = { openLogin: () => void; openFunds: (t: "deposit" | "withdraw") => void; toast: (m: string) => void; loggedIn: boolean };
 const AppCtx = createContext<Ctx>({ openLogin: () => {}, openFunds: () => {}, toast: () => {}, loggedIn: false });
@@ -47,13 +47,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [login, setLogin] = useState(false);
   const [funds, setFunds] = useState<null | "deposit" | "withdraw">(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [welcome, setWelcome] = useState(false);
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem("ap_welcome_seen")) setWelcome(true);
+    } catch { setWelcome(true); }
+  }, []);
+  const closeWelcome = () => { setWelcome(false); try { localStorage.setItem("ap_welcome_seen", "1"); } catch { /* storage off */ } };
   const toast = useCallback((m: string) => { setMsg(m); }, []);
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(null), 2200); return () => clearTimeout(t); }, [msg]);
   const ctx: Ctx = { openLogin: () => setLogin(true), openFunds: (t) => setFunds(t), toast, loggedIn: false };
 
   return (
     <AppCtx.Provider value={ctx}>
-      <div role="note" style={{ background: "var(--volt)", color: "var(--bg)", textAlign: "center", fontSize: 12, fontWeight: 700, padding: "6px 12px" }}>Testnet contracts are live on Base & Robinhood Chain · The app opens soon · Coins and numbers shown are samples</div>
+      <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--bg)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}>Testnet live · Mainnet soon · Follow @Arkhampad on X for the latest updates →</a>
       <Ticker />
       <header className="hdr">
         <div className="wrap hdr-in">
@@ -80,6 +87,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <Link href="/alerts/" className={isOn(path, "/alerts/") ? "on" : ""}><IBell size={22} />Alerts</Link>
         <Link href="/profile/" className={isOn(path, "/profile/") ? "on" : ""}><IUser size={22} />Profile</Link>
       </nav>
+      {welcome && <WelcomeModal onClose={closeWelcome} />}
       {login && <LoginModal onClose={() => setLogin(false)} />}
       {funds && <FundsModal tab={funds} setTab={setFunds} onClose={() => setFunds(null)} />}
       {msg && <div className="toast" role="status">{msg}</div>}

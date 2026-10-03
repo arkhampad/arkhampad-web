@@ -21,14 +21,15 @@ const Close = ({ onClose }: { onClose: () => void }) => (
 
 export function LoginModal({ onClose }: { onClose: () => void }) {
   return (
-    <Overlay onClose={onClose} label="Opening soon">
+    <Overlay onClose={onClose} label="Mainnet soon">
       <div style={{ display: "flex", justifyContent: "flex-end" }}><Close onClose={onClose} /></div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12, marginTop: -18 }}>
         <span className="logo-mark" style={{ width: 44, height: 44, borderRadius: 14 }}><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#0A0B10" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11 L8 5 L13 11" /></svg></span>
-        <h2 style={{ margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: -0.8 }}>Opening soon</h2>
-        <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>Our contracts are live on the Base and Robinhood Chain testnets. Sign-ups, launching and trading open in the app very soon.</p>
+        <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt)", fontWeight: 800 }}><span className="dot" style={{ background: "var(--volt)" }} />Testnet live</span>
+        <h2 style={{ margin: 0, fontSize: 30, fontWeight: 900, letterSpacing: -0.8 }}>Mainnet soon</h2>
+        <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>Sign-ups, launching and trading open very soon. Follow us on X and turn on notifications 🔔 so you don&apos;t miss the launch.</p>
       </div>
-      <a className="btn white lg" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer"><IX size={16} color="#0A0B10" w={2.4} />Follow @Arkhampad for the launch</a>
+      <a className="btn white lg" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer"><IX size={16} color="#0A0B10" w={2.4} />Follow @Arkhampad on X</a>
       <button type="button" className="btn lg" onClick={onClose}>Keep exploring</button>
       <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: "var(--faint)", textAlign: "center" }}>We never ask for your seed phrase. Never send funds to an address you got from a DM.</p>
     </Overlay>
@@ -44,6 +45,21 @@ export function FundsModal({ tab, onClose }: { tab: "deposit" | "withdraw"; setT
       <div className="warn-note"><IAlert size={16} color="var(--warn)" /><span>Do not send any funds yet. ArkhamPad has no deposit address until the app opens. Anyone giving you one before then is a scammer.</span></div>
       <p className="muted" style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>When the app opens you will deposit and withdraw only USDC, right here.</p>
       <button type="button" className="btn lg" onClick={onClose}>Got it</button>
+    </Overlay>
+  );
+}
+
+export function WelcomeModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Overlay onClose={onClose} label="Welcome to ArkhamPad">
+      <div style={{ display: "flex", justifyContent: "flex-end" }}><Close onClose={onClose} /></div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, marginTop: -18 }}>
+        <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt)", fontWeight: 800, fontSize: 13 }}><span className="dot" style={{ background: "var(--volt)" }} />Testnet live</span>
+        <h2 style={{ margin: 0, fontSize: 34, fontWeight: 900, letterSpacing: -1, lineHeight: 1.05 }}>Mainnet is coming soon</h2>
+        <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>Create a coin with one sentence and trade thousands with USDC. Follow <b style={{ color: "var(--text)" }}>@Arkhampad</b> on X for the latest updates and turn on notifications 🔔 to be first at launch.</p>
+      </div>
+      <a className="btn white lg" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" onClick={onClose}><IX size={16} color="#0A0B10" w={2.4} />Follow @Arkhampad on X</a>
+      <button type="button" className="btn lg" onClick={onClose}>Explore the preview</button>
     </Overlay>
   );
 }
