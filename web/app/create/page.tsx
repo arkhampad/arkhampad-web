@@ -137,13 +137,13 @@ function CreateView() {
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Launch cost</span><span className="mono up">{boost === "none" ? "Free" : `$${boost} boost`}</span></div>
             <span className="dim" style={{ fontSize: 13 }}>Be the first buyer (optional)</span>
             <div style={{ display: "flex", gap: 6 }}>{[0, 10, 25, 50].map((v) => <button key={v} type="button" className={`seg mono${first === v ? " on" : ""}`} style={{ height: 38, minWidth: 0 }} onClick={() => setFirst(v)}>${v}</button>)}</div>
-            <button type="button" className="btn volt lg hide-m" style={{ fontSize: 17, fontWeight: 900 }} onClick={() => setDone(true)}><IRocket size={18} color="#0A0B10" w={2.4} />Launch {name || "coin"}</button>
+            <button type="button" className="btn volt lg hide-m" style={{ fontSize: 17, fontWeight: 900 }} onClick={openLogin}><IRocket size={18} color="#0A0B10" w={2.4} />Launch {name || "coin"}</button>
             <span className="hide-m" style={{ fontSize: 12, color: "var(--faint)", textAlign: "center" }}>You review everything before it goes live.</span>
           </div>
         </aside>
       </div>
       <div className="show-m" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(74px + var(--safe-bottom))", zIndex: 25, padding: "10px 16px", background: "rgba(10,11,16,0.97)", borderTop: "1px solid #1B1E25" }}>
-        <button type="button" className="btn volt lg" style={{ width: "100%", fontWeight: 900 }} onClick={() => setDone(true)}>Launch {name || "coin"} · {boost === "none" ? "Free" : `$${boost}`}</button>
+        <button type="button" className="btn volt lg" style={{ width: "100%", fontWeight: 900 }} onClick={openLogin}>Launch {name || "coin"} · {boost === "none" ? "Free" : `$${boost}`}</button>
       </div>
       <button type="button" className="sr" onClick={openLogin}>Log in</button>
     </div>

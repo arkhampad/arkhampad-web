@@ -53,7 +53,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider value={ctx}>
-      <div role="note" style={{ background: "var(--volt)", color: "var(--bg)", textAlign: "center", fontSize: 12, fontWeight: 700, padding: "6px 12px" }}>Preview: sample data only. Trading opens soon.</div>
+      <div role="note" style={{ background: "var(--volt)", color: "var(--bg)", textAlign: "center", fontSize: 12, fontWeight: 700, padding: "6px 12px" }}>Testnet contracts are live on Base & Robinhood Chain · The app opens soon · Coins and numbers shown are samples</div>
       <Ticker />
       <header className="hdr">
         <div className="wrap hdr-in">
