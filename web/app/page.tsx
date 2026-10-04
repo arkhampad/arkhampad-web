@@ -10,7 +10,7 @@ import { ScrollTabs } from "@/components/scrolltabs";
 import { useRouter } from "next/navigation";
 
 const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
-const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB"];
+const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB", "Arc"];
 const IDEAS = ["Funny animal", "Internet meme", "Robot / AI", "Sports", "Surprise me"];
 const PAGE = 50;
 
@@ -28,7 +28,7 @@ export default function Discover() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const chain = cat === "Base" || cat === "Robinhood" || cat === "BNB" ? cat : null;
+  const chain = cat === "Base" || cat === "Robinhood" || cat === "BNB" || cat === "Arc" ? cat : null;
   const topic = chain || cat === "All" ? null : cat;
 
   const load = useCallback(async (offset: number) => {
@@ -107,8 +107,8 @@ export default function Discover() {
           )}
           {list === null ? <Skeleton /> : list.length === 0 ? (
             <div className="card" style={{ alignItems: "center", textAlign: "center", padding: 28 }}>
-              <span style={{ fontWeight: 700 }}>{err ? "Couldn't load coins right now" : "No coins here yet"}</span>
-              <span className="dim" style={{ fontSize: 13 }}>{err ? "Please try again in a moment." : "Check another tab, or launch the first one."}</span>
+              <span style={{ fontWeight: 700 }}>{err ? "Couldn't load coins right now" : chain ? `${chain} coins are loading` : "No coins here yet"}</span>
+              <span className="dim" style={{ fontSize: 13 }}>{err ? "Please try again in a moment." : chain ? `New ${chain} coins show up here as soon as they trade.` : "Check another tab, or launch the first one."}</span>
             </div>
           ) : (
             <>

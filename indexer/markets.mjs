@@ -185,15 +185,25 @@ export async function applyUpdates(pool, chainId, ups) {
 
 async function findNetworks() {
   const nets = [...NETWORKS];
-  for (let page = 1; page <= 10; page++) {
+  const want = [
+    { chainId: 4663, test: (id, name) => /robinhood/i.test(`${id} ${name}`) && !/test/i.test(`${id} ${name}`), guesses: ["robinhood", "robinhood-chain", "robinhood-mainnet"] },
+    { chainId: 5042, test: (id, name) => (/^arc(\b|-)/i.test(id) || /^arc\b|arc network|arc mainnet/i.test(name)) && !/test|arcade|arcana|arch/i.test(`${id} ${name}`), guesses: ["arc", "arc-network", "arc-mainnet", "circle-arc"] },
+  ];
+  for (let page = 1; page <= 15; page++) {
     const j = await gt(`/networks?page=${page}`).catch(() => null);
     const list = j?.data ?? [];
     for (const n of list) {
-      const name = `${n?.id ?? ""} ${n?.attributes?.name ?? ""}`;
-      if (/robinhood/i.test(name) && !/test/i.test(name) && !nets.some((x) => x.chainId === 4663)) nets.push({ id: n.id, chainId: 4663, ds: null });
-      if (/^arc\b|arc network|arc mainnet/i.test(`${n?.attributes?.name ?? ""}`) && !/test/i.test(name) && !nets.some((x) => x.chainId === 5042)) nets.push({ id: n.id, chainId: 5042, ds: null });
+      for (const w of want) if (!nets.some((x) => x.chainId === w.chainId) && w.test(String(n?.id ?? ""), String(n?.attributes?.name ?? ""))) nets.push({ id: n.id, chainId: w.chainId, ds: null });
     }
-    if (list.length < 100) break;
+    if (!list.length) break;
+  }
+  // New chains can be missing from the list for a while: try their likely ids directly.
+  for (const w of want) {
+    if (nets.some((x) => x.chainId === w.chainId)) continue;
+    for (const id of w.guesses) {
+      const j = await gt(`/networks/${id}/dexes?page=1`).catch(() => null);
+      if (j?.data?.length) { nets.push({ id, chainId: w.chainId, ds: null }); break; }
+    }
   }
   return nets;
 }
@@ -209,13 +219,30 @@ async function dexesOf(net) {
   return ids;
 }
 
-let netsPromise = null;
-const networks = () => (netsPromise ??= findNetworks().then((n) => { log(`networks: ${n.map((x) => x.id).join(", ")}`); return n; }));
+let netsPromise = null, netsAt = 0;
+const networks = () => {
+  if (!netsPromise || Date.now() - netsAt > 3_600_000) {
+    netsAt = Date.now();
+    const prev = netsPromise;
+    netsPromise = findNetworks()
+      .then((n) => { log(`networks: ${n.map((x) => x.id).join(", ")}`); return n; })
+      .catch((e) => { log(`network discovery error: ${e.message}`); return prev ?? [...NETWORKS]; });
+  }
+  return netsPromise;
+};
 
 async function discoverLoop(pool) {
-  const nets = await networks();
-  // every network is crawled side by side, so a big chain never starves the others
-  await Promise.all(nets.map((net) => crawlNetwork(pool, net)));
+  // every network is crawled side by side, so a big chain never starves the others;
+  // chains that appear later (hourly re-check) get their own crawler
+  const running = new Set();
+  for (;;) {
+    for (const net of await networks()) {
+      if (running.has(net.chainId)) continue;
+      running.add(net.chainId);
+      crawlNetwork(pool, net);
+    }
+    await sleep(600_000);
+  }
 }
 
 async function crawlNetwork(pool, net) {
@@ -241,10 +268,10 @@ async function crawlNetwork(pool, net) {
 }
 
 /** What's moving right now: trending (last 5 minutes) and brand-new pools, every minute. */
-async function hotLoop(pool, nets) {
+async function hotLoop(pool) {
   for (;;) {
     const started = Date.now();
-    for (const net of nets) {
+    for (const net of await networks()) {
       try {
       const rows = [];
       for (let page = 1; page <= 3; page++) {
@@ -305,7 +332,7 @@ async function refreshLoop(pool) {
 export function startMarkets(pool) {
   if (process.env.MARKETS === "0") return;
   const guard = (name, fn) => (async () => { for (;;) { try { await fn(pool); } catch (e) { log(`${name} error: ${e.message}`); await sleep(30_000); } } })();
-  guard("hot", async (p) => hotLoop(p, await networks()));
+  guard("hot", hotLoop);
   guard("discover", discoverLoop);
   guard("refresh", refreshLoop);
 }
