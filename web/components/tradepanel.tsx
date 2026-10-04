@@ -7,6 +7,7 @@ import { useApp } from "./shell";
 import { useWallet } from "./wallet";
 import { FEE, buy, fromCoin, fromUsdc, onLocalTrade, placeOrder, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError, type OrderKind } from "@/lib/chain";
 import { refreshOrders } from "./orders";
+import { PriceAlertButton } from "./alerts";
 import { usd as fmtUsd } from "@/lib/live";
 import type { LiveCoin } from "@/lib/live";
 
@@ -181,7 +182,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       {coin.own && phase === 1 && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>Moving to its locked pool. Trading reopens in a few seconds.</span>}
       {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{inPool ? "Graduated · trades in its locked pool · " : ""}Testnet · test USDC has no value</span>}
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={openSoon}><IBell size={15} />Price alert</button>
+        <span style={{ flex: 1, display: "flex" }}><PriceAlertButton c={coin} className="btn ghost sm grow" /></span>
         <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={onShare}><IShare size={15} />Share</button>
       </div>
     </div>

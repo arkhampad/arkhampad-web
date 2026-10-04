@@ -10,6 +10,7 @@ import { WalletProvider, useWallet } from "./wallet";
 import { Celebrate } from "./celebrate";
 import { OrderWatcher } from "./orders";
 import { CopyAlerts } from "./social";
+import { useInbox } from "./alerts";
 import { useRouter } from "next/navigation";
 import { findByAddress } from "@/lib/live";
 
@@ -54,6 +55,18 @@ function toggleTheme() {
   const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
   document.documentElement.dataset.theme = next;
   try { localStorage.setItem("ap_theme", next); } catch { /* storage off */ }
+}
+
+function Bell() {
+  const w = useWallet();
+  const { data } = useInbox();
+  const n = w.signedIn ? data?.unread ?? 0 : 0;
+  return (
+    <Link href="/alerts/" className="icon-btn" aria-label={n ? `Alerts, ${n} new` : "Alerts"} style={{ position: "relative" }}>
+      <IBell size={18} color="var(--text2)" />
+      {n > 0 && <span className="mono" style={{ position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "var(--down)", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{n > 99 ? "99+" : n}</span>}
+    </Link>
+  );
 }
 
 function ThemeButton() {
@@ -168,7 +181,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
           <HeaderSearch />
           <span style={{ flex: 1 }} className="show-m" />
           <ThemeButton />
-          <Link href="/alerts/" className="icon-btn" aria-label="Alerts"><IBell size={18} color="var(--text2)" /></Link>
+          <Bell />
           <Link href="/create/" className="btn volt hide-m">Create coin</Link>
           <Account openFunds={(t) => setFunds(t)} />
         </div>

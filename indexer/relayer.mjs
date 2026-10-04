@@ -112,6 +112,7 @@ export function makeRelayer() {
   }
   const faucetLast = new Map();
   let db = null;
+  let notifier = null;
   const upkeepLast = new Map();
   log(`relayer ${account.address} on ${[...nets.values()].map((n) => n.c.name).join(", ")}`);
 
@@ -372,6 +373,8 @@ export function makeRelayer() {
         const out = await handle(o.body);
         await db.query("update orders set status='filled', tx_hash=$2, updated_at=now() where id=$1", [o.id, out.hash]);
         log(`${n.c.name} order ${o.id} ${o.kind} filled at mc $${mc.toFixed(0)} ${out.hash}`);
+        const label = { limit_buy: "Limit buy", take_profit: "Take profit", stop_loss: "Stop loss" }[o.kind];
+        notifier?.notify(o.user, { kind: "order", title: `${label} filled`, body: `Your order filled at about $${Math.round(mc).toLocaleString("en-US")} market cap.`, url: `/coin/?c=${o.chain_id}-${o.coin}` });
         if (o.kind !== "limit_buy") {
           // take profit + stop loss work as a pair: once one sells, the other is never sent
           const left = await n.pub.readContract({ address: getAddress(o.coin), abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }], functionName: "balanceOf", args: [getAddress(o.user)] }).catch(() => null);
@@ -389,6 +392,7 @@ export function makeRelayer() {
         const final = { Expired: "expired", NonceAlreadyUsed: "cancelled", ERC20InsufficientBalance: "failed", ERC20InsufficientAllowance: "failed", NotOpen: "failed", NotGraduated: "failed", NotACurve: "failed", BadSignature: "failed" }[code];
         const note = code === "NotOpen" ? "The coin graduated. Set the order again." : code === "ERC20InsufficientBalance" ? "Not enough balance when it triggered." : e.message;
         if (final) await db.query("update orders set status=$2, note=$3, updated_at=now() where id=$1", [o.id, final, note]);
+        if (final === "failed") notifier?.notify(o.user, { kind: "order", title: "Order couldn't fill", body: note, url: `/coin/?c=${o.chain_id}-${o.coin}` });
         else await db.query("update orders set tries=tries+1, note=$2, status=case when tries+1>=30 then 'failed' else status end, updated_at=now() where id=$1", [o.id, note]);
       } finally {
         inflight.delete(o.id);
@@ -424,10 +428,89 @@ export function makeRelayer() {
     return { following: on };
   }
 
-  function config() {
-    return { relayer: account.address, minFee: String(MIN_FEE), chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, faucet: !!n.faucet })) };
+  // ---------------------------------------------------------------- price alerts, bell, push
+  // Signed by the user: the action and a hash of its details, a few minutes old at most.
+  const REQ_TYPES = { Request: [{ name: "action", type: "string" }, { name: "payload", type: "bytes32" }, { name: "time", type: "uint256" }] };
+  async function signedBy(body) {
+    const user = addr(body?.user, "user");
+    const time = big(body.time, "time");
+    if (Math.abs(Number(time) - Date.now() / 1000) > 600) throw err("Request expired, please try again.");
+    const payload = keccak256(new TextEncoder().encode(JSON.stringify(body.payload ?? {})));
+    const ok = await verifyTypedData({ address: user, domain: { name: "ArkhamPad", version: "1" }, types: REQ_TYPES, primaryType: "Request", message: { action: String(body.action), payload, time }, signature: hex(body.signature, "signature") }).catch(() => false);
+    if (!ok) throw err("Signature check failed.", 403);
+    return user.toLowerCase();
   }
-  return { handle, config, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setFollow, setDb: (pool) => { db = pool; } };
+
+  async function action(body) {
+    if (!db) throw err("Not available right now.", 503);
+    const user = await signedBy(body);
+    const p = body.payload ?? {};
+    switch (body.action) {
+      case "alert.add": {
+        const chainId = Number(p.chainId), target = Number(p.targetMc);
+        const coin = addr(p.coin, "coin").toLowerCase();
+        if (!(chainId > 0) || !(target > 0) || target > 1e13) throw err("Pick a valid market cap.");
+        if (p.direction !== "above" && p.direction !== "below") throw err("Pick above or below.");
+        const n = (await db.query(`select count(*)::int n from price_alerts where "user"=$1 and status='open'`, [user])).rows[0].n;
+        if (n >= 50) throw err("You can have up to 50 price alerts.");
+        const tick = String(p.tick ?? "").replace(/[^A-Za-z0-9$]/g, "").slice(0, 12) || "coin";
+        const r = await db.query(`insert into price_alerts ("user", chain_id, coin, tick, direction, target_mc) values ($1,$2,$3,$4,$5,$6) returning id`, [user, chainId, coin, tick, p.direction, target]);
+        return { id: String(r.rows[0].id) };
+      }
+      case "alert.delete":
+        await db.query(`update price_alerts set status='deleted' where id=$1 and "user"=$2 and status='open'`, [String(p.id ?? "0").replace(/\D/g, "") || "0", user]);
+        return { ok: true };
+      case "push.subscribe": {
+        const sub = p.subscription ?? {};
+        if (typeof sub.endpoint !== "string" || !/^https:\/\//.test(sub.endpoint) || sub.endpoint.length > 1000 || !sub.keys?.p256dh || !sub.keys?.auth) throw err("Bad subscription.");
+        await db.query(`insert into push_subs (endpoint, "user", keys) values ($1,$2,$3) on conflict (endpoint) do update set "user"=excluded."user", keys=excluded.keys`, [sub.endpoint, user, { p256dh: String(sub.keys.p256dh).slice(0, 200), auth: String(sub.keys.auth).slice(0, 100) }]);
+        return { ok: true };
+      }
+      case "notes.read":
+        await db.query(`update notifications set read=true where "user"=$1 and read=false`, [user]);
+        return { ok: true };
+      default:
+        throw err("Unknown action.");
+    }
+  }
+
+  async function inbox(user) {
+    if (!db) return { notes: [], unread: 0, alerts: [] };
+    const u = addr(user, "user").toLowerCase();
+    const [notes, unread, alerts] = await Promise.all([
+      db.query(`select id, kind, title, body, url, read, created_at from notifications where "user"=$1 order by created_at desc limit 50`, [u]),
+      db.query(`select count(*)::int n from notifications where "user"=$1 and read=false`, [u]),
+      db.query(`select id, chain_id, coin, tick, direction, target_mc, status, created_at, hit_at from price_alerts where "user"=$1 and status <> 'deleted' order by created_at desc limit 50`, [u]),
+    ]);
+    return { notes: notes.rows.map((r) => ({ ...r, id: String(r.id) })), unread: unread.rows[0].n, alerts: alerts.rows.map((r) => ({ ...r, id: String(r.id), target_mc: Number(r.target_mc) })) };
+  }
+
+  // checks every price alert against the latest market caps (our coins and coins from other DEXs)
+  async function alertTick() {
+    if (!db) return;
+    const { rows } = await db.query(`
+      select a.*, coalesce(c.mc_usd, e.mcap_usd, e.fdv_usd) as mc
+      from price_alerts a
+      left join coins c on c.chain_id = a.chain_id and c.address = a.coin
+      left join ext_tokens e on e.chain_id = a.chain_id and e.address = a.coin
+      where a.status = 'open' limit 1000`);
+    for (const a of rows) {
+      const mc = Number(a.mc);
+      if (!(mc > 0)) continue;
+      const hit = a.direction === "above" ? mc >= Number(a.target_mc) : mc <= Number(a.target_mc);
+      if (!hit) continue;
+      const done = await db.query(`update price_alerts set status='hit', hit_at=now() where id=$1 and status='open'`, [a.id]);
+      if (!done.rowCount) continue;
+      const fmt = (v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`);
+      notifier?.notify(a.user, { kind: "price", title: `${a.tick} is ${a.direction} ${fmt(Number(a.target_mc))}`, body: `${a.tick} market cap is now ${fmt(mc)}.`, url: `/coin/?c=${a.chain_id}-${a.coin}` });
+    }
+  }
+  setInterval(() => { alertTick().catch((e) => log(`alerts error: ${e.message}`)); }, Number(process.env.ALERT_TICK_MS ?? 15_000));
+
+  function config() {
+    return { relayer: account.address, minFee: String(MIN_FEE), vapidPublicKey: notifier?.publicKey ?? null, chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, faucet: !!n.faucet })) };
+  }
+  return { handle, config, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, setNotifier: (x) => { notifier = x; }, vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -464,19 +547,24 @@ export function httpHandler(relayer, status) {
       res.setHeader("cache-control", "public, max-age=31536000, immutable"); // the URL changes with every new image
       return res.end(img.data);
     }
+    if (url === "/inbox" && req.method === "GET") {
+      const q = new URL(req.url, "http://x").searchParams;
+      try { return res.end(JSON.stringify(await relayer.inbox(q.get("user")))); }
+      catch (e) { res.statusCode = 400; return res.end(JSON.stringify({ error: e.message })); }
+    }
     if (url === "/orders" && req.method === "GET") {
       const q = new URL(req.url, "http://x").searchParams;
       try { return res.end(JSON.stringify(await relayer.listOrders(q.get("user")))); }
       catch (e) { res.statusCode = 400; return res.end(JSON.stringify({ error: e.message })); }
     }
-    if ((url === "/orders" || url === "/orders/cancel" || url === "/follow") && req.method === "POST") {
+    if ((url === "/orders" || url === "/orders/cancel" || url === "/follow" || url === "/action") && req.method === "POST") {
       const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
       if (limited(ip)) { res.statusCode = 429; return res.end(JSON.stringify({ error: "Too many requests, slow down." })); }
       let raw = "";
       for await (const ch of req) { raw += ch; if (raw.length > 20_000) { res.statusCode = 413; return res.end(JSON.stringify({ error: "too large" })); } }
       let body;
       try { body = JSON.parse(raw); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad request" })); }
-      try { return res.end(JSON.stringify(url === "/orders" ? await relayer.createOrder(body) : url === "/follow" ? await relayer.setFollow(body) : await relayer.cancelOrder(body))); }
+      try { return res.end(JSON.stringify(url === "/orders" ? await relayer.createOrder(body) : url === "/follow" ? await relayer.setFollow(body) : url === "/action" ? await relayer.action(body) : await relayer.cancelOrder(body))); }
       catch (e) { res.statusCode = e.status || 500; if (!e.status) log("order error", e.message); return res.end(JSON.stringify({ error: e.status ? e.message : "Something went wrong. Please try again." })); }
     }
     if (url === "/image" && req.method === "POST") {

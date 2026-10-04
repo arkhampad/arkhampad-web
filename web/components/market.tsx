@@ -46,7 +46,7 @@ export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
       </span>
       <span style={{ display: "flex", gap: 8 }}>
         <button type="button" className="btn volt" style={{ flex: 1, height: 46, fontSize: 15 }} onClick={() => router.push(href(c))}>{c.own ? "Buy" : "View"}</button>
-        <button type="button" className="icon-btn" aria-label={`Alert for ${c.name}`} style={{ width: 46, height: 46 }} onClick={openSoon}><IBell size={18} color="var(--text2)" /></button>
+        <button type="button" className="icon-btn" aria-label={`Alert for ${c.name}`} style={{ width: 46, height: 46 }} onClick={() => router.push(href(c))}><IBell size={18} color="var(--text2)" /></button>
       </span>
     </div>
   );

@@ -9,6 +9,7 @@ import { createPublicClient, http as viemHttp, parseAbiItem, getAddress } from "
 import { startMarkets } from "./markets.mjs";
 import { makeRelayer, httpHandler } from "./relayer.mjs";
 import { poolIdOf, poolTrade } from "./poolmath.mjs";
+import { makeNotifier } from "./notify.mjs";
 const relayer = process.env.ONCE ? null : makeRelayer();
 
 const POLL_DEFAULT = process.env.POLL_SECONDS ? Number(process.env.POLL_SECONDS) * 1000 : null;
@@ -42,7 +43,24 @@ const pool = new pg.Pool({
   ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL || "") ? false : { rejectUnauthorized: false },
   max: 4,
 });
-if (relayer) relayer.setDb(pool);
+const notifier = makeNotifier(pool);
+if (relayer) { relayer.setDb(pool); relayer.setNotifier(notifier); }
+
+// After each indexed batch: tell followers about fresh buys and creators about graduations.
+async function announce(c, fresh) {
+  for (const f of fresh) {
+    if (Date.now() - f.at.getTime() > 10 * 60_000) continue; // catching up on old blocks: stay quiet
+    if (f.type === "buy") {
+      const { rows } = await pool.query("select follower from follows where trader=$1 limit 500", [f.trader]);
+      if (!rows.length) continue;
+      const sym = (await pool.query("select symbol from coins where chain_id=$1 and address=$2", [c.chainId, f.coin])).rows[0]?.symbol ?? "a coin";
+      await notifier.notifyMany(rows.map((r) => r.follower), { kind: "follow", title: `${f.trader.slice(0, 6)}…${f.trader.slice(-4)} bought ${sym}`, body: `$${f.usdc.toFixed(2)} of ${sym}. Tap to see it and copy.`, url: `/coin/?c=${c.chainId}-${f.coin}` });
+    } else if (f.type === "graduated") {
+      const row = (await pool.query("select symbol, creator from coins where chain_id=$1 and address=$2", [c.chainId, f.coin])).rows[0];
+      if (row) await notifier.notify(row.creator, { kind: "graduated", title: `🎓 ${row.symbol} graduated!`, body: `Your coin moved to its locked pool. Trading continues there.`, url: `/coin/?c=${c.chainId}-${f.coin}` });
+    }
+  }
+}
 
 async function lastBlock(chainId, start) {
   const r = await pool.query("select last_block from sync_state where chain_id = $1", [chainId]);
@@ -127,6 +145,7 @@ async function syncChain(c, client) {
       }
       const curves = new Map();
       for (const r of (await db.query("select curve, address, creator from coins where chain_id=$1", [c.chainId])).rows) curves.set(r.curve, r);
+      const fresh = []; // buys and graduations to announce once this batch is saved
       const ordered = [...trades.map((e) => ["t", e]), ...fulls.map((e) => ["f", e]), ...grads.map((e) => ["g", e])]
         .sort((x, y) => (x[1].blockNumber === y[1].blockNumber ? x[1].logIndex - y[1].logIndex : x[1].blockNumber < y[1].blockNumber ? -1 : 1));
       for (const [kind, e] of ordered) {
@@ -147,6 +166,7 @@ async function syncChain(c, client) {
              values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict do nothing`,
             [c.chainId, e.transactionHash, e.logIndex, coin, trader, a.isBuy, usd(a.usdcAmount), tok(a.coinAmount), usd(a.fee), price, price * SUPPLY, String(e.blockNumber), at],
           );
+          if (r.rowCount && a.isBuy) fresh.push({ type: "buy", trader, coin, usdc: usd(a.usdcAmount), at });
           if (r.rowCount) {
             await db.query(
               `update coins set v_usdc=$3, v_coin=$4, price_usd=$5, mc_usd=$6, trades_count=trades_count+1, volume_usd=volume_usd+$7, last_trade_at=$8,
@@ -163,6 +183,7 @@ async function syncChain(c, client) {
           const a = e.args;
           await db.query("update coins set phase=2, usdc_reserve=0, graduated_at=$3, pool_usdc=$4, pool_coins=$5 where chain_id=$1 and address=$2",
             [c.chainId, coin, at, usd(a.usdcToPool), tok(a.coinsToPool)]);
+          fresh.push({ type: "graduated", coin, at });
         }
       }
       for (const e of promos) {
@@ -198,6 +219,7 @@ async function syncChain(c, client) {
                  values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict do nothing`,
                 [c.chainId, e.transactionHash, e.logIndex, r.address, trader, t.isBuy, t.usdc, t.coins, t.fee, t.price, t.price * SUPPLY, String(e.blockNumber), at],
               );
+              if (ins.rowCount && t.isBuy) fresh.push({ type: "buy", trader, coin: r.address, usdc: t.usdc, at });
               if (ins.rowCount) {
                 poolTrades++;
                 await db.query("update coins set price_usd=$3, mc_usd=$4, trades_count=trades_count+1, volume_usd=volume_usd+$5, last_trade_at=$6 where chain_id=$1 and address=$2",
@@ -209,6 +231,7 @@ async function syncChain(c, client) {
       }
       await db.query("update sync_state set last_block=$2, updated_at=now() where chain_id=$1", [c.chainId, String(to)]);
       await db.query("commit");
+      if (fresh.length) announce(c, fresh).catch((e) => log(`${c.name}: announce error ${e.message}`));
       if (created.length || trades.length || grads.length || promos.length || poolTrades)
         log(`${c.name}: blocks ${from}-${to} coins+${created.length} trades+${trades.length} pool+${poolTrades} grads+${grads.length} promos+${promos.length}`);
     } catch (err) {

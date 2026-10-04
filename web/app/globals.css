@@ -206,3 +206,5 @@ textarea.inp { height: auto; padding: 12px 14px; line-height: 1.5; resize: none;
 }
 .hot-spark { display: block; height: 90px; }
 @media (max-width: 760px) { .hot-spark { height: 60px; } }
+
+.btn.grow { flex: 1; height: 40px; }

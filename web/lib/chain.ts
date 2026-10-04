@@ -500,3 +500,28 @@ export async function setFollow(trader: Address, on: boolean, s: Signer) {
   const j = r ? await r.json().catch(() => ({})) : {};
   if (!r || !r.ok) throw new TradeError(j.error || "Couldn't update. Please try again.");
 }
+
+// ---------------------------------------------------------------- signed account actions (alerts, push, bell)
+
+export async function accountAction(action: string, payload: Record<string, unknown>, s: Signer) {
+  const time = BigInt(Math.floor(Date.now() / 1000));
+  const hash = keccak256(new TextEncoder().encode(JSON.stringify(payload)));
+  const signature = await s.signTypedData(NETS[0].id, { domain: { name: "ArkhamPad", version: "1" }, types: { Request: [{ name: "action", type: "string" }, { name: "payload", type: "bytes32" }, { name: "time", type: "uint256" }] }, primaryType: "Request", message: { action, payload: hash, time } });
+  const r = await fetch(`${RELAYER}/action`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user: s.address, action, payload, time: time.toString(), signature }) }).catch(() => null);
+  const j = r ? await r.json().catch(() => ({})) : {};
+  if (!r || !r.ok) throw new TradeError(j.error || "Something went wrong. Please try again.");
+  return j;
+}
+
+export type Note = { id: string; kind: string; title: string; body: string; url: string; read: boolean; created_at: string };
+export type PriceAlert = { id: string; chain_id: number; coin: string; tick: string; direction: "above" | "below"; target_mc: number; status: string; created_at: string; hit_at: string | null };
+export async function inbox(user: Address): Promise<{ notes: Note[]; unread: number; alerts: PriceAlert[] }> {
+  const r = await fetch(`${RELAYER}/inbox?user=${user}`).catch(() => null);
+  if (!r || !r.ok) return { notes: [], unread: 0, alerts: [] };
+  return r.json();
+}
+export async function vapidKey(): Promise<string | null> {
+  const r = await fetch(`${RELAYER}/config`).catch(() => null);
+  const j = r ? await r.json().catch(() => ({})) : {};
+  return j.vapidPublicKey ?? null;
+}
