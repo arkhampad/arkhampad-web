@@ -426,3 +426,67 @@ export async function holdersOf(chainId: number, coin: Address, wallets: string[
   }
   return rows.sort((a, b) => b.amount - a.amount);
 }
+
+// ---------------------------------------------------------------- automatic orders
+
+export type OrderKind = "limit_buy" | "take_profit" | "stop_loss";
+export type Order = { id: string; chain_id: number; coin: string; kind: OrderKind; venue: "curve" | "pool"; trigger_mc: number; amount: string; nonce: string; status: string; note: string | null; tx_hash: string | null; created_at: string; deadline: string };
+
+/**
+ * Signs a trade now that the relayer sends later, when the market cap reaches `triggerMc`.
+ * The signed minimum (how much the user gets at worst) is set from the trigger price, so the
+ * order can never fill at a much worse price than the user chose.
+ */
+export async function placeOrder(p: { chainId: number; coin: Address; curve: Address | null; pool: boolean; kind: OrderKind; triggerMc: number; amount: bigint }, s: Signer) {
+  const n = netOf(p.chainId);
+  if (!n) throw new TradeError("Unknown network");
+  if (p.amount <= 0n) throw new TradeError("Enter an amount.");
+  if (!(p.triggerMc > 0)) throw new TradeError("Pick a market cap.");
+  const isBuy = p.kind === "limit_buy";
+  const price = p.triggerMc / 1e9; // USDC per coin at the trigger
+  let min: bigint;
+  if (isBuy) {
+    // coins for usdcIn at the trigger price, after the 1% fee, with 3% room
+    min = BigInt(Math.floor((fromUsdc(p.amount) * 0.99 / price) * 0.97 * 1e6)) * 10n ** 12n;
+  } else {
+    // stop loss gets more room (prices fall fast); take profit sells at or above the target
+    const room = p.kind === "stop_loss" ? 0.8 : 0.96;
+    const v = fromCoin(p.amount) * price * 0.99 * room - fromUsdc(FEE);
+    min = BigInt(Math.max(1, Math.floor(v * 1e6)));
+  }
+  await ensureAllowance(n, s, isBuy ? n.usdc : p.coin, isBuy ? p.amount + FEE : p.amount);
+  const nonce = randomNonce();
+  const dl = BigInt(Math.floor(Date.now() / 1000) + 30 * 86400); // valid for 30 days
+  const venue = p.pool ? "pool" : "curve";
+  const reqKind = p.pool ? (isBuy ? "poolBuy" : "poolSell") : (isBuy ? "buy" : "sell");
+  const types = { buy: TYPES.Buy, sell: TYPES.Sell, poolBuy: TYPES.PoolBuy, poolSell: TYPES.PoolSell }[reqKind];
+  const primary = { buy: "Buy", sell: "Sell", poolBuy: "PoolBuy", poolSell: "PoolSell" }[reqKind];
+  const target = p.pool ? { coin: p.coin } : { curve: p.curve as Address };
+  const message = isBuy
+    ? { user: s.address, ...target, usdcIn: p.amount, minCoinsOut: min, fee: FEE, nonce, deadline: dl }
+    : { user: s.address, ...target, coinAmount: p.amount, minUsdcOut: min, fee: FEE, nonce, deadline: dl };
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { [primary]: types }, primaryType: primary, message });
+  const request = { kind: reqKind, ...Object.fromEntries(Object.entries(message).map(([k, v]) => [k, typeof v === "bigint" ? v.toString() : v])), signature };
+  let r: Response;
+  try { r = await fetch(`${RELAYER}/orders`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chainId: n.id, kind: p.kind, coin: p.coin, triggerMc: p.triggerMc, request }) }); }
+  catch { throw new TradeError("Can't reach ArkhamPad right now. Check your connection."); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new TradeError(j.error || "Couldn't place the order.");
+  void venue;
+  return j.id as string;
+}
+
+export async function myOrders(user: Address): Promise<Order[]> {
+  const r = await fetch(`${RELAYER}/orders?user=${user}`).catch(() => null);
+  if (!r || !r.ok) return [];
+  return r.json();
+}
+
+export async function cancelOrder(o: Order, s: Signer) {
+  const n = netOf(o.chain_id);
+  if (!n) throw new TradeError("Unknown network");
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Cancel: [{ name: "user", type: "address" }, { name: "nonce", type: "uint256" }] }, primaryType: "Cancel", message: { user: s.address, nonce: BigInt(o.nonce) } });
+  const r = await fetch(`${RELAYER}/orders/cancel`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: o.id, signature }) }).catch(() => null);
+  const j = r ? await r.json().catch(() => ({})) : {};
+  if (!r || !r.ok) throw new TradeError(j.error || "Couldn't cancel the order.");
+}

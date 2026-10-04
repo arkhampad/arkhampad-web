@@ -8,6 +8,7 @@ import { IBell, IChart, IHome, IPlus, ISearch, IUser } from "./icons";
 import { SoonModal, FundsModal, WelcomeModal } from "./modals";
 import { WalletProvider, useWallet } from "./wallet";
 import { Celebrate } from "./celebrate";
+import { OrderWatcher } from "./orders";
 import { useRouter } from "next/navigation";
 import { findByAddress } from "@/lib/live";
 
@@ -183,6 +184,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       {soon && <SoonModal onClose={() => setSoon(false)} />}
       {funds && <FundsModal tab={funds} setTab={setFunds} onClose={() => setFunds(null)} />}
       <Celebrate toast={toast} />
+      {w.signedIn && <OrderWatcher />}
       {msg && <div className="toast" role="status">{msg}</div>}
     </AppCtx.Provider>
   );

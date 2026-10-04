@@ -5,7 +5,7 @@
 //
 // Env: RELAYER_KEY (the relayer wallet's private key), and the chain RPC env vars.
 import fs from "node:fs";
-import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, decodeFunctionResult, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress } from "viem";
+import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, decodeFunctionResult, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress, verifyTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 const CHAINS = JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./chains.json", import.meta.url), "utf8"));
@@ -78,6 +78,23 @@ const sigOf = (b) => ({ deadline: big(b.deadline, "deadline"), nonce: big(b.nonc
 const feeOf = (b) => { const f = big(b.fee, "fee"); if (f < MIN_FEE) throw new Error("fee too low"); return f; };
 
 const IMG_MAX = 200_000; // bytes of image data
+
+// What the user signs for each kind of request (must match the router's EIP-712 types).
+const F = (pairs) => pairs.map(([name, type]) => ({ name, type }));
+const SIGNED = {
+  buy: { primaryType: "Buy", fields: F([["user", "address"], ["curve", "address"], ["usdcIn", "uint256"], ["minCoinsOut", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]) },
+  sell: { primaryType: "Sell", fields: F([["user", "address"], ["curve", "address"], ["coinAmount", "uint256"], ["minUsdcOut", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]) },
+  poolBuy: { primaryType: "PoolBuy", fields: F([["user", "address"], ["coin", "address"], ["usdcIn", "uint256"], ["minCoinsOut", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]) },
+  poolSell: { primaryType: "PoolSell", fields: F([["user", "address"], ["coin", "address"], ["coinAmount", "uint256"], ["minUsdcOut", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]) },
+};
+const CANCEL_TYPES = { Cancel: F([["user", "address"], ["nonce", "uint256"]]) };
+const CURVE_PRICE_ABI = [
+  { type: "function", name: "vUsdc", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "vCoin", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+];
+const QUOTE_POOL_ABI = [{ type: "function", name: "quotePool", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "bool" }, { type: "uint256" }], outputs: [{ type: "uint256" }] }];
+const ORDER_KINDS = { limit_buy: ["buy", "poolBuy"], take_profit: ["sell", "poolSell"], stop_loss: ["sell", "poolSell"] };
+const MAX_OPEN_ORDERS = 20;
 const IMAGE_TYPES = { CoinImage: [{ name: "coin", type: "address" }, { name: "imageHash", type: "bytes32" }] };
 
 export function makeRelayer() {
@@ -254,10 +271,141 @@ export function makeRelayer() {
     return r.rows[0] ?? null;
   }
 
+  // ---------------------------------------------------------------- automatic orders
+  const err = (msg, status = 400) => { const e = new Error(msg); e.status = status; return e; };
+  const domainOf = (n) => ({ name: "ArkhamPad", version: "1", chainId: n.c.chainId, verifyingContract: n.router });
+
+  async function createOrder(body) {
+    if (!db) throw err("Orders are not available right now.", 503);
+    const n = nets.get(Number(body?.chainId));
+    if (!n) throw err("unsupported chain");
+    const kind = String(body.kind);
+    const r = body.request ?? {};
+    if (!ORDER_KINDS[kind] || !ORDER_KINDS[kind].includes(r.kind)) throw err("Unknown order type.");
+    const venue = r.kind.startsWith("pool") ? "pool" : "curve";
+    const user = addr(r.user, "user");
+    const coin = addr(body.coin, "coin").toLowerCase();
+    const triggerMc = Number(body.triggerMc);
+    if (!Number.isFinite(triggerMc) || triggerMc <= 0 || triggerMc > 1e13) throw err("Pick a valid market cap.");
+    const row = (await db.query("select curve from coins where chain_id=$1 and address=$2", [n.c.chainId, coin])).rows[0];
+    if (!row) throw err("Unknown coin.");
+    if (venue === "curve" && addr(r.curve, "curve").toLowerCase() !== row.curve) throw err("Order doesn't match this coin.");
+    if (venue === "pool" && addr(r.coin, "coin").toLowerCase() !== coin) throw err("Order doesn't match this coin.");
+    const dl = big(r.deadline, "deadline");
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (dl < now + 60n || dl > now + 31n * 86400n) throw err("Order must last between a minute and a month.");
+    feeOf(r);
+    // the signature must really be the user's, for exactly these numbers
+    const t = SIGNED[r.kind];
+    const message = Object.fromEntries(t.fields.map((f) => [f.name, f.type === "address" ? getAddress(r[f.name]) : big(r[f.name], f.name)]));
+    const ok = await verifyTypedData({ address: user, domain: domainOf(n), types: { [t.primaryType]: t.fields }, primaryType: t.primaryType, message, signature: hex(r.signature, "signature") }).catch(() => false);
+    if (!ok) throw err("Signature check failed.");
+    const open = (await db.query(`select count(*)::int n from orders where "user"=$1 and status='open'`, [user.toLowerCase()])).rows[0].n;
+    if (open >= MAX_OPEN_ORDERS) throw err(`You can have up to ${MAX_OPEN_ORDERS} open orders.`);
+    const amount = Number(r.kind.endsWith("uy") ? big(r.usdcIn, "usdcIn") : big(r.coinAmount, "coinAmount"));
+    const res = await db.query(
+      `insert into orders (chain_id, "user", coin, kind, venue, trigger_mc, amount, body, nonce, deadline)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,to_timestamp($10)) returning id`,
+      [n.c.chainId, user.toLowerCase(), coin, kind, venue, triggerMc, amount, { ...r, chainId: n.c.chainId }, String(big(r.nonce, "nonce")), Number(dl)],
+    ).catch((e) => { if (e.code === "23505") throw err("This order was already placed."); throw e; });
+    log(`${n.c.name} order ${res.rows[0].id} ${kind} at $${triggerMc}`);
+    return { id: String(res.rows[0].id) };
+  }
+
+  async function listOrders(user) {
+    if (!db) return [];
+    const u = addr(user, "user").toLowerCase();
+    const { rows } = await db.query(
+      `select id, chain_id, coin, kind, venue, trigger_mc, amount, nonce, status, note, tx_hash, created_at, deadline from orders where "user"=$1 order by created_at desc limit 100`, [u]);
+    return rows.map((x) => ({ ...x, id: String(x.id), trigger_mc: Number(x.trigger_mc), amount: String(x.amount) }));
+  }
+
+  async function cancelOrder(body) {
+    if (!db) throw err("Orders are not available right now.", 503);
+    const o = (await db.query("select * from orders where id=$1", [String(body?.id ?? "0").replace(/\D/g, "") || "0"])).rows[0];
+    if (!o) throw err("Order not found.", 404);
+    if (o.status !== "open") return { status: o.status };
+    const n = nets.get(o.chain_id);
+    const signer = await recoverTypedDataAddress({ domain: domainOf(n), types: CANCEL_TYPES, primaryType: "Cancel", message: { user: getAddress(o.user), nonce: BigInt(o.nonce) }, signature: hex(body.signature, "signature") }).catch(() => null);
+    if (!signer || signer.toLowerCase() !== o.user) throw err("Only the owner can cancel.", 403);
+    // stop it on-chain too, so the signed order can never be used again
+    try { await handle({ chainId: o.chain_id, kind: "cancel", user: o.user, nonce: o.nonce, signature: body.signature }); }
+    catch (e) { if (e.code !== "NonceAlreadyUsed") throw e; }
+    await db.query("update orders set status='cancelled', updated_at=now() where id=$1 and status='open'", [o.id]);
+    return { status: "cancelled" };
+  }
+
+  async function marketCap(n, o) {
+    if (o.venue === "curve") {
+      const curve = getAddress(o.body.curve);
+      const [v, t] = await Promise.all([
+        n.pub.readContract({ address: curve, abi: CURVE_PRICE_ABI, functionName: "vUsdc" }),
+        n.pub.readContract({ address: curve, abi: CURVE_PRICE_ABI, functionName: "vCoin" }),
+      ]);
+      return (Number(v) / 1e6) / (Number(t) / 1e18) * 1e9;
+    }
+    // pool: what 1 coin sells for right now
+    const { result } = await n.pub.simulateContract({ address: n.router, abi: QUOTE_POOL_ABI, functionName: "quotePool", args: [getAddress(o.coin), false, 10n ** 18n], account: account.address });
+    return (Number(result) / 1e6) * 1e9;
+  }
+
+  const inflight = new Set();
+  async function orderTick() {
+    if (!db) return;
+    const { rows } = await db.query("select * from orders where status='open' order by created_at limit 300");
+    const now = Date.now();
+    const mcCache = new Map();
+    for (const o of rows) {
+      if (inflight.has(o.id)) continue;
+      const n = nets.get(o.chain_id);
+      if (!n) continue;
+      if (new Date(o.deadline).getTime() <= now) { await db.query("update orders set status='expired', updated_at=now() where id=$1", [o.id]); continue; }
+      const key = `${o.chain_id}:${o.coin}:${o.venue}`;
+      let mc = mcCache.get(key);
+      if (mc === undefined) { mc = await marketCap(n, o).catch(() => null); mcCache.set(key, mc); }
+      if (mc === null) continue;
+      const trig = Number(o.trigger_mc);
+      const hit = o.kind === "take_profit" ? mc >= trig : mc <= trig;
+      if (!hit) continue;
+      inflight.add(o.id);
+      try {
+        const out = await handle(o.body);
+        await db.query("update orders set status='filled', tx_hash=$2, updated_at=now() where id=$1", [o.id, out.hash]);
+        log(`${n.c.name} order ${o.id} ${o.kind} filled at mc $${mc.toFixed(0)} ${out.hash}`);
+        if (o.kind !== "limit_buy") {
+          // take profit + stop loss work as a pair: once one sells, the other is never sent
+          const left = await n.pub.readContract({ address: getAddress(o.coin), abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }], functionName: "balanceOf", args: [getAddress(o.user)] }).catch(() => null);
+          if (left !== null) {
+            await db.query(
+              `update orders set status='cancelled', note='The other order already sold these coins.', updated_at=now()
+               where "user"=$1 and coin=$2 and chain_id=$3 and status='open' and kind <> 'limit_buy' and amount > $4`,
+              [o.user, o.coin, o.chain_id, left.toString()],
+            );
+          }
+        }
+        mcCache.delete(key); // the price just moved
+      } catch (e) {
+        const code = e.code || "";
+        const final = { Expired: "expired", NonceAlreadyUsed: "cancelled", ERC20InsufficientBalance: "failed", ERC20InsufficientAllowance: "failed", NotOpen: "failed", NotGraduated: "failed", NotACurve: "failed", BadSignature: "failed" }[code];
+        const note = code === "NotOpen" ? "The coin graduated. Set the order again." : code === "ERC20InsufficientBalance" ? "Not enough balance when it triggered." : e.message;
+        if (final) await db.query("update orders set status=$2, note=$3, updated_at=now() where id=$1", [o.id, final, note]);
+        else await db.query("update orders set tries=tries+1, note=$2, status=case when tries+1>=30 then 'failed' else status end, updated_at=now() where id=$1", [o.id, note]);
+      } finally {
+        inflight.delete(o.id);
+      }
+    }
+  }
+  let ticking = false;
+  setInterval(async () => {
+    if (ticking) return;
+    ticking = true;
+    try { await orderTick(); } catch (e) { log(`orders error: ${e.message}`); } finally { ticking = false; }
+  }, Number(process.env.ORDER_TICK_MS ?? 4000));
+
   function config() {
     return { relayer: account.address, minFee: String(MIN_FEE), chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, faucet: !!n.faucet })) };
   }
-  return { handle, config, graduate, saveImage, image, setDb: (pool) => { db = pool; } };
+  return { handle, config, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -293,6 +441,21 @@ export function httpHandler(relayer, status) {
       res.setHeader("access-control-allow-origin", "*");
       res.setHeader("cache-control", "public, max-age=31536000, immutable"); // the URL changes with every new image
       return res.end(img.data);
+    }
+    if (url === "/orders" && req.method === "GET") {
+      const q = new URL(req.url, "http://x").searchParams;
+      try { return res.end(JSON.stringify(await relayer.listOrders(q.get("user")))); }
+      catch (e) { res.statusCode = 400; return res.end(JSON.stringify({ error: e.message })); }
+    }
+    if ((url === "/orders" || url === "/orders/cancel") && req.method === "POST") {
+      const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+      if (limited(ip)) { res.statusCode = 429; return res.end(JSON.stringify({ error: "Too many requests, slow down." })); }
+      let raw = "";
+      for await (const ch of req) { raw += ch; if (raw.length > 20_000) { res.statusCode = 413; return res.end(JSON.stringify({ error: "too large" })); } }
+      let body;
+      try { body = JSON.parse(raw); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad request" })); }
+      try { return res.end(JSON.stringify(url === "/orders" ? await relayer.createOrder(body) : await relayer.cancelOrder(body))); }
+      catch (e) { res.statusCode = e.status || 500; if (!e.status) log("order error", e.message); return res.end(JSON.stringify({ error: e.status ? e.message : "Something went wrong. Please try again." })); }
     }
     if (url === "/image" && req.method === "POST") {
       const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();

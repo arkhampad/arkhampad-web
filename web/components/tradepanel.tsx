@@ -5,13 +5,15 @@ import type { Address } from "viem";
 import { IBell, IShare } from "./icons";
 import { useApp } from "./shell";
 import { useWallet } from "./wallet";
-import { FEE, buy, fromCoin, fromUsdc, onLocalTrade, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError } from "@/lib/chain";
+import { FEE, buy, fromCoin, fromUsdc, onLocalTrade, placeOrder, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError, type OrderKind } from "@/lib/chain";
+import { refreshOrders } from "./orders";
+import { usd as fmtUsd } from "@/lib/live";
 import type { LiveCoin } from "@/lib/live";
 
 const fmtCoins = (t: number) => (!Number.isFinite(t) || t <= 0 ? "0" : t >= 1e9 ? (t / 1e9).toFixed(2) + "B" : t >= 1e6 ? (t / 1e6).toFixed(2) + "M" : t >= 1e3 ? (t / 1e3).toFixed(1) + "K" : t.toFixed(t < 1 ? 4 : 2));
 
 export function TradePanel({ coin, withLimit = false, onShare, initialSide = "buy" }: { coin: LiveCoin; withLimit?: boolean; onShare?: () => void; initialSide?: "buy" | "sell" }) {
-  const { toast, openSoon, openFunds } = useApp();
+  const { toast, openSoon, openFunds } = useApp(); void withLimit;
   const w = useWallet();
   const [side, setSide] = useState<"buy" | "sell">(initialSide);
   const [mode, setMode] = useState("Market");
@@ -22,6 +24,9 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState("");
   const seq = useRef(0);
+  const [trig, setTrig] = useState(""); // market cap for Limit
+  const [tp, setTp] = useState<number | null>(100); // Auto: take profit at +X%
+  const [sl, setSl] = useState<number | null>(25); // Auto: stop loss at -Y%
   const phase = coin.phase ?? 0;
   const inPool = coin.own && phase === 2; // graduated: trades in its locked Uniswap pool
   const tradable = coin.own && (phase === 0 ? !!coin.curve : phase === 2);
@@ -62,8 +67,44 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const go = async () => {
     if (!tradable) return;
     if (!w.signedIn || !w.signer) { w.login(); return; }
-    if (mode !== "Market") { openSoon(); return; }
     setBusy(true);
+    if (mode !== "Market") {
+      try {
+        const base = { chainId: coin.chainId, coin: coin.address as Address, curve: (curve ?? null) as Address | null, pool: inPool };
+        const mcNow = coin.mcNum ?? 0;
+        if (mode === "Limit") {
+          const t = Number(trig.replace(/[^0-9.]/g, ""));
+          if (!(t > 0)) throw new TradeError("Enter a market cap.");
+          if (side === "buy") {
+            if (usd <= 0) throw new TradeError("Enter an amount.");
+            if (t >= mcNow) throw new TradeError("For a limit buy, pick a market cap below the current one.");
+            setStep("Placing…");
+            await placeOrder({ ...base, kind: "limit_buy", triggerMc: t, amount: toUsdc(usd) }, w.signer);
+            toast(`Limit buy set: $${usd} when MC hits ${fmtUsd(t)}`);
+          } else {
+            if (sellAmount <= 0n) throw new TradeError("You don't hold this coin yet.");
+            if (t <= mcNow) throw new TradeError("For a limit sell, pick a market cap above the current one.");
+            setStep("Placing…");
+            await placeOrder({ ...base, kind: "take_profit", triggerMc: t, amount: sellAmount }, w.signer);
+            toast(`Limit sell set at ${fmtUsd(t)} MC`);
+          }
+        } else {
+          if (sellAmount <= 0n) throw new TradeError("Buy the coin first, then set take profit / stop loss.");
+          if (tp === null && sl === null) throw new TradeError("Pick a take profit or a stop loss.");
+          setStep("Placing…");
+          const made: string[] = [];
+          const each: { kind: OrderKind; mc: number }[] = [];
+          if (tp !== null) each.push({ kind: "take_profit", mc: mcNow * (1 + tp / 100) });
+          if (sl !== null) each.push({ kind: "stop_loss", mc: mcNow * (1 - sl / 100) });
+          for (const o of each) { await placeOrder({ ...base, kind: o.kind, triggerMc: o.mc, amount: sellAmount }, w.signer); made.push(o.kind === "take_profit" ? `TP ${fmtUsd(o.mc)}` : `SL ${fmtUsd(o.mc)}`); }
+          toast(`Auto orders set: ${made.join(" · ")}`);
+        }
+        refreshOrders();
+      } catch (e) {
+        toast(e instanceof TradeError ? e.message : "Couldn't place the order. Please try again.");
+      } finally { setBusy(false); setStep(""); }
+      return;
+    }
     try {
       if (side === "buy") {
         if (usd <= 0) throw new TradeError("Enter an amount.");
@@ -84,17 +125,37 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
     }
   };
 
-  const modes = withLimit ? ["Market", "Limit", "Auto"] : ["Market", "Auto"];
-  const label = !coin.own ? "Opens at launch" : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
+  const modes = ["Market", "Limit", "Auto"];
+  const label = !coin.own ? "Opens at launch" : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
+    : mode === "Limit" ? `Set limit ${side === "buy" ? "buy" : "sell"}` : mode === "Auto" ? "Set take profit / stop loss" : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
   return (
     <div className="card" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 4, borderRadius: 14, background: "var(--bg)" }}>
-        <button type="button" onClick={() => setSide("buy")} style={{ height: 42, borderRadius: 11, border: 0, fontWeight: 800, fontSize: 15, background: side === "buy" ? "var(--up)" : "transparent", color: side === "buy" ? "#04130C" : "var(--muted)" }}>Buy</button>
+        <button type="button" onClick={() => { setSide("buy"); if (mode === "Auto") setMode("Market"); }} style={{ height: 42, borderRadius: 11, border: 0, fontWeight: 800, fontSize: 15, background: side === "buy" ? "var(--up)" : "transparent", color: side === "buy" ? "#04130C" : "var(--muted)" }}>Buy</button>
         <button type="button" onClick={() => setSide("sell")} style={{ height: 42, borderRadius: 11, border: 0, fontWeight: 800, fontSize: 15, background: side === "sell" ? "var(--down)" : "transparent", color: side === "sell" ? "#1A0505" : "var(--muted)" }}>Sell</button>
       </div>
       <div style={{ display: "flex", gap: 16, fontSize: 13, fontWeight: 600 }}>
-        {modes.map((m) => <button key={m} type="button" onClick={() => setMode(m)} style={{ background: "none", border: 0, padding: "0 0 6px", color: mode === m ? "var(--text)" : "var(--dim)", borderBottom: mode === m ? "2px solid var(--volt)" : "2px solid transparent" }}>{m}{m !== "Market" && <span className="dim" style={{ fontSize: 10, marginLeft: 4 }}>soon</span>}</button>)}
+        {modes.map((m) => <button key={m} type="button" onClick={() => { setMode(m); if (m === "Auto") setSide("sell"); if (m === "Limit" && !trig && coin.mcNum) setTrig(String(Math.round(coin.mcNum * (side === "buy" ? 0.8 : 1.5)))); }} style={{ background: "none", border: 0, padding: "0 0 6px", color: mode === m ? "var(--text)" : "var(--dim)", borderBottom: mode === m ? "2px solid var(--volt)" : "2px solid transparent" }}>{m}</button>)}
       </div>
+      {mode === "Limit" && (
+        <div className="field">
+          <label htmlFor={`trig-${coin.id}`}>{side === "buy" ? "Buy when market cap drops to" : "Sell when market cap reaches"} <span className="dim">(now {coin.mc})</span></label>
+          <div style={{ display: "flex", alignItems: "center", height: 48, padding: "0 14px", borderRadius: 12, background: "var(--bg)", border: "1px solid var(--line3)" }}>
+            <span className="mono dim" style={{ fontWeight: 700 }}>$</span>
+            <input id={`trig-${coin.id}`} inputMode="decimal" value={trig} onChange={(e) => setTrig(e.target.value.replace(/[^0-9.]/g, ""))} style={{ flex: 1, minWidth: 0, background: "transparent", border: 0, outline: "none", font: "700 18px var(--mono)", paddingLeft: 4 }} />
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>{(side === "buy" ? [-20, -35, -50] : [50, 100, 200]).map((d) => <button key={d} type="button" className="seg mono" style={{ height: 32, minWidth: 0 }} onClick={() => setTrig(String(Math.round((coin.mcNum ?? 0) * (1 + d / 100))))}>{d > 0 ? `+${d}%` : `${d}%`}</button>)}</div>
+        </div>
+      )}
+      {mode === "Auto" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="dim" style={{ fontSize: 13 }}>Take profit</span>
+          <div style={{ display: "flex", gap: 6 }}>{[25, 50, 100, 200].map((v) => <button key={v} type="button" className={`seg mono${tp === v ? " on" : ""}`} style={{ height: 36, minWidth: 0 }} onClick={() => setTp(tp === v ? null : v)}>+{v}%</button>)}</div>
+          <span className="dim" style={{ fontSize: 13 }}>Stop loss</span>
+          <div style={{ display: "flex", gap: 6 }}>{[10, 25, 50].map((v) => <button key={v} type="button" className={`seg mono${sl === v ? " on" : ""}`} style={{ height: 36, minWidth: 0 }} onClick={() => setSl(sl === v ? null : v)}>-{v}%</button>)}</div>
+          <span style={{ fontSize: 11, color: "var(--faint)" }}>Sells automatically when the price hits your level, even if you close the site.</span>
+        </div>
+      )}
       {side === "buy" ? (
         <>
           <label htmlFor={`amt-${coin.id}`} style={{ fontSize: 13, display: "flex", justifyContent: "space-between" }} className="dim"><span>Amount</span><span>Cash <b className="mono" style={{ color: "var(--text)" }}>${cash.toFixed(2)}</b></span></label>

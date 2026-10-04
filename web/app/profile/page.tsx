@@ -5,6 +5,7 @@ import type { Address } from "viem";
 import { Avatar } from "@/components/bits";
 import { useApp } from "@/components/shell";
 import { useWallet } from "@/components/wallet";
+import { OrdersList } from "@/components/orders";
 import { NETS, fromCoin, onLocalTrade, tokenBalance } from "@/lib/chain";
 import { db, fromOwn, usd, short, type LiveCoin } from "@/lib/live";
 
@@ -39,7 +40,7 @@ export default function Profile() {
   const w = useWallet();
   const { openFunds, toast } = useApp();
   const [data, setData] = useState<{ holdings: Holding[]; created: LiveCoin[] } | null>(null);
-  const [tab, setTab] = useState<"Holdings" | "Created">("Holdings");
+  const [tab, setTab] = useState<"Holdings" | "Created" | "Orders">("Holdings");
   const load = useCallback(() => { if (w.address) loadHoldings(w.address).then(setData).catch(() => setData({ holdings: [], created: [] })); }, [w.address]);
   useEffect(() => { setData(null); load(); const off = onLocalTrade(() => setTimeout(load, 300)); const iv = setInterval(load, 30_000); return () => { off(); clearInterval(iv); }; }, [load]);
 
@@ -82,8 +83,8 @@ export default function Profile() {
         </div>
       </div>
       <div className="panel">
-        <div style={{ display: "flex", gap: 4 }}>{(["Holdings", "Created"] as const).map((t) => <button key={t} type="button" className={`tab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
-        {!data ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : tab === "Holdings" ? (
+        <div style={{ display: "flex", gap: 4 }}>{(["Holdings", "Created", "Orders"] as const).map((t) => <button key={t} type="button" className={`tab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
+        {tab === "Orders" ? <OrdersList title="All your orders" /> : !data ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : tab === "Holdings" ? (
           data.holdings.length === 0 ? <div className="dim" style={{ padding: 16, fontSize: 14 }}>No coins yet. <Link href="/" className="volt">Find one on Discover</Link> or <Link href="/create/" className="volt">launch your own</Link>.</div> :
             data.holdings.map((h) => (
               <Link key={h.coin.id} href={`/coin/?c=${h.coin.id}`} className="lrow" style={{ borderTop: "1px solid var(--row)" }}>

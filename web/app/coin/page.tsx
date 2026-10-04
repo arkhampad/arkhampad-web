@@ -7,6 +7,7 @@ import { Avatar, Bar, ChainTag } from "@/components/bits";
 import { Intervals } from "@/components/trade";
 import { TradePanel } from "@/components/tradepanel";
 import { AboutCard, CreatorCard, HoldersCard, PromoteButton } from "@/components/cointools";
+import { OrdersList } from "@/components/orders";
 import dynamic from "next/dynamic";
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
@@ -119,6 +120,7 @@ function CoinView() {
           </div>
         </div>
         <aside className="side-col" style={{ flexBasis: 360 }}>
+          {c.own && <OrdersList coin={c.address} chainId={c.chainId} title="Your open orders" />}
           <AboutCard c={c} />
           {c.own && <CreatorCard c={c} onImage={(url) => setC({ ...c, image: url })} />}
           {c.own && <HoldersCard c={c} />}
