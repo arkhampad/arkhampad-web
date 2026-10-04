@@ -123,8 +123,8 @@ function TerminalView() {
         {c && <TradePanel coin={c} withLimit onShare={() => shareCoin(c)} />}
         {c && !c.own && (
           <div className="card" style={{ gap: 6, padding: 14 }}>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Trading opens at launch</span>
-            <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>This coin trades on another DEX. You will be able to trade it here with USDC when ArkhamPad opens.</span>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>Trading opens on mainnet</span>
+            <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>This coin trades on other DEXs. On mainnet you can trade it here with USDC in one tap (1% fee).</span>
           </div>
         )}
       </aside>

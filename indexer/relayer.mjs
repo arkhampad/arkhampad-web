@@ -49,6 +49,8 @@ const FRIENDLY = {
   NotACurve: "Unknown coin.",
   FeeTooHigh: "This sale is too small to cover the network fee.",
   Slippage: "Price moved too much. Please try again.",
+  SwapFailed: "The DEX couldn't fill this trade right now. Please try again.",
+  TargetNotAllowed: "This route isn't supported. Please try again.",
   NotOpen: "Trading on this curve is closed (it graduated or is about to).",
   BuysPaused: "Buying is paused right now.",
   NothingToDo: "Amount is too small.",
@@ -88,6 +90,13 @@ const SIGNED = {
   poolSell: { primaryType: "PoolSell", fields: F([["user", "address"], ["coin", "address"], ["coinAmount", "uint256"], ["minUsdcOut", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]) },
 };
 const CANCEL_TYPES = { Cancel: F([["user", "address"], ["nonce", "uint256"]]) };
+// Coins from other DEXs (mainnet): PadExtSwap
+const EXT_ABI = [{ type: "function", name: "swap", stateMutability: "nonpayable", inputs: [{ name: "s", type: "tuple", components: [
+  { name: "user", type: "address" }, { name: "isBuy", type: "bool" }, { name: "coin", type: "address" }, { name: "amountIn", type: "uint256" }, { name: "minOut", type: "uint256" },
+  { name: "target", type: "address" }, { name: "data", type: "bytes" }, { name: "fee", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [{ type: "uint256" }] },
+  { type: "error", name: "Slippage", inputs: [{ type: "uint256" }, { type: "uint256" }] }, { type: "error", name: "SwapFailed", inputs: [{ type: "bytes" }] },
+  { type: "error", name: "TargetNotAllowed", inputs: [] }, { type: "error", name: "BadSignature", inputs: [] }, { type: "error", name: "Expired", inputs: [] }, { type: "error", name: "NonceAlreadyUsed", inputs: [] }];
+const PERMIT_ABI = [{ type: "function", name: "permit", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "address" }, { type: "uint256" }, { type: "uint256" }, { type: "uint8" }, { type: "bytes32" }, { type: "bytes32" }], outputs: [] }];
 const CURVE_PRICE_ABI = [
   { type: "function", name: "vUsdc", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "vCoin", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
@@ -123,7 +132,7 @@ export function makeRelayer() {
     } catch (e) {
       const raw = e?.cause?.data ?? e?.data ?? e?.cause?.cause?.data;
       let name = null;
-      if (typeof raw === "string") { try { name = decodeErrorResult({ abi: ROUTER_ABI, data: raw }).errorName; } catch { /* unknown error */ } }
+      if (typeof raw === "string") { try { name = decodeErrorResult({ abi: ROUTER_ABI, data: raw }).errorName; } catch { try { name = decodeErrorResult({ abi: EXT_ABI, data: raw }).errorName; } catch { /* unknown error */ } } }
       const err = new Error(FRIENDLY[name] ?? "This request would fail. Please try again.");
       err.status = 400; err.code = name ?? "REVERT";
       throw err;
@@ -167,6 +176,20 @@ export function makeRelayer() {
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "promote", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.coinChainId, "coinChainId"), Number(big(body.plan, "plan")), big(body.maxPrice, "maxPrice"), feeOf(body), sigOf(body)] });
     } else if (kind === "cancel") {
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "cancel", args: [addr(body.user, "user"), big(body.nonce, "nonce"), hex(body.signature, "signature")] });
+    } else if (kind === "extSwap") {
+      // coins from other DEXs; only on networks where PadExtSwap is deployed (mainnet)
+      if (!n.c.extSwap) { const e = new Error("Trading coins from other DEXs opens on mainnet."); e.status = 400; throw e; }
+      const w = body.swap ?? {};
+      to = getAddress(n.c.extSwap);
+      data = encodeFunctionData({ abi: EXT_ABI, functionName: "swap", args: [{ user: addr(w.user, "user"), isBuy: w.isBuy === true, coin: addr(w.coin, "coin"), amountIn: big(w.amountIn, "amountIn"), minOut: big(w.minOut, "minOut"), target: addr(w.target, "target"), data: hex(w.data, "data"), fee: feeOf(w), nonce: big(w.nonce, "nonce"), deadline: big(w.deadline, "deadline"), signature: hex(w.signature, "signature") }] });
+      fixedGas = 1_500_000n;
+    } else if (kind === "permitExt") {
+      // EIP-2612 approval for PadExtSwap (USDC or a coin that supports permit)
+      if (!n.c.extSwap) { const e = new Error("Not available on this network."); e.status = 400; throw e; }
+      const { v, r, s: ss } = parseSignature(hex(body.signature, "signature"));
+      to = addr(body.token, "token");
+      data = encodeFunctionData({ abi: PERMIT_ABI, functionName: "permit", args: [addr(body.owner, "owner"), getAddress(n.c.extSwap), big(body.value, "value"), big(body.deadline, "deadline"), Number(v ?? 27n), r, ss] });
+      fixedGas = 200_000n;
     } else if (kind === "settle" || kind === "collect" || kind === "buyback") {
       // Anyone can trigger these; they only move fees where the contracts say. One per coin a minute.
       const target = addr(kind === "settle" ? body.curve : body.coin, kind === "settle" ? "curve" : "coin");

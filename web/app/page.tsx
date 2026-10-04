@@ -135,7 +135,7 @@ export default function Discover() {
             </>
           )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-            <span className="dim" style={{ fontSize: 13 }}>Coins from other DEXs are shown for discovery. Trading opens at launch.</span>
+            <span className="dim" style={{ fontSize: 13 }}>Coins from other DEXs are shown for discovery. Trading them here opens on mainnet.</span>
             {more && list && list.length > 0 && <button type="button" className="btn" disabled={busy} onClick={() => load(list.length)}>{busy ? "Loading…" : "Load more"}</button>}
           </div>
         </div>

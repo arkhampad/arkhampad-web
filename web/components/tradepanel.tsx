@@ -7,6 +7,7 @@ import { useApp } from "./shell";
 import { useWallet } from "./wallet";
 import { FEE, buy, fromCoin, fromUsdc, onLocalTrade, placeOrder, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError, type OrderKind } from "@/lib/chain";
 import { refreshOrders } from "./orders";
+import { extBalance, extNet, extQuote, extTrade, extTradable } from "@/lib/ext";
 import { PriceAlertButton } from "./alerts";
 import { usd as fmtUsd } from "@/lib/live";
 import type { LiveCoin } from "@/lib/live";
@@ -30,7 +31,10 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const [sl, setSl] = useState<number | null>(25); // Auto: stop loss at -Y%
   const phase = coin.phase ?? 0;
   const inPool = coin.own && phase === 2; // graduated: trades in its locked Uniswap pool
-  const tradable = coin.own && (phase === 0 ? !!coin.curve : phase === 2);
+  const ext = !coin.own && !!extNet(coin.chainId); // coin from another DEX on a network we can quote
+  const extLive = ext && extTradable(coin.chainId); // ...and trade (mainnet)
+  const tradable = ext ? extLive : coin.own && (phase === 0 ? !!coin.curve : phase === 2);
+  const [extDec, setExtDec] = useState(18);
   const curve = coin.curve as Address | undefined;
   const cash = fromUsdc(w.usdc[coin.chainId] ?? 0n);
   const usd = Number(amt) || 0;
@@ -38,21 +42,26 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
 
   // what this wallet holds of the coin (refreshed after every trade)
   useEffect(() => {
-    if (!w.address || !coin.own) { setHeld(0n); return; }
+    if (!w.address || (!coin.own && !ext)) { setHeld(0n); return; }
     let alive = true;
-    const load = () => tokenBalance(coin.chainId, coin.address as Address, w.address as Address).then((b) => alive && setHeld(b)).catch(() => {});
+    const load = () => (ext ? extBalance(coin.chainId, coin.address as Address, w.address as Address) : tokenBalance(coin.chainId, coin.address as Address, w.address as Address)).then((b) => alive && setHeld(b)).catch(() => {});
     load();
     const off = onLocalTrade((t) => { if (t.coin.toLowerCase() === coin.address.toLowerCase()) load(); });
     return () => { alive = false; off(); };
-  }, [w.address, coin.chainId, coin.address, coin.own]);
+  }, [w.address, coin.chainId, coin.address, coin.own, ext]);
 
   // live quote (debounced)
   useEffect(() => {
-    if (!tradable) { setQuote(null); return; }
+    if (!tradable && !ext) { setQuote(null); return; }
     const n = ++seq.current;
     const t = setTimeout(async () => {
       try {
         const token = coin.address as Address;
+        if (ext) {
+          if (side === "buy") { const raw = usd <= 0 ? 0n : await extQuote(coin.chainId, token, "buy", toUsdc(usd)); if (n === seq.current) setQuote(Number(raw) / 10 ** extDec); }
+          else { const raw = sellAmount <= 0n ? 0n : await extQuote(coin.chainId, token, "sell", sellAmount); if (n === seq.current) setQuote(Number(raw) / 1e6); }
+          return;
+        }
         if (side === "buy") {
           const raw = usd <= 0 ? 0n : inPool ? await quotePool(coin.chainId, token, true, toUsdc(usd)) : await quoteBuy(coin.chainId, curve as Address, toUsdc(usd));
           if (n === seq.current) setQuote(fromCoin(raw));
@@ -63,12 +72,29 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       } catch { if (n === seq.current) setQuote(null); }
     }, 200);
     return () => clearTimeout(t);
-  }, [side, usd, sellAmount, tradable, inPool, curve, coin.chainId, coin.address, coin.mcNum]);
+  }, [side, usd, sellAmount, tradable, ext, extDec, inPool, curve, coin.chainId, coin.address, coin.mcNum]);
+  // coins from other DEXs: real decimals for quotes
+  useEffect(() => {
+    if (!ext) return;
+    const n = extNet(coin.chainId);
+    if (!n) return;
+    import("viem").then(({ createPublicClient, http, parseAbi }) => createPublicClient({ transport: http(n.rpc) }).readContract({ address: coin.address as Address, abi: parseAbi(["function decimals() view returns (uint8)"]), functionName: "decimals" })).then((d) => setExtDec(Number(d))).catch(() => {});
+  }, [ext, coin.chainId, coin.address]);
 
   const go = async () => {
     if (!tradable) return;
     if (!w.signedIn || !w.signer) { w.login(); return; }
     setBusy(true);
+    if (ext) {
+      try {
+        setStep(side === "buy" ? "Buying…" : "Selling…");
+        if (side === "buy") { if (usd <= 0) throw new TradeError("Enter an amount."); await extTrade(coin.chainId, coin.address as Address, "buy", toUsdc(usd), w.signer); toast(`Bought ${coin.tick}`); }
+        else { if (sellAmount <= 0n) throw new TradeError("You don't hold this coin."); await extTrade(coin.chainId, coin.address as Address, "sell", sellAmount, w.signer); toast(`Sold ${coin.tick}`); }
+        await w.refresh();
+      } catch (e) { toast(e instanceof TradeError ? e.message : "Couldn't trade. Please try again."); }
+      finally { setBusy(false); setStep(""); }
+      return;
+    }
     if (mode !== "Market") {
       try {
         const base = { chainId: coin.chainId, coin: coin.address as Address, curve: (curve ?? null) as Address | null, pool: inPool };
@@ -127,7 +153,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   };
 
   const modes = ["Market", "Limit", "Auto"];
-  const label = !coin.own ? "Opens at launch" : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
+  const label = ext && !extLive ? "Opens on mainnet" : !coin.own && !ext ? "Opens on mainnet" : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
     : mode === "Limit" ? `Set limit ${side === "buy" ? "buy" : "sell"}` : mode === "Auto" ? "Set take profit / stop loss" : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
   return (
     <div className="card" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
@@ -178,7 +204,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
         </>
       )}
       <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={go} disabled={busy || !tradable} aria-busy={busy} style={{ fontSize: 17, opacity: !tradable ? 0.55 : 1 }}>{label}</button>
-      {!coin.own && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>This coin trades on another DEX. Trading here opens at launch.</span>}
+      {!coin.own && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>{extLive ? "Trades through other DEXs at the best price · 1% fee" : ext ? "Live price from other DEXs. Trading these coins here opens on mainnet." : "This coin trades on another DEX. Trading it here opens on mainnet."}</span>}
       {coin.own && phase === 1 && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>Moving to its locked pool. Trading reopens in a few seconds.</span>}
       {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{inPool ? "Graduated · trades in its locked pool · " : ""}Testnet · test USDC has no value</span>}
       <div style={{ display: "flex", gap: 8 }}>

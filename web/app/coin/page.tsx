@@ -134,8 +134,8 @@ function CoinView() {
           )}
           {!c.own && (
             <div className="card" style={{ gap: 6 }}>
-              <span style={{ fontWeight: 700 }}>Trading opens at launch</span>
-              <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>This coin trades on another DEX. You will be able to buy and sell it here with USDC when ArkhamPad opens.</span>
+              <span style={{ fontWeight: 700 }}>Trading opens on mainnet</span>
+              <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>This coin trades on other DEXs. On mainnet you can buy and sell it here with USDC in one tap, at the best price across DEXs (1% fee).</span>
             </div>
           )}
           <div className="hide-m"><TradePanel coin={c} onShare={() => shareCoin(c)} /></div>
