@@ -9,7 +9,8 @@ import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCo
 import { useWallet } from "@/components/wallet";
 import { FEE, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage } from "@/lib/chain";
 
-const OPTS = [
+const PALETTE = [["#1B1F6B", "#7C5CFF"], ["#0B3B2E", "#2BB38A"], ["#3B1B0B", "#FF8A3D"]];
+const OPTS0 = [
   { name: "Moonfrog", tick: "MFROG", desc: "An astronaut frog who only buys the dip. Floating in orbit, waiting for red candles.", c1: "#1B1F6B", c2: "#7C5CFF" },
   { name: "Dip Hopper", tick: "HOPPR", desc: "A space frog that hops in every time the chart dips. Never sleeps, never sells.", c1: "#0B3B2E", c2: "#2BB38A" },
   { name: "Orbit Toad", tick: "OTOAD", desc: "Zero gravity, zero panic. This toad buys dips from low orbit.", c1: "#3B1B0B", c2: "#FF8A3D" },
@@ -24,9 +25,12 @@ function CreateView() {
   const { toast, openFunds } = useApp();
   const [idea, setIdea] = useState(q.get("idea") || "A frog astronaut who only buys the dip");
   const [pick, setPick] = useState(0);
-  const [name, setName] = useState(OPTS[0].name);
-  const [tick, setTick] = useState(OPTS[0].tick);
-  const [desc, setDesc] = useState(OPTS[0].desc);
+  const [OPTS, setOpts] = useState(OPTS0);
+  const [thinking, setThinking] = useState(false);
+  const [drawing, setDrawing] = useState(false);
+  const [name, setName] = useState(OPTS0[0].name);
+  const [tick, setTick] = useState(OPTS0[0].tick);
+  const [desc, setDesc] = useState(OPTS0[0].desc);
   const [chain, setChain] = useState("Base");
   const [lock, setLock] = useState("Lock 24h");
   const [fee, setFee] = useState("burn");
@@ -46,7 +50,36 @@ function CreateView() {
   const cash = fromUsdc(w.usdc[chainId] ?? 0n);
   const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(FEE) * (boost === "none" ? 1 : 2);
   const o = OPTS[pick];
-  const choose = (i: number) => { setPick(i); setName(OPTS[i].name); setTick(OPTS[i].tick); setDesc(OPTS[i].desc); };
+  const choose = (i: number, list = OPTS) => { setPick(i); setName(list[i].name); setTick(list[i].tick); setDesc(list[i].desc); };
+
+  // AI: one sentence (any language) -> three ready coins
+  const generate = async (text = idea) => {
+    if (!text.trim()) { toast("Describe your coin in a few words."); return; }
+    setThinking(true);
+    try {
+      const r = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idea: text }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !Array.isArray(j.options) || !j.options.length) throw new Error(j.error || "AI is busy, please try again.");
+      const list = j.options.slice(0, 3).map((o: { name: string; ticker: string; description: string }, i: number) => ({ name: o.name, tick: o.ticker, desc: o.description, c1: PALETTE[i][0], c2: PALETTE[i][1] }));
+      setOpts(list);
+      choose(0, list);
+      setImgFile(null); setImgPreview(null);
+    } catch (e) { toast((e as Error).message || "AI is busy, please try again."); } finally { setThinking(false); }
+  };
+  // AI image for the chosen coin
+  const drawImage = async () => {
+    setDrawing(true);
+    try {
+      const r = await fetch("/api/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description: desc }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.dataUrl) throw new Error(j.error || "Couldn't draw an image right now.");
+      const blob = await (await fetch(j.dataUrl)).blob();
+      setImgFile(new File([blob], "coin.png", { type: blob.type || "image/png" }));
+      setImgPreview(j.dataUrl);
+    } catch (e) { toast((e as Error).message); } finally { setDrawing(false); }
+  };
+  const autoRan = useRef(false);
+  useEffect(() => { if (!autoRan.current && q.get("idea")) { autoRan.current = true; generate(q.get("idea") || ""); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const ca = done?.coin ?? "";
   const coinUrl = done ? `https://arkhampad.com/coin/?c=${done.chainId}-${done.coin}` : "";
   const shareObj: ShareCoin = { name, tick, chain, mc: "$450", chg: 0, address: ca, id: done ? `${done.chainId}-${done.coin.toLowerCase()}` : "", c1: o.c1, c2: o.c2, own: true };
@@ -142,12 +175,12 @@ function CreateView() {
             <textarea id="cidea" rows={2} value={idea} onChange={(e) => setIdea(e.target.value)} style={{ resize: "none", background: "transparent", border: 0, outline: "none", fontSize: 16, fontWeight: 500, lineHeight: 1.5 }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span className="pill mono" style={{ background: "var(--raise)", color: "var(--muted)", fontSize: 11 }}><IGlobe size={12} />Any language → English coin</span>
-              <button type="button" className="btn volt"><ISpark size={15} color="#0A0B10" />Regenerate</button>
+              <button type="button" className="btn volt" disabled={thinking} onClick={() => generate()}><ISpark size={15} color="#0A0B10" />{thinking ? "Thinking…" : "Generate with AI"}</button>
             </div>
           </div>
           <div className="grid3" style={{ gap: 8 }}>
             {OPTS.map((x, i) => (
-              <button key={x.tick} type="button" onClick={() => choose(i)} style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 14, border: pick === i ? "2px solid var(--volt)" : "1px solid var(--line2)", background: pick === i ? "rgba(212,255,58,0.06)" : "var(--bg)", minWidth: 0 }}>
+              <button key={i} type="button" onClick={() => choose(i)} style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 14, border: pick === i ? "2px solid var(--volt)" : "1px solid var(--line2)", background: pick === i ? "rgba(212,255,58,0.06)" : "var(--bg)", minWidth: 0 }}>
                 <span style={{ width: 52, height: 52, borderRadius: 12, overflow: "hidden", flex: "none" }}><FrogArt c1={x.c1} c2={x.c2} /></span>
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                   <span style={{ fontWeight: 800, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.name}</span>
@@ -165,6 +198,7 @@ function CreateView() {
           <div className="field"><label htmlFor="cd">Description</label><textarea id="cd" rows={2} className="inp" value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { setImgFile(f); setImgPreview(URL.createObjectURL(f)); } }} />
+            <button type="button" className="btn ghost sm" disabled={drawing} onClick={drawImage}><ISpark size={14} color="var(--volt-ink)" />{drawing ? "Drawing…" : imgFile ? "New AI image" : "AI image"}</button>
             <button type="button" className="btn ghost sm" onClick={() => fileRef.current?.click()}>{imgFile ? "Change image" : "Upload image"}</button>
             {imgFile && <button type="button" className="btn ghost sm" onClick={() => { setImgFile(null); setImgPreview(null); }}>Remove image</button>}
             <button type="button" className="btn ghost sm" aria-expanded={links} onClick={() => setLinks(!links)}>{links ? "Hide links" : "+ Add links (optional)"}</button>
