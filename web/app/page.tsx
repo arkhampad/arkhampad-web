@@ -162,7 +162,7 @@ export default function Discover() {
           <div className="card" style={{ background: "var(--volt)", color: "var(--on-volt)", border: 0 }}>
             <span style={{ fontWeight: 800, fontSize: 17 }}>Invite friends, earn on every trade</span>
             <span style={{ fontSize: 13, lineHeight: 1.45 }}>You get a share of our fee on everything your friends trade.</span>
-            <Link href="/profile/" className="btn" style={{ alignSelf: "flex-start", height: 38, background: "var(--bg)", color: "var(--text)", border: 0 }}>Get my link</Link>
+            <Link href="/invite/" className="btn" style={{ alignSelf: "flex-start", height: 38, background: "var(--bg)", color: "var(--text)", border: 0 }}>Get my link</Link>
           </div>
         </aside>
       </section>

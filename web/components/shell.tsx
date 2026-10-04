@@ -11,6 +11,7 @@ import { Celebrate } from "./celebrate";
 import { OrderWatcher } from "./orders";
 import { CopyAlerts } from "./social";
 import { useInbox } from "./alerts";
+import { RefLinker } from "./community";
 import { useRouter } from "next/navigation";
 import { findByAddress } from "@/lib/live";
 
@@ -143,6 +144,7 @@ function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void
           <Link href="/profile/" className="tab" style={{ display: "flex", alignItems: "center" }} onClick={() => setOpen(false)}>Profile</Link>
           <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("deposit"); }}>Deposit</button>
           <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("withdraw"); }}>Withdraw</button>
+          <Link href="/invite/" className="tab" style={{ textAlign: "left" }} onClick={() => setOpen(false)}>Invite & earn</Link>
           <button type="button" className="tab show-m" style={{ textAlign: "left" }} onClick={() => { setOpen(false); toggleTheme(); }}>Light / dark mode</button>
           <button type="button" className="tab" style={{ textAlign: "left", color: "var(--down)" }} onClick={() => { setOpen(false); w.logout(); }}>Log out</button>
         </span>
@@ -200,6 +202,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       <Celebrate toast={toast} />
       {w.signedIn && <OrderWatcher />}
       {w.signedIn && <CopyAlerts />}
+      <RefLinker />
       {msg && <div className="toast" role="status">{msg}</div>}
     </AppCtx.Provider>
   );

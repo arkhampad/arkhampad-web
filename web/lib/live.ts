@@ -232,6 +232,7 @@ export function useLive<T>(load: () => Promise<T>, deps: unknown[], every = 30_0
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const tick = useRef(0);
+  const again = useRef<() => void>(() => {});
   useEffect(() => {
     let alive = true;
     const run = () => {
@@ -239,6 +240,7 @@ export function useLive<T>(load: () => Promise<T>, deps: unknown[], every = 30_0
       load().then((d) => { if (alive && n === tick.current) { setData(d); setError(null); } }).catch((e) => alive && setError(String(e?.message || e)));
     };
     run();
+    again.current = run;
     const iv = every ? setInterval(run, every) : null;
     return () => { alive = false; if (iv) clearInterval(iv); };
     // eslint-disable-next-line react-hooks/exhaustive-deps

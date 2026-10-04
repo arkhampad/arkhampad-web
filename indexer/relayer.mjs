@@ -466,6 +466,59 @@ export function makeRelayer() {
         await db.query(`insert into push_subs (endpoint, "user", keys) values ($1,$2,$3) on conflict (endpoint) do update set "user"=excluded."user", keys=excluded.keys`, [sub.endpoint, user, { p256dh: String(sub.keys.p256dh).slice(0, 200), auth: String(sub.keys.auth).slice(0, 100) }]);
         return { ok: true };
       }
+      case "ref.set": {
+        const referrer = addr(p.referrer, "referrer").toLowerCase();
+        if (referrer === user) throw err("You can't invite yourself.");
+        const first = (await db.query(`select min(ts) t from trades where trader=$1`, [user])).rows[0].t;
+        if (first && Date.now() - new Date(first).getTime() > 7 * 86400_000) throw err("Invites only work for new accounts.");
+        const r = await db.query(`insert into referrals ("user", referrer) values ($1,$2) on conflict do nothing`, [user, referrer]);
+        return { linked: r.rowCount === 1 };
+      }
+      case "ref.claim": {
+        const n = nets.get(Number(p.chainId));
+        if (!n) throw err("unsupported chain");
+        const row = (await db.query("select earned, paid from ref_earnings($1) where chain_id=$2", [user, n.c.chainId])).rows[0];
+        const due = row ? Number(row.earned) - Number(row.paid) : 0;
+        if (due < 1) throw err("You can claim from $1.00.");
+        const amount = BigInt(Math.floor(due * 1e6));
+        const usdc = getAddress(n.c.usdc);
+        const bal = await n.pub.readContract({ address: usdc, abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }], functionName: "balanceOf", args: [account.address] });
+        if (bal < amount) throw err("Payouts are being topped up. Please try again later.", 503);
+        // record first (so a double tap can't pay twice), then send
+        const ins = await db.query(`insert into ref_payouts (referrer, chain_id, amount) values ($1,$2,$3) returning id`, [user, n.c.chainId, Number(amount) / 1e6]);
+        try {
+          const data = encodeFunctionData({ abi: [{ type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] }], functionName: "transfer", args: [getAddress(user), amount] });
+          const hash = await send(n, usdc, data, 120_000n);
+          await n.pub.waitForTransactionReceipt({ hash, timeout: 60_000 });
+          await db.query("update ref_payouts set tx_hash=$2 where id=$1", [ins.rows[0].id, hash]);
+          log(`${n.c.name} referral payout ${user} $${(Number(amount) / 1e6).toFixed(2)} ${hash}`);
+          return { paid: Number(amount) / 1e6, hash };
+        } catch (e) {
+          await db.query("delete from ref_payouts where id=$1", [ins.rows[0].id]);
+          throw err("Payout failed. Please try again.", 502);
+        }
+      }
+      case "comment.add": {
+        const n = nets.get(Number(p.chainId));
+        if (!n) throw err("unsupported chain");
+        const coin = addr(p.coin, "coin").toLowerCase();
+        const body = String(p.body ?? "").replace(/[\u0000-\u0008\u000b-\u001f]/g, "").trim().slice(0, 280);
+        if (body.length < 2) throw err("Write a little more.");
+        if (/(https?:\/\/|www\.|t\.me\/|discord\.gg)/i.test(body)) throw err("Links aren't allowed in comments.");
+        const coinRow = (await db.query("select creator from coins where chain_id=$1 and address=$2", [n.c.chainId, coin])).rows[0];
+        if (!coinRow) throw err("Unknown coin.");
+        const last = (await db.query(`select max(created_at) t from comments where "user"=$1`, [user])).rows[0].t;
+        if (last && Date.now() - new Date(last).getTime() < 15_000) throw err("Slow down a little.", 429);
+        const bal = await n.pub.readContract({ address: getAddress(coin), abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }], functionName: "balanceOf", args: [getAddress(user)] });
+        const isCreator = coinRow.creator === user;
+        if (bal === 0n && !isCreator) throw err("Only holders can comment. Buy any amount to join the chat.", 403);
+        const pct = Number(bal) / 1e18 / 1e9 * 100;
+        const r = await db.query(`insert into comments (chain_id, coin, "user", body, holder_pct) values ($1,$2,$3,$4,$5) returning id`, [n.c.chainId, coin, user, body, pct]);
+        return { id: String(r.rows[0].id) };
+      }
+      case "comment.delete":
+        await db.query(`update comments set deleted=true where id=$1 and "user"=$2`, [String(p.id ?? "0").replace(/\D/g, "") || "0", user]);
+        return { ok: true };
       case "notes.read":
         await db.query(`update notifications set read=true where "user"=$1 and read=false`, [user]);
         return { ok: true };
