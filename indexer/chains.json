@@ -3,25 +3,29 @@
     "name": "base-sepolia",
     "chainId": 84532,
     "rpcEnv": "BASE_SEPOLIA_RPC",
-    "hub": "0x75656d8d2A59293DBdA4178F11Af6EE506ef60dD",
-    "promote": "0x84A9a3A2b2568d5B0dd1A06deAaB494121CF7aEC",
-    "poolBuilder": "0x43Ca3cEe078d8cb8528915B16e8bDcc9aDBe6090",
-    "startBlock": 47643729,
+    "hub": "0x5f549f51B12bb996444Fb0ec5A68CC0aE6c9997e",
+    "promote": "0xD8cAF98C955D8c1071807d4884BB04Ea2Ac55a49",
+    "poolBuilder": "0x3f49Ab48d9e04bd12D9D5613d2d879Eb754a5CA9",
+    "startBlock": 47669949,
     "blockRange": 10,
     "pollSeconds": 12,
     "note": "Alchemy free tier allows 10 blocks per getLogs; raise blockRange after upgrading to PAYG",
-    "rangeDelayMs": 150
+    "rangeDelayMs": 150,
+    "router": "0x66E3A8F62d225D8575d1577405c16B2E52A907d9",
+    "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
   },
   {
     "name": "robinhood-testnet",
     "chainId": 46630,
     "rpcEnv": "ROBINHOOD_TESTNET_RPC",
-    "hub": "0x1a5453a1D4c32a9B46aCCc48B3Fa2CB5C78e072b",
-    "promote": "0xC11622d1E479B9821a551E2040bC3Aff7cdf6736",
-    "poolBuilder": "0x75656d8d2A59293DBdA4178F11Af6EE506ef60dD",
-    "startBlock": 11837771,
+    "hub": "0x281535c6513a52Ccc4F1306c7c9f2fF93CaE4F02",
+    "promote": "0x5Ef170aAD0C9d5c7Ea102576119844c23fEfe705",
+    "poolBuilder": "0xB1EEcB952D4853EAFCD219c0060218EAc6F2150a",
+    "startBlock": 11841539,
     "blockRange": 5000,
     "pollSeconds": 5,
-    "rangeDelayMs": 0
+    "rangeDelayMs": 0,
+    "router": "0xD57c5A1d5dBa101CBa9B373480446755be63b592",
+    "usdc": "0xD3b65d20e991a732AF81C2f42C86d2C1619E56F8"
   }
 ]

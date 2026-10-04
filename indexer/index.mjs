@@ -19,6 +19,10 @@ const EV = {
   full: parseAbiItem("event CurveFull(uint256 usdcReserve)"),
   graduated: parseAbiItem("event Graduated(uint256 usdcToPool, uint256 coinsToPool, uint256 coinsBurned, uint256 graduationFee)"),
   promoted: parseAbiItem("event Promoted(address indexed coin, uint256 indexed chainId, address indexed payer, uint8 plan, uint256 seconds_, uint256 price)"),
+  // router events name the real user behind a gasless trade
+  bought: parseAbiItem("event Bought(address indexed user, address indexed curve, uint256 usdcSpent, uint256 coinsOut, uint256 fee, uint256 nonce)"),
+  sold: parseAbiItem("event Sold(address indexed user, address indexed curve, uint256 coinAmount, uint256 usdcOut, uint256 fee, uint256 nonce)"),
+  rpromoted: parseAbiItem("event Promoted(address indexed user, address indexed coin, uint8 plan, uint256 fee, uint256 nonce)"),
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -73,6 +77,10 @@ async function syncChain(c, client) {
       const address = watched.slice(i, i + 500);
       logs = logs.concat(await call("getLogs", () => client.getLogs({ address, events: ALL, fromBlock: from, toBlock: to })));
     }
+    const routerLogs = c.router ? await call("getLogs router", () => client.getLogs({ address: c.router, events: [EV.bought, EV.sold, EV.rpromoted], fromBlock: from, toBlock: to })) : [];
+    // tx hash + curve -> the user who signed a gasless trade
+    const viaRouter = new Map();
+    for (const e of routerLogs) if (e.eventName === "Bought" || e.eventName === "Sold") viaRouter.set(`${e.transactionHash}:${lc(e.args.curve)}`, lc(e.args.user));
     const isHub = (e) => lc(e.address) === lc(c.hub);
     const created = logs.filter((e) => e.eventName === "CoinCreated" && isHub(e));
     const fresh = created.map((e) => getAddress(e.args.curve)).filter((a) => !known.includes(a));
@@ -81,6 +89,8 @@ async function syncChain(c, client) {
     const fulls = logs.filter((e) => e.eventName === "CurveFull");
     const grads = logs.filter((e) => e.eventName === "Graduated");
     const promos = c.promote ? logs.filter((e) => e.eventName === "Promoted" && lc(e.address) === lc(c.promote)) : [];
+    const promoPayer = new Map();
+    for (const e of routerLogs) if (e.eventName === "Promoted") promoPayer.set(e.transactionHash, lc(e.args.user));
     const blocks = new Map();
     const ts = async (bn) => {
       if (!blocks.has(bn)) blocks.set(bn, new Date(Number((await call("getBlock", () => client.getBlock({ blockNumber: bn }))).timestamp) * 1000));
@@ -124,6 +134,7 @@ async function syncChain(c, client) {
           // Buyback-and-burn buys are sent from the burn address.
           let trader = lc(a.trader);
           if (trader === lc(c.hub)) trader = info.creator;
+          else if (c.router && trader === lc(c.router)) trader = viaRouter.get(`${e.transactionHash}:${lc(e.address)}`) ?? trader;
           const r = await db.query(
             `insert into trades (chain_id, tx_hash, log_index, coin, trader, is_buy, usdc, coins, fee, price_usd, mc_usd, block, ts)
              values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict do nothing`,
@@ -151,7 +162,7 @@ async function syncChain(c, client) {
         await db.query(
           `insert into promotions (chain_id, tx_hash, log_index, coin, coin_chain_id, payer, plan, seconds, price_usd, starts_at, ends_at)
            values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict do nothing`,
-          [c.chainId, e.transactionHash, e.logIndex, lc(a.coin), String(a.chainId), lc(a.payer), Number(a.plan), Number(a.seconds_), usd(a.price), at, new Date(at.getTime() + Number(a.seconds_) * 1000)],
+          [c.chainId, e.transactionHash, e.logIndex, lc(a.coin), String(a.chainId), promoPayer.get(e.transactionHash) ?? lc(a.payer), Number(a.plan), Number(a.seconds_), usd(a.price), at, new Date(at.getTime() + Number(a.seconds_) * 1000)],
         );
       }
       await db.query("update sync_state set last_block=$2, updated_at=now() where chain_id=$1", [c.chainId, String(to)]);
@@ -176,6 +187,7 @@ async function loop(c) {
   const client = createPublicClient({ transport: viemHttp(rpc, { retryCount: 3, timeout: 20_000 }) });
   c.hub = getAddress(c.hub);
   if (c.promote) c.promote = getAddress(c.promote);
+  if (c.router) c.router = getAddress(c.router);
   log(`${c.name}: indexing from block ${c.startBlock}`);
   for (;;) {
     try {
