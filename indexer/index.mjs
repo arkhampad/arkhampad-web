@@ -6,6 +6,7 @@ import fs from "node:fs";
 import http from "node:http";
 import pg from "pg";
 import { createPublicClient, http as viemHttp, parseAbiItem, getAddress } from "viem";
+import { startMarkets } from "./markets.mjs";
 
 const POLL_DEFAULT = process.env.POLL_SECONDS ? Number(process.env.POLL_SECONDS) * 1000 : null;
 const RANGE_DEFAULT = process.env.BLOCK_RANGE ? BigInt(process.env.BLOCK_RANGE) : null;
@@ -192,5 +193,6 @@ async function loop(c) {
 
 if (!process.env.DATABASE_URL) { console.error("DATABASE_URL is required"); process.exit(1); }
 if (process.env.PORT) http.createServer((_, res) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify(status)); }).listen(process.env.PORT);
+if (!process.env.ONCE) startMarkets(pool);
 await Promise.all(CHAINS.map(loop));
 if (process.env.ONCE) await pool.end();
