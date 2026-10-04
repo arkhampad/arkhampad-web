@@ -66,7 +66,8 @@ function LazyPrivy({ children }: { children: React.ReactNode }) {
     if (w.requestIdleCallback) w.requestIdleCallback(() => setLoad(true), { timeout: 1500 });
     else setTimeout(() => setLoad(true), 300);
   }, []);
-  const onState = useCallback((s: AuthState) => setAuth(s), []);
+  // only update when something the page shows actually changed
+  const onState = useCallback((s: AuthState) => setAuth((cur) => (cur.ready === s.ready && cur.address === s.address && cur.signer === s.signer ? cur : s)), []);
   const value = useMemo(() => ({
     ready: auth.ready,
     signedIn: !!auth.address,

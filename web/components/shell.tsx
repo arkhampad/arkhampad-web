@@ -108,7 +108,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void }) {
   const w = useWallet();
   const [open, setOpen] = useState(false);
-  if (!w.ready) return <span className="skel" style={{ width: 96, height: 44, borderRadius: 12 }} />;
+  // "Log in" shows at once; sign-in opens as soon as it has loaded
   if (!w.signedIn) return <button type="button" className="btn white" onClick={w.login}>Log in</button>;
   return (
     <span style={{ position: "relative", display: "flex", gap: 8 }}>
