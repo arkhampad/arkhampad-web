@@ -2,16 +2,17 @@
 pragma solidity 0.8.26;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
 /// @title TestUSDC
 /// @notice Testnet-only dollar for chains without a USDC faucet. Anyone can
 /// mint up to 100 per call. Never deployed on mainnet.
-contract TestUSDC is ERC20 {
+contract TestUSDC is ERC20, ERC20Permit {
     uint256 public constant MAX_MINT = 100e6;
 
     error TooMuch();
 
-    constructor() ERC20("Test USD Coin", "USDC") {}
+    constructor() ERC20("Test USD Coin", "USDC") ERC20Permit("Test USD Coin") {}
 
     function decimals() public pure override returns (uint8) {
         return 6;

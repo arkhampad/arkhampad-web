@@ -46,6 +46,7 @@ abstract contract ForkBase is PoolFlow {
     function test_graduateTradeCollect() public { if (on) _flow_graduateTradeCollect(); }
     function test_buybackBurn() public { if (on) _flow_buybackBurn(); }
     function test_guardBlocksEarlyPool() public { if (on) _flow_guardBlocksEarlyPool(); }
+    function test_gasless() public { if (on) _flow_gasless(); }
 }
 
 contract BaseSepoliaForkTest is ForkBase {

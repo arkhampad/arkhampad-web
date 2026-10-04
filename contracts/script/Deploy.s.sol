@@ -13,6 +13,7 @@ import {PadPoolBuilder} from "../src/PadPoolBuilder.sol";
 import {PadPromote} from "../src/PadPromote.sol";
 import {PadInitGuard} from "../src/PadInitGuard.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
+import {PadRouter} from "../src/PadRouter.sol";
 import {IPadHub} from "../src/interfaces.sol";
 
 /// @notice Deploys ArkhamPad on the current chain.
@@ -88,9 +89,11 @@ contract Deploy is Script {
         // The hub starts with the deployer as admin so it can wire things; admin moves below.
         PadHub hub = new PadHub(IERC20(v.usdc), builder, cp, deployer, treasury);
         builder.bindHub(IPadHub(address(hub)));
+        PadPromote promote = new PadPromote(IERC20(v.usdc), admin, treasury);
+        PadRouter router = new PadRouter(hub, promote);
+        hub.setRouter(address(router));
         if (guardian != address(0)) hub.setGuardian(guardian);
         if (admin != deployer) hub.proposeAdmin(admin);
-        PadPromote promote = new PadPromote(IERC20(v.usdc), admin, treasury);
         uint256 startBlock = block.number;
         vm.stopBroadcast();
 
@@ -102,6 +105,7 @@ contract Deploy is Script {
         vm.serializeAddress(o, "poolBuilder", address(builder));
         vm.serializeAddress(o, "guard", address(builder.guard()));
         vm.serializeAddress(o, "promote", address(promote));
+        vm.serializeAddress(o, "router", address(router));
         vm.serializeAddress(o, "poolManager", v.poolManager);
         vm.serializeAddress(o, "positionManager", v.positionManager);
         vm.serializeAddress(o, "treasury", treasury);
@@ -111,6 +115,7 @@ contract Deploy is Script {
         console2.log("hub        ", address(hub));
         console2.log("poolBuilder", address(builder));
         console2.log("promote    ", address(promote));
+        console2.log("router     ", address(router));
         console2.log("usdc       ", v.usdc);
         if (admin != deployer) console2.log("ADMIN must call hub.acceptAdmin():", admin);
     }

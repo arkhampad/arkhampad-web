@@ -1,0 +1,229 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {PadHub} from "./PadHub.sol";
+import {PadCurve} from "./PadCurve.sol";
+import {PadPromote} from "./PadPromote.sol";
+
+/// @title PadRouter
+/// @notice Gasless trading. A user signs what they want (buy, sell, launch,
+/// withdraw, promote); anyone (normally the ArkhamPad relayer) submits it and
+/// pays the network gas. The user pays that gas back in USDC: the `fee` they
+/// signed is sent to the submitter. Users never need ETH.
+///
+/// Safety:
+///  - Every request is signed by the user (EIP-712) and names the exact amounts,
+///    the fee, a deadline and a one-time nonce. Nothing else can be done with a user's funds.
+///  - Prices are protected on-chain by minimum-out amounts the user signed, so a
+///    delayed order (limit / take profit / stop loss) can never fill worse than signed.
+///  - The router holds no money between calls; leftovers are returned in the same call.
+contract PadRouter is EIP712, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    bytes32 public constant BUY_TYPEHASH =
+        keccak256("Buy(address user,address curve,uint256 usdcIn,uint256 minCoinsOut,uint256 fee,uint256 nonce,uint256 deadline)");
+    bytes32 public constant SELL_TYPEHASH =
+        keccak256("Sell(address user,address curve,uint256 coinAmount,uint256 minUsdcOut,uint256 fee,uint256 nonce,uint256 deadline)");
+    bytes32 public constant CREATE_TYPEHASH = keccak256(
+        "Create(address user,string name,string symbol,string metadataURI,uint256 lockSeconds,uint8 feeMode,uint256 launchUsdc,uint256 minCoinsOut,uint256 fee,uint256 nonce,uint256 deadline)"
+    );
+    bytes32 public constant WITHDRAW_TYPEHASH =
+        keccak256("Withdraw(address user,address to,uint256 amount,uint256 fee,uint256 nonce,uint256 deadline)");
+    bytes32 public constant PROMOTE_TYPEHASH = keccak256(
+        "Promote(address user,address coin,uint256 coinChainId,uint8 plan,uint256 maxPrice,uint256 fee,uint256 nonce,uint256 deadline)"
+    );
+    bytes32 public constant CANCEL_TYPEHASH = keccak256("Cancel(address user,uint256 nonce)");
+
+    PadHub public immutable hub;
+    IERC20 public immutable usdc;
+    PadPromote public immutable promoter;
+
+    /// @notice user => nonce => used (any order of use, so many open orders can coexist)
+    mapping(address => mapping(uint256 => bool)) public nonceUsed;
+
+    event Bought(address indexed user, address indexed curve, uint256 usdcSpent, uint256 coinsOut, uint256 fee, uint256 nonce);
+    event Sold(address indexed user, address indexed curve, uint256 coinAmount, uint256 usdcOut, uint256 fee, uint256 nonce);
+    event Launched(address indexed user, address indexed coin, address indexed curve, uint256 launchUsdc, uint256 fee, uint256 nonce);
+    event Withdrawn(address indexed user, address indexed to, uint256 amount, uint256 fee, uint256 nonce);
+    event Promoted(address indexed user, address indexed coin, uint8 plan, uint256 fee, uint256 nonce);
+    event NonceCancelled(address indexed user, uint256 nonce);
+
+    error Expired();
+    error NonceAlreadyUsed();
+    error BadSignature();
+    error NotACurve();
+    error FeeTooHigh();
+    error Slippage(uint256 got, uint256 minimum);
+    error ZeroAddress();
+
+    struct Sig {
+        uint256 deadline;
+        uint256 nonce;
+        bytes signature;
+    }
+
+    constructor(PadHub hub_, PadPromote promoter_) EIP712("ArkhamPad", "1") {
+        if (address(hub_) == address(0)) revert ZeroAddress();
+        hub = hub_;
+        usdc = hub_.usdc();
+        promoter = promoter_;
+    }
+
+    // ---------------------------------------------------------------- approvals by signature
+
+    /// @notice Submits an EIP-2612 permit (USDC or a coin) for the router.
+    /// Never reverts on failure: a permit can be front-run, and the allowance
+    /// it sets may already be in place.
+    function permit(address token, address owner, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external {
+        try IERC20Permit(token).permit(owner, address(this), value, deadline, v, r, s) {} catch {}
+    }
+
+    // ---------------------------------------------------------------- trading
+
+    function buy(address user, address curve, uint256 usdcIn, uint256 minCoinsOut, uint256 fee, Sig calldata sig)
+        external
+        nonReentrant
+        returns (uint256 coinsOut)
+    {
+        _use(user, sig, keccak256(abi.encode(BUY_TYPEHASH, user, curve, usdcIn, minCoinsOut, fee, sig.nonce, sig.deadline)));
+        if (!hub.isCurve(curve)) revert NotACurve();
+
+        usdc.safeTransferFrom(user, address(this), usdcIn + fee);
+        if (fee > 0) usdc.safeTransfer(msg.sender, fee);
+
+        uint256 before = usdc.balanceOf(address(this));
+        usdc.forceApprove(curve, usdcIn);
+        coinsOut = PadCurve(curve).buy(usdcIn, minCoinsOut, user);
+        usdc.forceApprove(curve, 0);
+        uint256 spent = before - usdc.balanceOf(address(this));
+        // A buy that fills the curve uses less than usdcIn: return the rest.
+        if (spent < usdcIn) usdc.safeTransfer(user, usdcIn - spent);
+
+        emit Bought(user, curve, spent, coinsOut, fee, sig.nonce);
+    }
+
+    function sell(address user, address curve, uint256 coinAmount, uint256 minUsdcOut, uint256 fee, Sig calldata sig)
+        external
+        nonReentrant
+        returns (uint256 usdcToUser)
+    {
+        _use(user, sig, keccak256(abi.encode(SELL_TYPEHASH, user, curve, coinAmount, minUsdcOut, fee, sig.nonce, sig.deadline)));
+        if (!hub.isCurve(curve)) revert NotACurve();
+        IERC20 coin = IERC20(address(PadCurve(curve).coin()));
+
+        coin.safeTransferFrom(user, address(this), coinAmount);
+        coin.forceApprove(curve, coinAmount);
+        uint256 out = PadCurve(curve).sell(coinAmount, 0, address(this));
+        coin.forceApprove(curve, 0);
+
+        if (out < fee) revert FeeTooHigh();
+        usdcToUser = out - fee;
+        if (usdcToUser < minUsdcOut) revert Slippage(usdcToUser, minUsdcOut);
+        if (fee > 0) usdc.safeTransfer(msg.sender, fee);
+        usdc.safeTransfer(user, usdcToUser);
+
+        emit Sold(user, curve, coinAmount, usdcToUser, fee, sig.nonce);
+    }
+
+    struct Launch {
+        string name;
+        string symbol;
+        string metadataURI;
+        uint256 lockSeconds;
+        PadCurve.FeeMode feeMode;
+        uint256 launchUsdc;
+        uint256 minCoinsOut;
+    }
+
+    function launch(address user, Launch calldata l, uint256 fee, Sig calldata sig)
+        external
+        nonReentrant
+        returns (address coin, address curve)
+    {
+        bytes32 h = keccak256(
+            abi.encode(
+                CREATE_TYPEHASH,
+                user,
+                keccak256(bytes(l.name)),
+                keccak256(bytes(l.symbol)),
+                keccak256(bytes(l.metadataURI)),
+                l.lockSeconds,
+                uint8(l.feeMode),
+                l.launchUsdc,
+                l.minCoinsOut,
+                fee,
+                sig.nonce,
+                sig.deadline
+            )
+        );
+        _use(user, sig, h);
+
+        if (l.launchUsdc + fee > 0) usdc.safeTransferFrom(user, address(this), l.launchUsdc + fee);
+        if (fee > 0) usdc.safeTransfer(msg.sender, fee);
+
+        uint256 before = usdc.balanceOf(address(this));
+        if (l.launchUsdc > 0) usdc.forceApprove(address(hub), l.launchUsdc);
+        (coin, curve) = hub.createCoinFor(user, l.name, l.symbol, l.metadataURI, l.lockSeconds, l.feeMode, l.launchUsdc, l.minCoinsOut);
+        if (l.launchUsdc > 0) usdc.forceApprove(address(hub), 0);
+        uint256 spent = before - usdc.balanceOf(address(this));
+        if (spent < l.launchUsdc) usdc.safeTransfer(user, l.launchUsdc - spent);
+
+        emit Launched(user, coin, curve, spent, fee, sig.nonce);
+    }
+
+    // ---------------------------------------------------------------- money out, promote, cancel
+
+    function withdraw(address user, address to, uint256 amount, uint256 fee, Sig calldata sig) external nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        _use(user, sig, keccak256(abi.encode(WITHDRAW_TYPEHASH, user, to, amount, fee, sig.nonce, sig.deadline)));
+        usdc.safeTransferFrom(user, to, amount);
+        if (fee > 0) usdc.safeTransferFrom(user, msg.sender, fee);
+        emit Withdrawn(user, to, amount, fee, sig.nonce);
+    }
+
+    function promote(address user, address coin, uint256 coinChainId, uint8 plan, uint256 maxPrice, uint256 fee, Sig calldata sig)
+        external
+        nonReentrant
+    {
+        _use(user, sig, keccak256(abi.encode(PROMOTE_TYPEHASH, user, coin, coinChainId, plan, maxPrice, fee, sig.nonce, sig.deadline)));
+        (, uint128 price,) = promoter.plans(plan);
+        if (price > maxPrice) revert Slippage(maxPrice, price);
+        usdc.safeTransferFrom(user, address(this), uint256(price) + fee);
+        if (fee > 0) usdc.safeTransfer(msg.sender, fee);
+        usdc.forceApprove(address(promoter), price);
+        promoter.promote(coin, coinChainId, plan);
+        usdc.forceApprove(address(promoter), 0);
+        emit Promoted(user, coin, plan, fee, sig.nonce);
+    }
+
+    /// @notice Cancels an open (signed but unsent) order. The user can call it
+    /// directly, or sign a Cancel and let anyone submit it.
+    function cancel(address user, uint256 nonce, bytes calldata signature) external {
+        if (msg.sender != user) {
+            bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CANCEL_TYPEHASH, user, nonce)));
+            if (!SignatureChecker.isValidSignatureNow(user, digest, signature)) revert BadSignature();
+        }
+        if (nonceUsed[user][nonce]) revert NonceAlreadyUsed();
+        nonceUsed[user][nonce] = true;
+        emit NonceCancelled(user, nonce);
+    }
+
+    // ---------------------------------------------------------------- views / internal
+
+    function domainSeparator() external view returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+
+    function _use(address user, Sig calldata sig, bytes32 structHash) private {
+        if (block.timestamp > sig.deadline) revert Expired();
+        if (nonceUsed[user][sig.nonce]) revert NonceAlreadyUsed();
+        if (!SignatureChecker.isValidSignatureNow(user, _hashTypedDataV4(structHash), sig.signature)) revert BadSignature();
+        nonceUsed[user][sig.nonce] = true;
+    }
+}

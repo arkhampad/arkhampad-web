@@ -20,6 +20,8 @@ import {PadCoin} from "../src/PadCoin.sol";
 import {PadPoolBuilder} from "../src/PadPoolBuilder.sol";
 import {PadInitGuard} from "../src/PadInitGuard.sol";
 import {IPadHub} from "../src/interfaces.sol";
+import {PadRouter} from "../src/PadRouter.sol";
+import {PadPromote} from "../src/PadPromote.sol";
 
 /// @notice Minimal swapper used by tests to trade in a v4 pool.
 contract TestSwapper is IUnlockCallback {
@@ -57,6 +59,7 @@ abstract contract PoolFlow is Test {
     PadPoolBuilder builder;
     PadHub hub;
     TestSwapper swapper;
+    PadRouter router;
 
     address admin = address(0xA11CE);
     address treasury = address(0x7EA5);
@@ -86,6 +89,9 @@ abstract contract PoolFlow is Test {
         assertEq(address(builder), predicted, "builder address prediction");
         hub = new PadHub(usdc, builder, PadHub.CurveParams({vUsdc: 4500e6, vCoin: 1e27, coinsForSale: FOR_SALE, coinsReserved: RESERVED}), admin, treasury);
         builder.bindHub(IPadHub(address(hub)));
+        router = new PadRouter(hub, new PadPromote(usdc, admin, treasury));
+        vm.prank(admin);
+        hub.setRouter(address(router));
         swapper = new TestSwapper(pm);
         _fund(alice, 100_000e6);
         _fund(bob, 100_000e6);
@@ -172,6 +178,55 @@ abstract contract PoolFlow is Test {
         pm.initialize(key, TickMath.getSqrtPriceAtTick(0));
     }
 
+    /// Gasless: a user with only USDC (no ETH) permits, launches, buys and sells through the router.
+    function _flow_gasless() internal {
+        uint256 pk = 0xC0FFEE;
+        address u = vm.addr(pk);
+        address relayer = address(0x5E1A);
+        _fund(u, 500e6);
+        assertEq(u.balance, 0, "user has no ETH");
+        _permitTo(address(usdc), pk, u);
+        PadRouter.Launch memory l = PadRouter.Launch({name: "Gasless", symbol: "GSL", metadataURI: "", lockSeconds: 0, feeMode: PadCurve.FeeMode.ToCreator, launchUsdc: 10e6, minCoinsOut: 0});
+        uint256 dl = vm.getBlockTimestamp() + 60;
+        bytes32 sh = keccak256(abi.encode(router.CREATE_TYPEHASH(), u, keccak256(bytes(l.name)), keccak256(bytes(l.symbol)), keccak256(bytes(l.metadataURI)), l.lockSeconds, uint8(l.feeMode), l.launchUsdc, l.minCoinsOut, uint256(0.01e6), uint256(1), dl));
+        PadRouter.Sig memory s1 = PadRouter.Sig(dl, 1, _signR(pk, sh));
+        vm.prank(relayer);
+        (address coin, address curve) = router.launch(u, l, 0.01e6, s1);
+        assertEq(PadCurve(curve).creator(), u);
+        uint256 held = IERC20(coin).balanceOf(u);
+        assertGt(held, 0);
+        bytes32 bh = keccak256(abi.encode(router.BUY_TYPEHASH(), u, curve, uint256(25e6), uint256(1), uint256(0.01e6), uint256(2), dl));
+        PadRouter.Sig memory s2 = PadRouter.Sig(dl, 2, _signR(pk, bh));
+        vm.prank(relayer);
+        uint256 got = router.buy(u, curve, 25e6, 1, 0.01e6, s2);
+        _permitTo(coin, pk, u);
+        uint256 total = held + got;
+        bytes32 sl = keccak256(abi.encode(router.SELL_TYPEHASH(), u, curve, total, uint256(1), uint256(0.01e6), uint256(3), dl));
+        uint256 before = usdc.balanceOf(u);
+        PadRouter.Sig memory s3 = PadRouter.Sig(dl, 3, _signR(pk, sl));
+        vm.prank(relayer);
+        router.sell(u, curve, total, 1, 0.01e6, s3);
+        assertGt(usdc.balanceOf(u), before, "got USDC back");
+        assertEq(IERC20(coin).balanceOf(u), 0);
+        assertEq(usdc.balanceOf(relayer), 0.03e6, "relayer repaid in USDC");
+        assertEq(usdc.balanceOf(address(router)), 0);
+        assertEq(u.balance, 0, "user still never needed ETH");
+    }
+
+    function _signR(uint256 pk, bytes32 structHash) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, keccak256(abi.encodePacked("\x19\x01", router.domainSeparator(), structHash)));
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _permitTo(address token, uint256 pk, address owner) internal {
+        bytes32 PERMIT = keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+        uint256 dl = vm.getBlockTimestamp() + 1 hours;
+        bytes32 sh = keccak256(abi.encode(PERMIT, owner, address(router), type(uint256).max, IPermitView(token).nonces(owner), dl));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, keccak256(abi.encodePacked("\x19\x01", IPermitView(token).DOMAIN_SEPARATOR(), sh)));
+        router.permit(token, owner, type(uint256).max, dl, v, r, s);
+        assertEq(IERC20(token).allowance(owner, address(router)), type(uint256).max, "permit worked");
+    }
+
     function _quoteOut(PoolKey memory key, bool zeroForOne, uint256 amountIn) internal returns (uint256 out) {
         uint256 snap = vm.snapshotState();
         vm.startPrank(bob);
@@ -180,6 +235,11 @@ abstract contract PoolFlow is Test {
         vm.stopPrank();
         vm.revertToState(snap);
     }
+}
+
+interface IPermitView {
+    function nonces(address) external view returns (uint256);
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
 }
 
 interface IERC721Like {

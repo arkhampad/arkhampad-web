@@ -33,6 +33,7 @@ abstract contract PoolLocalBase is PoolFlow, DeployPermit2 {
     function test_graduateTradeCollect() public { _flow_graduateTradeCollect(); }
     function test_buybackBurn() public { _flow_buybackBurn(); }
     function test_guardBlocksEarlyPool() public { _flow_guardBlocksEarlyPool(); }
+    function test_gasless() public { _flow_gasless(); }
 }
 
 /// USDC sorts first (currency0) in every pool.

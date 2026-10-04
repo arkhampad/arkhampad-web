@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
 /// @title PadCoin
 /// @notice A coin created on ArkhamPad. The whole supply is minted once, to
@@ -10,7 +11,8 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 /// Optional creator lock: until `unlockTime`, the creator's own wallet cannot
 /// move or sell this coin. It can still receive (buy) more. The lock length is
 /// chosen at launch, can never be changed and is at most one day.
-contract PadCoin is ERC20 {
+/// Supports EIP-2612 permit, so holders can approve by signature (no gas).
+contract PadCoin is ERC20, ERC20Permit {
     uint256 public constant MAX_LOCK = 1 days;
 
     address public immutable creator;
@@ -29,7 +31,7 @@ contract PadCoin is ERC20 {
         address mintTo,
         address creator_,
         uint256 lockSeconds
-    ) ERC20(name_, symbol_) {
+    ) ERC20(name_, symbol_) ERC20Permit(name_) {
         if (lockSeconds > MAX_LOCK) revert LockTooLong();
         creator = creator_;
         unlockTime = lockSeconds == 0 ? 0 : block.timestamp + lockSeconds;

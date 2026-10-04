@@ -37,6 +37,7 @@ contract PadHub is ReentrancyGuard {
     address public pendingAdmin;
     address public guardian;
     address public treasury;
+    address public router;
     bool public buysPaused;
 
     mapping(address => address) public curveOf; // coin => curve
@@ -58,6 +59,7 @@ contract PadHub is ReentrancyGuard {
     event AdminProposed(address admin);
     event AdminChanged(address admin);
     event BuysPaused(bool paused);
+    event RouterChanged(address router);
 
     error NotAdmin();
     error NotAllowed();
@@ -91,6 +93,36 @@ contract PadHub is ReentrancyGuard {
         uint256 launchUsdc,
         uint256 minCoinsOut
     ) external nonReentrant returns (address coin, address curve) {
+        return _create(msg.sender, name, symbol, metadataURI, lockSeconds, feeMode, launchUsdc, minCoinsOut);
+    }
+
+    /// @notice Same as createCoin, for a creator who signed the request to the
+    /// router (gasless launches). Only the router set by the admin may call it.
+    /// The launch buy is paid by the router and the coins go to `creator`.
+    function createCoinFor(
+        address creator,
+        string calldata name,
+        string calldata symbol,
+        string calldata metadataURI,
+        uint256 lockSeconds,
+        PadCurve.FeeMode feeMode,
+        uint256 launchUsdc,
+        uint256 minCoinsOut
+    ) external nonReentrant returns (address coin, address curve) {
+        if (msg.sender != router || creator == address(0)) revert NotAllowed();
+        return _create(creator, name, symbol, metadataURI, lockSeconds, feeMode, launchUsdc, minCoinsOut);
+    }
+
+    function _create(
+        address creator,
+        string calldata name,
+        string calldata symbol,
+        string calldata metadataURI,
+        uint256 lockSeconds,
+        PadCurve.FeeMode feeMode,
+        uint256 launchUsdc,
+        uint256 minCoinsOut
+    ) private returns (address coin, address curve) {
         uint256 nl = bytes(name).length;
         uint256 sl = bytes(symbol).length;
         if (nl == 0 || nl > 32 || sl == 0 || sl > 10) revert BadName();
@@ -100,7 +132,7 @@ contract PadHub is ReentrancyGuard {
                 name: name,
                 symbol: symbol,
                 metadataURI: metadataURI,
-                creator: msg.sender,
+                creator: creator,
                 lockSeconds: lockSeconds,
                 feeMode: feeMode,
                 usdc: usdc,
@@ -116,15 +148,15 @@ contract PadHub is ReentrancyGuard {
         curveOf[coin] = curve;
         isCurve[curve] = true;
         allCoins.push(coin);
-        emit CoinCreated(coin, curve, msg.sender, name, symbol, metadataURI, lockSeconds, feeMode);
+        emit CoinCreated(coin, curve, creator, name, symbol, metadataURI, lockSeconds, feeMode);
 
         if (launchUsdc > 0) {
             if (buysPaused) revert NotAllowed();
             usdc.safeTransferFrom(msg.sender, address(this), launchUsdc);
             usdc.forceApprove(curve, launchUsdc);
-            c.launchBuy(launchUsdc, minCoinsOut, msg.sender);
+            c.launchBuy(launchUsdc, minCoinsOut, creator);
             usdc.forceApprove(curve, 0);
-            // A launch buy that fills the curve spends less than launchUsdc.
+            // A launch buy that fills the curve spends less than launchUsdc: refund the payer.
             uint256 left = usdc.balanceOf(address(this));
             if (left > 0) usdc.safeTransfer(msg.sender, left);
         }
@@ -156,6 +188,12 @@ contract PadHub is ReentrancyGuard {
         if (t == address(0)) revert ZeroAddress();
         treasury = t;
         emit TreasuryChanged(t);
+    }
+
+    /// @notice The gasless router allowed to call createCoinFor (zero turns it off).
+    function setRouter(address r) external onlyAdmin {
+        router = r;
+        emit RouterChanged(r);
     }
 
     function setGuardian(address g) external onlyAdmin {
