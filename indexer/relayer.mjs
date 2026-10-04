@@ -402,10 +402,32 @@ export function makeRelayer() {
     try { await orderTick(); } catch (e) { log(`orders error: ${e.message}`); } finally { ticking = false; }
   }, Number(process.env.ORDER_TICK_MS ?? 4000));
 
+  // ---------------------------------------------------------------- follows (signed by the follower)
+  const FOLLOW_TYPES = { Follow: [{ name: "trader", type: "address" }, { name: "on", type: "bool" }, { name: "time", type: "uint256" }] };
+  async function setFollow(body) {
+    if (!db) throw err("Not available right now.", 503);
+    const follower = addr(body?.follower, "follower").toLowerCase();
+    const trader = addr(body?.trader, "trader").toLowerCase();
+    if (follower === trader) throw err("You can't follow yourself.");
+    const time = big(body.time, "time");
+    if (Math.abs(Number(time) - Date.now() / 1000) > 600) throw err("Request expired, please try again.");
+    const on = body.on === true;
+    const signer = await recoverTypedDataAddress({ domain: { name: "ArkhamPad", version: "1" }, types: FOLLOW_TYPES, primaryType: "Follow", message: { trader: getAddress(trader), on, time }, signature: hex(body.signature, "signature") }).catch(() => null);
+    if (!signer || signer.toLowerCase() !== follower) throw err("Signature check failed.", 403);
+    if (on) {
+      const n = (await db.query("select count(*)::int n from follows where follower=$1", [follower])).rows[0].n;
+      if (n >= 500) throw err("You can follow up to 500 traders.");
+      await db.query("insert into follows (follower, trader) values ($1,$2) on conflict do nothing", [follower, trader]);
+    } else {
+      await db.query("delete from follows where follower=$1 and trader=$2", [follower, trader]);
+    }
+    return { following: on };
+  }
+
   function config() {
     return { relayer: account.address, minFee: String(MIN_FEE), chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, faucet: !!n.faucet })) };
   }
-  return { handle, config, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setDb: (pool) => { db = pool; } };
+  return { handle, config, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setFollow, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -447,14 +469,14 @@ export function httpHandler(relayer, status) {
       try { return res.end(JSON.stringify(await relayer.listOrders(q.get("user")))); }
       catch (e) { res.statusCode = 400; return res.end(JSON.stringify({ error: e.message })); }
     }
-    if ((url === "/orders" || url === "/orders/cancel") && req.method === "POST") {
+    if ((url === "/orders" || url === "/orders/cancel" || url === "/follow") && req.method === "POST") {
       const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
       if (limited(ip)) { res.statusCode = 429; return res.end(JSON.stringify({ error: "Too many requests, slow down." })); }
       let raw = "";
       for await (const ch of req) { raw += ch; if (raw.length > 20_000) { res.statusCode = 413; return res.end(JSON.stringify({ error: "too large" })); } }
       let body;
       try { body = JSON.parse(raw); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad request" })); }
-      try { return res.end(JSON.stringify(url === "/orders" ? await relayer.createOrder(body) : await relayer.cancelOrder(body))); }
+      try { return res.end(JSON.stringify(url === "/orders" ? await relayer.createOrder(body) : url === "/follow" ? await relayer.setFollow(body) : await relayer.cancelOrder(body))); }
       catch (e) { res.statusCode = e.status || 500; if (!e.status) log("order error", e.message); return res.end(JSON.stringify({ error: e.status ? e.message : "Something went wrong. Please try again." })); }
     }
     if (url === "/image" && req.method === "POST") {

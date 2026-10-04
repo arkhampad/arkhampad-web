@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { traders } from "@/lib/mock";
 import { listCoins, listPromoted, recentTrades, totalCoins, useLive, useTradeFeed, ago, type LiveCoin, type LiveTrade, type Tab } from "@/lib/live";
 import { Avatar as Av } from "@/components/bits";
 import { Avatar } from "@/components/bits";
 import { CoinRows, CoinTable, HotCard } from "@/components/market";
 import { IFire, ISpark } from "@/components/icons";
 import { ScrollTabs } from "@/components/scrolltabs";
+import { board, traderColors } from "@/lib/traders";
 import { useRouter } from "next/navigation";
 
 const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
@@ -53,6 +53,7 @@ export default function Discover() {
   const almost = useLive(async () => (await listCoins("Bonding", { limit: 30 })).filter((c) => c.progress >= 50).sort((a, b) => b.progress - a.progress).slice(0, 3), [], 60_000);
   const total = useLive(totalCoins, [], 120_000);
   const promoted = useLive(listPromoted, [], 60_000);
+  const tops = useLive(() => board(7, 10), [], 120_000);
   const [feat, setFeat] = useState<"hot" | "grad">("hot");
   const hasGrad = (almost.data?.length ?? 0) > 0;
   // Hot right now and Almost graduating take turns every 2 minutes.
@@ -147,13 +148,14 @@ export default function Discover() {
             ))}
           </div>
           <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700 }}>Top traders <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· preview</span></span><Link href="/traders/" className="volt" style={{ fontSize: 13 }}>See all</Link></div>
-            {traders.slice(0, 4).map((t) => (
-              <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="mono dim" style={{ fontSize: 12, width: 14 }}>{t.rank}</span><Avatar name={t.name} c1={t.c1} c2={t.c2} size={32} round />
-                <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{t.name}</span>
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}><span className="mono up" style={{ fontWeight: 700, fontSize: 13 }}>{t.pnl}</span><span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>win {t.win}</span></span>
-              </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700 }}>Top traders <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· 7d</span></span><Link href="/traders/" className="volt" style={{ fontSize: 13 }}>See all</Link></div>
+            {(tops.data ?? []).length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades this week yet.</span> : (tops.data ?? []).slice(0, 4).map((t, i) => (
+              <Link key={t.trader} href={`/trader/?a=${t.trader}`} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span className="mono dim" style={{ fontSize: 12, width: 14 }}>{i + 1}</span>
+                <span className="av" style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${traderColors(t.trader)[0]}, ${traderColors(t.trader)[1]})`, fontSize: 11 }}>{t.trader.slice(2, 4).toUpperCase()}</span>
+                <span className="mono" style={{ flex: 1, fontWeight: 600, fontSize: 13 }}>{t.trader.slice(0, 6)}…{t.trader.slice(-4)}</span>
+                <span className={`mono ${t.pnl >= 0 ? "up" : "down"}`} style={{ fontWeight: 700, fontSize: 13 }}>{t.pnl >= 0 ? "+" : "-"}${Math.abs(t.pnl).toFixed(2)}</span>
+              </Link>
             ))}
             <Link href="/traders/" className="btn ghost sm" style={{ height: 40 }}>Follow and copy with one tap</Link>
           </div>

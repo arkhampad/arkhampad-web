@@ -9,6 +9,7 @@ import { SoonModal, FundsModal, WelcomeModal } from "./modals";
 import { WalletProvider, useWallet } from "./wallet";
 import { Celebrate } from "./celebrate";
 import { OrderWatcher } from "./orders";
+import { CopyAlerts } from "./social";
 import { useRouter } from "next/navigation";
 import { findByAddress } from "@/lib/live";
 
@@ -185,6 +186,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       {funds && <FundsModal tab={funds} setTab={setFunds} onClose={() => setFunds(null)} />}
       <Celebrate toast={toast} />
       {w.signedIn && <OrderWatcher />}
+      {w.signedIn && <CopyAlerts />}
       {msg && <div className="toast" role="status">{msg}</div>}
     </AppCtx.Provider>
   );

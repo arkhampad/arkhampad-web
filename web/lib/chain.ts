@@ -490,3 +490,13 @@ export async function cancelOrder(o: Order, s: Signer) {
   const j = r ? await r.json().catch(() => ({})) : {};
   if (!r || !r.ok) throw new TradeError(j.error || "Couldn't cancel the order.");
 }
+
+// ---------------------------------------------------------------- follows
+
+export async function setFollow(trader: Address, on: boolean, s: Signer) {
+  const time = BigInt(Math.floor(Date.now() / 1000));
+  const signature = await s.signTypedData(NETS[0].id, { domain: { name: "ArkhamPad", version: "1" }, types: { Follow: [{ name: "trader", type: "address" }, { name: "on", type: "bool" }, { name: "time", type: "uint256" }] }, primaryType: "Follow", message: { trader, on, time } });
+  const r = await fetch(`${RELAYER}/follow`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ follower: s.address, trader, on, time: time.toString(), signature }) }).catch(() => null);
+  const j = r ? await r.json().catch(() => ({})) : {};
+  if (!r || !r.ok) throw new TradeError(j.error || "Couldn't update. Please try again.");
+}
