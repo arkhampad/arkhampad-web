@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Avatar, Spark } from "@/components/bits";
@@ -8,7 +8,7 @@ import { Intervals } from "@/components/trade";
 import { TradePanel } from "@/components/tradepanel";
 import { IDown, ISearch } from "@/components/icons";
 import { ScrollTabs } from "@/components/scrolltabs";
-import { getCoin, listCoins, useCoinMarket, useLive, ago, short, shareCoin, type LiveCoin, type Tab } from "@/lib/live";
+import { getCoin, listCoins, useCoinMarket, useLive, ago, short, shareCoin, prepareCard, type LiveCoin, type Tab } from "@/lib/live";
 
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
@@ -41,6 +41,15 @@ function TerminalView() {
   const [picker, setPicker] = useState(false);
   const [c, setC] = useState<LiveCoin | null>(null);
   const [iv, setIv] = useState("15m");
+  // young coins have few trades: start on 1-minute candles so the chart isn't empty
+  const youngId = useRef("");
+  useEffect(() => { if (c) prepareCard(c); }, [c?.id, c?.mc]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!c || youngId.current === c.id) return;
+    youngId.current = c.id;
+    const age = c.createdAt ? Date.now() - Date.parse(c.createdAt) : Infinity;
+    setIv(c.own && age < 6 * 3600_000 ? "1m" : "15m");
+  }, [c]);
   const id = q.get("c");
 
   useEffect(() => { const t = setTimeout(() => setQ(search), 300); return () => clearTimeout(t); }, [search]);

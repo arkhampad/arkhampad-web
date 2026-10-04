@@ -66,10 +66,16 @@ export default function Profile() {
       <div className="card" style={{ gap: 14, borderRadius: 22 }}>
         <span className="dim" style={{ fontSize: 13 }}>Total balance (testnet)</span>
         <span className="mono" style={{ fontSize: 38, fontWeight: 900, letterSpacing: -1 }}>${(w.totalUsdc + coinsValue).toFixed(2)}</span>
-        <div className="grid3" style={{ gap: 10 }}>
-          {NETS.map((n) => <div key={n.id} className="card" style={{ padding: 12, gap: 2, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>USDC on {n.short}</span><b className="mono">${(Number(w.usdc[n.id] ?? 0n) / 1e6).toFixed(2)}</b></div>)}
+        <div className="grid2 keep" style={{ gap: 10 }}>
+          <div className="card" style={{ padding: 12, gap: 2, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>Cash (USDC)</span><b className="mono">${w.totalUsdc.toFixed(2)}</b></div>
           <div className="card" style={{ padding: 12, gap: 2, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>Coins</span><b className="mono">${coinsValue.toFixed(2)}</b></div>
         </div>
+        <details style={{ fontSize: 12 }}>
+          <summary className="dim" style={{ cursor: "pointer" }}>Details by network</summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+            {NETS.map((n) => <span key={n.id} className="mono dim" style={{ display: "flex", justifyContent: "space-between" }}><span>{n.name}</span><span>${(Number(w.usdc[n.id] ?? 0n) / 1e6).toFixed(2)}</span></span>)}
+          </div>
+        </details>
         <div style={{ display: "flex", gap: 10 }}>
           <button type="button" className="btn buy" style={{ flex: 1 }} onClick={() => openFunds("deposit")}>Deposit</button>
           <button type="button" className="btn" style={{ flex: 1 }} onClick={() => openFunds("withdraw")}>Withdraw</button>

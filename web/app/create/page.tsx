@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FrogArt } from "@/components/bits";
 import { ICopy, IFire, IGlobe, IRocket, ISpark, IX } from "@/components/icons";
 import { useApp } from "@/components/shell";
+import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCoin } from "@/lib/share";
 import { useWallet } from "@/components/wallet";
 import { FEE, TradeError, fromUsdc, launch, promote, toUsdc } from "@/lib/chain";
 
@@ -45,7 +46,16 @@ function CreateView() {
   const choose = (i: number) => { setPick(i); setName(OPTS[i].name); setTick(OPTS[i].tick); setDesc(OPTS[i].desc); };
   const ca = done?.coin ?? "";
   const coinUrl = done ? `https://arkhampad.com/coin/?c=${done.chainId}-${done.coin}` : "";
-  const post = `Just launched $${tick} on @Arkhampad\n${desc}\n\nCA: ${ca}\n${coinUrl}`;
+  const shareObj: ShareCoin = { name, tick, chain, mc: "$450", chg: 0, address: ca, id: done ? `${done.chainId}-${done.coin.toLowerCase()}` : "", c1: o.c1, c2: o.c2, own: true };
+  const post = coinText(shareObj, { launched: true }).replace(/\nMarket cap.*\n/, "\n") + (desc ? `\n\n${desc.trim().slice(0, 140)}` : "");
+  const [cardUrl, setCardUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!done) return;
+    let url = "";
+    prepareCard(shareObj).then((b) => { if (b) { url = URL.createObjectURL(b); setCardUrl(url); } });
+    return () => { if (url) URL.revokeObjectURL(url); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done]);
 
   const launchNow = async () => {
     if (!w.signedIn || !w.signer) { w.login(); return; }
@@ -88,15 +98,19 @@ function CreateView() {
           <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}><span style={{ fontSize: 11, color: "var(--faint)" }}>Contract address (CA)</span><span className="mono" style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ca}</span></span>
           <button type="button" className="btn volt" onClick={() => copy(ca, "Contract address copied")}><ICopy size={15} color="#0A0B10" />Copy CA</button>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700, fontSize: 14, display: "flex", gap: 6, alignItems: "center" }}><ISpark size={14} color="var(--volt-ink)" />AI wrote your post</span><button type="button" className="btn ghost sm">Rewrite</button></div>
+        <span style={{ fontWeight: 700, fontSize: 14 }}>Your post</span>
         <div style={{ padding: "14px 16px", borderRadius: 16, background: "var(--bg)", border: "1px solid var(--line2)", fontSize: 14, lineHeight: 1.55, color: "var(--note)", whiteSpace: "pre-line", wordBreak: "break-word" }}>{post}</div>
+        {/* the branded card everyone will see */}
+        {cardUrl && <img src={cardUrl} alt={`${name} share card`} style={{ width: "100%", borderRadius: 16, border: "1px solid var(--line2)" }} />}
+        <button type="button" className="btn volt lg" onClick={() => shareCoinCard(shareObj, { launched: true })}><IX size={15} color="#0A0B10" w={2.4} />Share your coin</button>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <a className="btn white" style={{ flex: "1 1 120px", height: 50 }} href={`https://x.com/intent/post?text=${encodeURIComponent(post)}`} target="_blank" rel="noopener noreferrer"><IX size={15} color="#0A0B10" w={2.4} />Post on X</a>
-          <a className="btn" style={{ flex: "1 1 120px", height: 50, background: "#2AABEE", border: 0, color: "#fff" }} href={`https://t.me/share/url?url=${encodeURIComponent("https://arkhampad.com/coin/?c=" + tick.toLowerCase())}&text=${encodeURIComponent(post)}`} target="_blank" rel="noopener noreferrer">Telegram</a>
-          <a className="btn" style={{ flex: "1 1 120px", height: 50, background: "#25D366", border: 0, color: "#04130C" }} href={`https://wa.me/?text=${encodeURIComponent(post)}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+          <button type="button" className="btn white" style={{ flex: "1 1 120px", height: 46 }} onClick={() => openX(post, coinUrl)}><IX size={14} color="#0A0B10" w={2.4} />Post on X</button>
+          <a className="btn" style={{ flex: "1 1 120px", height: 46, background: "#2AABEE", border: 0, color: "#fff" }} href={`https://t.me/share/url?url=${encodeURIComponent(coinUrl)}&text=${encodeURIComponent(post)}`} target="_blank" rel="noopener noreferrer">Telegram</a>
+          <a className="btn" style={{ flex: "1 1 120px", height: 46, background: "#25D366", border: 0, color: "#04130C" }} href={`https://wa.me/?text=${encodeURIComponent(`${post}\n${coinUrl}`)}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button type="button" className="btn ghost" style={{ flex: 1 }} onClick={() => copy(post, "Post and CA copied")}><ICopy size={15} />Copy post + CA</button>
+          <button type="button" className="btn ghost" style={{ flex: 1 }} onClick={() => copy(`${post}\n${coinUrl}`, "Post and CA copied")}><ICopy size={15} />Copy post + CA</button>
+          <button type="button" className="btn ghost" style={{ flex: 1 }} onClick={() => downloadCard(shareObj)}>Save card image</button>
           <Link href={`/coin/?c=${done.chainId}-${done.coin}`} className="btn ghost" style={{ flex: 1 }}>Open coin page</Link>
         </div>
       </div>

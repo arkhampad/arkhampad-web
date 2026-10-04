@@ -3,6 +3,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
 import type { Chain, Coin } from "./mock";
+import { shareCoinCard, prepareCard } from "./share";
+export { prepareCard };
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://yvdudswzmdziwnfurwir.supabase.co";
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY || "sb_publishable_S49UWqqXDzSaRbjBsAfYaA_kjfxyRPB";
@@ -327,15 +329,7 @@ export const cleanSearch = (s: string) => s.replace(/[^A-Za-z0-9 ._$-]/g, "").tr
 
 // ---------------------------------------------------------------- sharing, search by address, totals
 export function shareCoin(c: LiveCoin) {
-  const url = `https://arkhampad.com/coin/?c=${c.id}`;
-  const text = `$${c.tick} on @Arkhampad\nMC ${c.mc} · ${c.chg >= 0 ? "+" : ""}${c.chg.toFixed(1)}% 24h\nCA: ${c.address}`;
-  const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
-  // Phones get the system share sheet (X, Telegram, WhatsApp…); computers go straight to X.
-  if (nav.share && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
-    nav.share({ title: `${c.name} ($${c.tick})`, text, url }).catch(() => {});
-    return;
-  }
-  window.open(`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, "_blank", "noopener,noreferrer");
+  return shareCoinCard(c);
 }
 
 /** Finds a coin by contract address on any chain we list. */

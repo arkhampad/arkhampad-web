@@ -99,6 +99,7 @@ export function makeRelayer() {
     // router.permit swallows a failing permit on purpose, so gas estimation would happily
     // pick a limit where the permit runs out of gas: permits get a fixed, safe limit.
     const gas = fixedGas ?? ((await n.pub.estimateGas({ account: account.address, to, data })) * 12n) / 10n;
+    // (simulation above already proved the call works; trades use a fixed, generous limit)
     const hash = await n.wallet.sendTransaction({ to, data, gas });
     return hash;
   }
@@ -113,12 +114,16 @@ export function makeRelayer() {
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "permit", args: [addr(body.token, "token"), addr(body.owner, "owner"), big(body.value, "value"), big(body.deadline, "deadline"), Number(v ?? 27n + BigInt(yParity)), r, s] });
       fixedGas = 200_000n;
     } else if (kind === "buy") {
+      fixedGas = 700_000n;
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "buy", args: [addr(body.user, "user"), addr(body.curve, "curve"), big(body.usdcIn, "usdcIn"), big(body.minCoinsOut, "minCoinsOut"), feeOf(body), sigOf(body)] });
     } else if (kind === "sell") {
+      fixedGas = 700_000n;
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "sell", args: [addr(body.user, "user"), addr(body.curve, "curve"), big(body.coinAmount, "coinAmount"), big(body.minUsdcOut, "minUsdcOut"), feeOf(body), sigOf(body)] });
     } else if (kind === "poolBuy") {
+      fixedGas = 900_000n;
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "poolBuy", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.usdcIn, "usdcIn"), big(body.minCoinsOut, "minCoinsOut"), feeOf(body), sigOf(body)] });
     } else if (kind === "poolSell") {
+      fixedGas = 900_000n;
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "poolSell", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.coinAmount, "coinAmount"), big(body.minUsdcOut, "minUsdcOut"), feeOf(body), sigOf(body)] });
     } else if (kind === "launch") {
       const l = body.launch ?? {};
@@ -141,9 +146,18 @@ export function makeRelayer() {
     } else {
       const e = new Error("unknown request"); e.status = 400; throw e;
     }
+    const t0 = Date.now();
     const hash = await send(n, to, data, fixedGas);
-    log(`${n.c.name} ${kind} ${hash}`);
-    return { hash };
+    const t1 = Date.now();
+    const rc = await n.pub.waitForTransactionReceipt({ hash, pollingInterval: 150, timeout: 60_000 });
+    const t2 = Date.now();
+    log(`${n.c.name} ${kind} ${hash} sent ${t1 - t0}ms mined ${t2 - t1}ms`);
+    return {
+      hash,
+      status: rc.status,
+      logs: rc.logs.map((l) => ({ address: l.address, data: l.data, topics: l.topics, logIndex: l.logIndex })),
+      ms: { send: t1 - t0, mine: t2 - t1 },
+    };
   }
 
   // Graduation keeper: anyone may call graduate() on a full curve; we do it at once.

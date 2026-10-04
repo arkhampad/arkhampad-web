@@ -98,7 +98,9 @@ const S = (v: bigint | number) => v.toString();
 // ---------------------------------------------------------------- relayer
 export class TradeError extends Error {}
 
-async function relay(body: Record<string, unknown>): Promise<Hex> {
+type Relayed = { hash: Hex; status?: string; logs?: { address: Address; data: Hex; topics: Hex[] }[] };
+
+async function relay(body: Record<string, unknown>): Promise<Relayed> {
   let r: Response;
   try {
     r = await fetch(`${RELAYER}/relay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -107,13 +109,18 @@ async function relay(body: Record<string, unknown>): Promise<Hex> {
   }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new TradeError(j.error || "Something went wrong. Please try again.");
-  return j.hash as Hex;
+  return j as Relayed;
 }
 
-async function confirm(n: Net, hash: Hex) {
-  const rc = await client(n.id).waitForTransactionReceipt({ hash, pollingInterval: 250, timeout: 60_000 });
+/** The relayer waits for the block and returns the receipt logs, so no extra round trips here. */
+async function confirm(n: Net, res: Relayed): Promise<{ logs: Relayed["logs"]; transactionHash: Hex }> {
+  if (res.logs && res.status) {
+    if (res.status !== "success") throw new TradeError("The transaction failed on-chain. Your funds are safe.");
+    return { logs: res.logs, transactionHash: res.hash };
+  }
+  const rc = await client(n.id).waitForTransactionReceipt({ hash: res.hash, pollingInterval: 250, timeout: 60_000 });
   if (rc.status !== "success") throw new TradeError("The transaction failed on-chain. Your funds are safe.");
-  return rc;
+  return { logs: rc.logs as never, transactionHash: rc.transactionHash };
 }
 
 /** One-time approval by signature (no gas): lets the router move this token when the user signs a trade. */
@@ -176,11 +183,9 @@ export async function buy(chainId: number, curve: Address, coin: Address, usdcIn
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (usdcIn <= 0n) throw new TradeError("Enter an amount.");
-  const bal = await usdcBalance(chainId, s.address);
+  const [bal, quote] = await Promise.all([usdcBalance(chainId, s.address), quoteBuy(chainId, curve, usdcIn), ensureAllowance(n, s, n.usdc, usdcIn + FEE)]);
   if (bal < usdcIn + FEE) throw new TradeError("Not enough USDC on this network.");
-  const quote = await quoteBuy(chainId, curve, usdcIn);
   if (quote === 0n) throw new TradeError("Amount is too small.");
-  await ensureAllowance(n, s, n.usdc, usdcIn + FEE);
   const minOut = (quote * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
   const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Buy: TYPES.Buy }, primaryType: "Buy", message: { user: s.address, curve, usdcIn, minCoinsOut: minOut, fee: FEE, nonce, deadline: dl } });
@@ -194,11 +199,9 @@ export async function sell(chainId: number, curve: Address, coin: Address, coinA
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (coinAmount <= 0n) throw new TradeError("Enter an amount.");
-  const held = await tokenBalance(chainId, coin, s.address);
+  const [held, quote] = await Promise.all([tokenBalance(chainId, coin, s.address), quoteSell(chainId, curve, coinAmount), ensureAllowance(n, s, coin, coinAmount)]);
   if (held < coinAmount) throw new TradeError("You don't hold that many.");
-  const quote = await quoteSell(chainId, curve, coinAmount);
   if (quote <= FEE) throw new TradeError("This sale is too small to cover the network fee.");
-  await ensureAllowance(n, s, coin, coinAmount);
   const net = quote - FEE;
   const minOut = (net * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
@@ -230,10 +233,9 @@ export async function poolBuy(chainId: number, coin: Address, usdcIn: bigint, s:
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (usdcIn <= 0n) throw new TradeError("Enter an amount.");
-  if ((await usdcBalance(chainId, s.address)) < usdcIn + FEE) throw new TradeError("Not enough USDC on this network.");
-  const quote = await quotePool(chainId, coin, true, usdcIn);
+  const [bal, quote] = await Promise.all([usdcBalance(chainId, s.address), quotePool(chainId, coin, true, usdcIn), ensureAllowance(n, s, n.usdc, usdcIn + FEE)]);
+  if (bal < usdcIn + FEE) throw new TradeError("Not enough USDC on this network.");
   if (quote === 0n) throw new TradeError("Amount is too small.");
-  await ensureAllowance(n, s, n.usdc, usdcIn + FEE);
   const minOut = (quote * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
   const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { PoolBuy: TYPES.PoolBuy }, primaryType: "PoolBuy", message: { user: s.address, coin, usdcIn, minCoinsOut: minOut, fee: FEE, nonce, deadline: dl } });
@@ -247,10 +249,9 @@ export async function poolSell(chainId: number, coin: Address, coinAmount: bigin
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (coinAmount <= 0n) throw new TradeError("Enter an amount.");
-  if ((await tokenBalance(chainId, coin, s.address)) < coinAmount) throw new TradeError("You don't hold that many.");
-  const quote = await quotePool(chainId, coin, false, coinAmount);
+  const [held, quote] = await Promise.all([tokenBalance(chainId, coin, s.address), quotePool(chainId, coin, false, coinAmount), ensureAllowance(n, s, coin, coinAmount)]);
+  if (held < coinAmount) throw new TradeError("You don't hold that many.");
   if (quote <= FEE) throw new TradeError("This sale is too small to cover the network fee.");
-  await ensureAllowance(n, s, coin, coinAmount);
   const minOut = ((quote - FEE) * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
   const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { PoolSell: TYPES.PoolSell }, primaryType: "PoolSell", message: { user: s.address, coin, coinAmount, minUsdcOut: minOut, fee: FEE, nonce, deadline: dl } });

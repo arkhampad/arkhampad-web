@@ -50,14 +50,14 @@ export default function TvChart({ candles, supply, height = 380, empty = "No tra
       handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
     });
-    candle.current = c.addSeries(CandlestickSeries, { upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down, priceLineVisible: true, priceLineStyle: 2 });
+    candle.current = c.addSeries(CandlestickSeries, { upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down, priceLineVisible: false, lastValueVisible: true });
     volume.current = c.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
     c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 }, visible: false });
     chart.current = c;
     // follow the light/dark switch
     const mo = new MutationObserver(() => {
       const q = palette();
-      c.applyOptions({ layout: { textColor: q.text }, crosshair: { vertLine: { color: q.cross, labelBackgroundColor: q.label }, horzLine: { color: q.cross, labelBackgroundColor: q.label } }, rightPriceScale: { borderColor: q.line }, timeScale: { borderColor: q.line } });
+      c.applyOptions({ layout: { textColor: q.text }, crosshair: { vertLine: { labelBackgroundColor: q.label }, horzLine: { labelBackgroundColor: q.label } }, rightPriceScale: { borderColor: q.line }, timeScale: { borderColor: q.line } });
       candle.current?.applyOptions({ upColor: q.up, downColor: q.down, borderUpColor: q.up, borderDownColor: q.down, wickUpColor: q.up, wickDownColor: q.down });
     });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });

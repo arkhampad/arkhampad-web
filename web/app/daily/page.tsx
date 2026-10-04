@@ -1,4 +1,5 @@
 "use client";
+import { openX } from "@/lib/share";
 import Link from "next/link";
 import { coins } from "@/lib/mock";
 import { Avatar } from "@/components/bits";
@@ -29,7 +30,7 @@ export default function Daily() {
           <span style={{ fontWeight: 800, fontSize: 16 }}>Share today&apos;s recap</span>
           <div style={{ padding: 14, borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line2)", fontSize: 14, lineHeight: 1.55, color: "var(--note)" }}>{post}</div>
           <div style={{ display: "flex", gap: 8 }}>
-            <a className="btn white" style={{ flex: 1 }} href={`https://x.com/intent/post?text=${encodeURIComponent(post)}`} target="_blank" rel="noopener noreferrer"><IX size={15} color="#0A0B10" w={2.4} />Post on X</a>
+            <button type="button" className="btn white" style={{ flex: 1 }} onClick={() => openX(post)}><IX size={15} color="#0A0B10" w={2.4} />Post on X</button>
             <button type="button" className="btn" style={{ flex: 1 }} onClick={async () => { try { await navigator.clipboard.writeText(post); toast("Copied"); } catch { /* blocked */ } }}><ICopy size={15} />Copy</button>
           </div>
         </div></aside>

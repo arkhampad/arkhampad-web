@@ -42,7 +42,8 @@ export function SoonModal({ onClose }: { onClose: () => void }) {
 
 export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdraw"; setTab: (t: "deposit" | "withdraw") => void; onClose: () => void }) {
   const w = useWallet();
-  const [net, setNet] = useState(NETS[0].id);
+  // the network with the one-tap test USDC button opens first
+  const [net, setNet] = useState((NETS.find((x) => x.faucet) ?? NETS[0]).id);
   const [qr, setQr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);

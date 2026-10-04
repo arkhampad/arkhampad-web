@@ -11,7 +11,7 @@ import type { LiveCoin } from "@/lib/live";
 const fmtCoins = (t: number) => (!Number.isFinite(t) || t <= 0 ? "0" : t >= 1e9 ? (t / 1e9).toFixed(2) + "B" : t >= 1e6 ? (t / 1e6).toFixed(2) + "M" : t >= 1e3 ? (t / 1e3).toFixed(1) + "K" : t.toFixed(t < 1 ? 4 : 2));
 
 export function TradePanel({ coin, withLimit = false, onShare, initialSide = "buy" }: { coin: LiveCoin; withLimit?: boolean; onShare?: () => void; initialSide?: "buy" | "sell" }) {
-  const { toast, openSoon } = useApp();
+  const { toast, openSoon, openFunds } = useApp();
   const w = useWallet();
   const [side, setSide] = useState<"buy" | "sell">(initialSide);
   const [mode, setMode] = useState("Market");
@@ -98,6 +98,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       {side === "buy" ? (
         <>
           <label htmlFor={`amt-${coin.id}`} style={{ fontSize: 13, display: "flex", justifyContent: "space-between" }} className="dim"><span>Amount</span><span>Cash <b className="mono" style={{ color: "var(--text)" }}>${cash.toFixed(2)}</b></span></label>
+          {coin.own && w.signedIn && cash < 1 && <button type="button" className="btn volt sm" onClick={() => openFunds("deposit")}>Get free test USDC</button>}
           <div style={{ display: "flex", alignItems: "center", height: 60, padding: "0 16px", borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line3)" }}>
             <span className="mono dim" style={{ fontWeight: 700, fontSize: 26 }}>$</span>
             <input id={`amt-${coin.id}`} inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} style={{ flex: 1, minWidth: 0, background: "transparent", border: 0, outline: "none", font: "700 26px var(--mono)", paddingLeft: 4 }} />

@@ -48,6 +48,12 @@ function HeaderSearch() {
   );
 }
 
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("ap_theme", next); } catch { /* storage off */ }
+}
+
 function ThemeButton() {
   const [light, setLight] = useState(false);
   useEffect(() => { setLight(document.documentElement.dataset.theme === "light"); }, []);
@@ -58,7 +64,7 @@ function ThemeButton() {
     setLight(!light);
   };
   return (
-    <button type="button" className="icon-btn theme-btn" aria-label={light ? "Switch to dark mode" : "Switch to light mode"} title={light ? "Dark mode" : "Light mode"} onClick={flip}>
+    <button type="button" className="icon-btn theme-btn hide-m" aria-label={light ? "Switch to dark mode" : "Switch to light mode"} title={light ? "Dark mode" : "Light mode"} onClick={flip}>
       {light ? (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
       ) : (
@@ -112,7 +118,9 @@ function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void
   if (!w.signedIn) return <button type="button" className="btn white" onClick={w.login}>Log in</button>;
   return (
     <span style={{ position: "relative", display: "flex", gap: 8 }}>
-      <button type="button" className="bal" onClick={() => openFunds("deposit")} aria-label="Balance and deposit">${w.totalUsdc.toFixed(2)}<span className="hide-m" style={{ color: "var(--volt-ink)", fontFamily: "var(--sans)", fontSize: 13 }}>+ Deposit</span></button>
+      {w.totalUsdc < 1
+        ? <button type="button" className="btn volt" onClick={() => openFunds("deposit")} style={{ height: 44, padding: "0 14px" }}>Get test USDC</button>
+        : <button type="button" className="bal" onClick={() => openFunds("deposit")} aria-label="Balance and deposit">${w.totalUsdc.toFixed(2)}<span className="hide-m" style={{ color: "var(--volt-ink)", fontFamily: "var(--sans)", fontSize: 13 }}>+ Deposit</span></button>}
       <button type="button" className="icon-btn" aria-label="Account" aria-expanded={open} onClick={() => setOpen(!open)}><IUser size={18} color="var(--text2)" /></button>
       {open && (
         <span className="card" role="menu" style={{ position: "absolute", right: 0, top: 52, zIndex: 40, width: 230, padding: 8, gap: 2 }} onMouseLeave={() => setOpen(false)}>
@@ -120,6 +128,7 @@ function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void
           <Link href="/profile/" className="tab" style={{ display: "flex", alignItems: "center" }} onClick={() => setOpen(false)}>Profile</Link>
           <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("deposit"); }}>Deposit</button>
           <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("withdraw"); }}>Withdraw</button>
+          <button type="button" className="tab show-m" style={{ textAlign: "left" }} onClick={() => { setOpen(false); toggleTheme(); }}>Light / dark mode</button>
           <button type="button" className="tab" style={{ textAlign: "left", color: "var(--down)" }} onClick={() => { setOpen(false); w.logout(); }}>Log out</button>
         </span>
       )}

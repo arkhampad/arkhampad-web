@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getCoin, useCoinMarket, shareCoin, usd, short, ago, listCoins, type LiveCoin } from "@/lib/live";
+import { getCoin, useCoinMarket, shareCoin, prepareCard, usd, short, ago, listCoins, type LiveCoin } from "@/lib/live";
 import { Avatar, Bar, ChainTag } from "@/components/bits";
 import { Intervals } from "@/components/trade";
 import { TradePanel } from "@/components/tradepanel";
@@ -23,6 +23,15 @@ function CoinView() {
   const { toast } = useApp();
   const [c, setC] = useState<LiveCoin | null | undefined>(undefined);
   const [iv, setIv] = useState("15m");
+  // young coins have few trades: start on 1-minute candles so the chart isn't empty
+  const youngId = useRef("");
+  useEffect(() => { if (c) prepareCard(c); }, [c?.id, c?.mc]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!c || youngId.current === c.id) return;
+    youngId.current = c.id;
+    const age = c.createdAt ? Date.now() - Date.parse(c.createdAt) : Infinity;
+    setIv(c.own && age < 6 * 3600_000 ? "1m" : "15m");
+  }, [c]);
   const [sheet, setSheet] = useState<null | "buy" | "sell">(null);
   const m = useCoinMarket(c, iv, setC);
   const candles = m.candles, own = m.own, ext = m.ext;
