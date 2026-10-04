@@ -32,12 +32,14 @@ export function CandleChart({ height = 340, seed = 3 }: { height?: number; seed?
   );
 }
 
-export function Intervals({ extra }: { extra?: boolean }) {
-  const [iv, setIv] = useState("15m");
+export function Intervals({ extra, value, onChange }: { extra?: boolean; value?: string; onChange?: (v: string) => void }) {
+  const [own, setOwn] = useState("15m");
+  const iv = value ?? own;
+  const setIv = (v: string) => { setOwn(v); onChange?.(v); };
   return (
     <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
       <div className="hscroll" style={{ gap: 2 }}>
-        {["1m", "5m", "15m", "1h", "4h", "1D"].map((t) => (
+        {["1m", "5m", "15m", "1h", "4h", "1d"].map((t) => (
           <button key={t} type="button" onClick={() => setIv(t)} className="mono" style={{ height: 30, padding: "0 10px", borderRadius: 7, border: 0, background: iv === t ? "#1E2129" : "transparent", color: iv === t ? "var(--text)" : "var(--dim)", fontWeight: 600, fontSize: 12 }}>{t}</button>
         ))}
       </div>
@@ -60,8 +62,8 @@ export function TradePanel({ tick, price = 0.00412, withLimit = false }: { tick:
   const [mode, setMode] = useState("Market");
   const [amt, setAmt] = useState("25");
   const n = Number(amt) || 0;
-  const tokens = n / price;
-  const fmt = (t: number) => (t >= 1e6 ? (t / 1e6).toFixed(2) + "M" : t >= 1e3 ? (t / 1e3).toFixed(1) + "K" : t.toFixed(0));
+  const tokens = price > 0 ? n / price : 0;
+  const fmt = (t: number) => (!Number.isFinite(t) || t <= 0 ? "—" : t >= 1e9 ? (t / 1e9).toFixed(2) + "B" : t >= 1e6 ? (t / 1e6).toFixed(2) + "M" : t >= 1e3 ? (t / 1e3).toFixed(1) + "K" : t.toFixed(t < 1 ? 4 : 0));
   const modes = withLimit ? ["Market", "Limit", "Auto"] : ["Market", "Auto"];
   return (
     <div className="card" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
@@ -141,6 +143,44 @@ export function BurnCard() {
       <span style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(255,138,61,0.14)", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><IFire size={18} color="var(--burn)" /></span>
       <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}><span style={{ fontWeight: 700, fontSize: 14 }}>Buyback &amp; burn</span><span className="muted" style={{ fontSize: 12 }}>Creator fees buy and burn this coin</span></span>
       <span className="mono" style={{ fontWeight: 700, fontSize: 13, color: "var(--burn)" }}>1.2M burned</span>
+    </div>
+  );
+}
+
+export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
+
+/** Real candles (price) with volume bars. Shows a calm empty state with fewer than 2 candles. */
+export function LiveChart({ candles, height = 320, loading = false }: { candles: Candle[] | null; height?: number; loading?: boolean }) {
+  const W = 880, H = 340;
+  if (!candles || candles.length < 2) {
+    return (
+      <div className={loading || !candles ? "skel" : ""} style={{ height: height + 56, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {!loading && candles && <span className="dim" style={{ fontSize: 14 }}>Not enough trades yet for a chart.</span>}
+      </div>
+    );
+  }
+  const cs = candles.slice(-120);
+  const n = cs.length, cw = W / n;
+  let lo = Math.min(...cs.map((x) => x.l)), hi = Math.max(...cs.map((x) => x.h));
+  if (hi === lo) { hi = hi * 1.01 || 1; lo = lo * 0.99; }
+  const Y = (v: number) => H - 16 - ((v - lo) / (hi - lo)) * (H - 32);
+  const vmax = Math.max(...cs.map((x) => x.v), 1e-12);
+  const lastC = cs[n - 1];
+  const last = Y(lastC.c);
+  const lastUp = lastC.c >= cs[0].o;
+  return (
+    <div>
+      <svg width="100%" height={height} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Price chart">
+        {[40, 100, 160, 220, 280].map((y) => <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="#1A1D25" />)}
+        {cs.map((k, i) => {
+          const x = i * cw + cw / 2, up = k.c >= k.o, col = up ? "#3DDC97" : "#FF6B6B", top = Y(Math.max(k.o, k.c));
+          return (<g key={k.t}><line x1={x} y1={Y(k.h)} x2={x} y2={Y(k.l)} stroke={col} strokeWidth="1.2" vectorEffect="non-scaling-stroke" /><rect x={x - cw * 0.34} y={top} width={Math.max(1, cw * 0.68)} height={Math.max(1.5, Y(Math.min(k.o, k.c)) - top)} rx="1" fill={col} /></g>);
+        })}
+        <line x1="0" y1={last} x2={W} y2={last} stroke={lastUp ? "#3DDC97" : "#FF6B6B"} strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <svg width="100%" height="56" viewBox={`0 0 ${W} 60`} preserveAspectRatio="none" aria-hidden="true">
+        {cs.map((k, i) => { const h = Math.max(1, (k.v / vmax) * 56); return <rect key={k.t} x={i * cw + cw * 0.16} y={60 - h} width={Math.max(1, cw * 0.68)} height={h} fill={k.c >= k.o ? "rgba(61,220,151,0.35)" : "rgba(255,107,107,0.35)"} />; })}
+      </svg>
     </div>
   );
 }

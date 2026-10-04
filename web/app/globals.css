@@ -142,3 +142,8 @@ textarea.inp { height: auto; padding: 12px 14px; line-height: 1.5; resize: none;
 
 .opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 760px) { .opts { display: flex; overflow-x: auto; margin: 0 -20px; padding: 0 20px; scrollbar-width: none; } .opts > * { flex: none; width: 200px; } .opts::-webkit-scrollbar { display: none; } }
+
+/* loading placeholders */
+.skel { background: linear-gradient(90deg, #12141B 0%, #1A1D26 50%, #12141B 100%); background-size: 200% 100%; animation: skel 1.3s ease-in-out infinite; }
+@keyframes skel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }

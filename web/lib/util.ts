@@ -5,6 +5,7 @@ export const initials = (name: string) => {
   return (p.length > 1 ? p[0][0] + p[1][0] : (p[0] || "?").slice(0, 2)).toUpperCase();
 };
 export function sparkPath(vals: number[], w: number, h: number, pad = 3) {
+  if (vals.length < 2) vals = vals.length ? [vals[0], vals[0]] : [0, 0];
   const lo = Math.min(...vals), hi = Math.max(...vals), r = hi - lo || 1;
   const pts = vals.map((v, i) => [ (i * w) / (vals.length - 1), h - pad - ((v - lo) / r) * (h - pad * 2) ]);
   const line = pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");

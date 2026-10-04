@@ -13,7 +13,7 @@ export function HotCard({ c }: { c: Coin }) {
   return (
     <div className="card" style={{ borderRadius: 22, padding: 20, gap: 14 }}>
       <Link href={href(c)} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <Avatar name={c.name} c1={c.c1} c2={c.c2} size={48} />
+        <Avatar name={c.name} c1={c.c1} c2={c.c2} size={48} img={c.image} />
         <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
           <span style={{ fontSize: 17, fontWeight: 700 }}>{c.name}</span>
           <span className="mono dim" style={{ fontSize: 12 }}>{c.tick} · {c.chain} · {c.age}</span>
@@ -24,8 +24,8 @@ export function HotCard({ c }: { c: Coin }) {
       <Spark vals={c.spark} up={c.chg >= 0} w={300} h={90} height={90} />
       <span className="grid3" style={{ gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8, fontSize: 12, color: "var(--dim)" }}>
         <span>Vol 24h<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.vol}</b></span>
-        <span>Holders<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.holders}</b></span>
-        <span>Trades<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.trades}</b></span>
+        <span>Liquidity<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.liq}</b></span>
+        <span>Trades 24h<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.trades}</b></span>
       </span>
       <span style={{ display: "flex", gap: 8 }}>
         <button type="button" className="btn volt" style={{ flex: 1, height: 46, fontSize: 15 }} onClick={openLogin}>Buy</button>
@@ -35,7 +35,7 @@ export function HotCard({ c }: { c: Coin }) {
   );
 }
 
-export function CoinTable({ list }: { list: Coin[] }) {
+export function CoinTable({ list, start = 0 }: { list: Coin[]; start?: number }) {
   const router = useRouter();
   const { openLogin } = useApp();
   return (
@@ -45,13 +45,13 @@ export function CoinTable({ list }: { list: Coin[] }) {
         <tbody>
           {list.map((c, i) => (
             <tr key={c.id} className="click" onClick={() => router.push(href(c))}>
-              <td className="dim" style={{ fontSize: 13 }}>{i + 1}</td>
+              <td className="dim" style={{ fontSize: 13 }}>{start + i + 1}</td>
               <td className="l" style={{ fontFamily: "var(--sans)" }}>
                 <Link href={href(c)} onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <Avatar name={c.name} c1={c.c1} c2={c.c2} size={38} />
+                  <Avatar name={c.name} c1={c.c1} c2={c.c2} size={38} img={c.image} />
                   <span style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</span>
-                    <span className="mono dim" style={{ fontSize: 12, display: "flex", gap: 6 }}>{c.tick}<ChainTag chain={c.chain} />· {c.age}</span>
+                    <span className="mono dim" style={{ fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>{c.tick}<ChainTag chain={c.chain} />· {c.age}{c.own && <span className="pill" style={{ padding: "1px 7px", fontSize: 10, background: "rgba(212,255,58,0.12)", color: "var(--volt)" }}>Testnet</span>}</span>
                   </span>
                 </Link>
               </td>
@@ -75,7 +75,7 @@ export function CoinRows({ list }: { list: Coin[] }) {
     <div>
       {list.map((c) => (
         <Link key={c.id} href={href(c)} className="lrow">
-          <Avatar name={c.name} c1={c.c1} c2={c.c2} size={42} />
+          <Avatar name={c.name} c1={c.c1} c2={c.c2} size={42} img={c.image} />
           <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
             <span style={{ fontWeight: 700, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
             <span className="mono dim" style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}><span className="dot" style={{ width: 6, height: 6, background: c.chain === "Base" ? "var(--base)" : "var(--rh)" }} />{c.tick} · {c.age}</span>

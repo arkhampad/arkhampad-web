@@ -1,11 +1,17 @@
 "use client";
 import { initials, sparkPath } from "@/lib/util";
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { Chain } from "@/lib/mock";
 
-export function Avatar({ name, c1, c2, size = 40, round = false }: { name: string; c1: string; c2: string; size?: number; round?: boolean }) {
+export function Avatar({ name, c1, c2, size = 40, round = false, img }: { name: string; c1: string; c2: string; size?: number; round?: boolean; img?: string | null }) {
+  const [broken, setBroken] = useState(false);
+  const radius = round ? "50%" : Math.round(size * 0.3);
+  if (img && !broken) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={img} alt="" width={size} height={size} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(true)} style={{ width: size, height: size, borderRadius: radius, objectFit: "cover", flex: "none", background: "#161922" }} />;
+  }
   return (
-    <span className="av" style={{ width: size, height: size, borderRadius: round ? "50%" : Math.round(size * 0.3), background: `linear-gradient(135deg, ${c1}, ${c2})`, fontSize: Math.round(size * 0.34) }}>
+    <span className="av" style={{ width: size, height: size, borderRadius: radius, background: `linear-gradient(135deg, ${c1}, ${c2})`, fontSize: Math.round(size * 0.34) }}>
       {initials(name)}
     </span>
   );

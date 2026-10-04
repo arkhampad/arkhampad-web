@@ -3,7 +3,7 @@ import { BrandMark } from "./bits";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { trades } from "@/lib/mock";
+import { listCoins, recentTrades, useLive, useTradeFeed, type LiveCoin, type LiveTrade } from "@/lib/live";
 import { IBell, IChart, IHome, IPlus, ISearch, IUser } from "./icons";
 import { LoginModal, FundsModal, WelcomeModal } from "./modals";
 
@@ -23,15 +23,25 @@ export function Logo() {
 const NAV = [["/", "Discover"], ["/terminal/", "Terminal"], ["/traders/", "Traders"], ["/analytics/", "Analytics"], ["/learn/", "Learn"]] as const;
 
 function Ticker() {
-  const list = [...trades, ...trades];
+  // Latest testnet trades on ArkhamPad, topped up with what's trending on other DEXs.
+  const trades = useLive<LiveTrade[]>(() => recentTrades(10), [], 0);
+  const trend = useLive<LiveCoin[]>(() => listCoins("Trending", { limit: 12 }), [], 120_000);
+  useTradeFeed(() => trades.reload());
+  type Item = { k: string; up: boolean; who?: string; act?: string; amt: string; tick: string; href: string };
+  const items: Item[] = [
+    ...(trades.data ?? []).map((t) => ({ k: t.id, up: t.up, who: t.who, act: t.act, amt: t.amt, tick: t.tick, href: `/coin/?c=${t.chainId}-${t.coin}` })),
+    ...(trend.data ?? []).map((c) => ({ k: c.id, up: c.chg >= 0, amt: `${c.chg >= 0 ? "+" : ""}${c.chg.toFixed(1)}%`, tick: c.tick, href: `/coin/?c=${c.id}` })),
+  ];
+  if (!items.length) return <div className="ticker" aria-hidden="true" />;
+  const list = [...items, ...items];
   return (
-    <div className="ticker" aria-label="Live trades">
+    <div className="ticker" aria-label="Live market">
       <div className="ticker-track">
         {list.map((t, i) => (
-          <span key={i} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+          <Link key={`${t.k}-${i}`} href={t.href} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
             <span className="dot" style={{ background: t.up ? "var(--up)" : "var(--down)" }} />
-            <span style={{ color: "var(--text2)" }}>{t.who}</span>{t.act}<span className={t.up ? "up" : "down"}>{t.amt}</span>{t.tick}
-          </span>
+            {t.who ? <><span style={{ color: "var(--text2)" }}>{t.who}</span>{t.act}<span className={t.up ? "up" : "down"}>{t.amt}</span>{t.tick}</> : <><span style={{ color: "var(--text2)" }}>{t.tick}</span><span className={t.up ? "up" : "down"}>{t.amt}</span></>}
+          </Link>
         ))}
       </div>
     </div>

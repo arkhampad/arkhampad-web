@@ -1,25 +1,56 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
-import { coins, trades, traders } from "@/lib/mock";
+import { useCallback, useEffect, useState } from "react";
+import { traders } from "@/lib/mock";
+import { listCoins, recentTrades, useLive, useTradeFeed, ago, type LiveCoin, type LiveTrade, type Tab } from "@/lib/live";
 import { Avatar } from "@/components/bits";
 import { CoinRows, CoinTable, HotCard } from "@/components/market";
 import { IFire, ISpark } from "@/components/icons";
 import { useRouter } from "next/navigation";
 
-const TABS = ["Trending", "New", "Gainers", "Bonding", "Graduated", "Top volume", "Losers"];
-const CATS = ["All", "AI", "Animals", "Memes", "Gaming", "Culture", "Robinhood", "Base"];
+const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
+const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Robinhood", "Base"];
 const IDEAS = ["Funny animal", "Internet meme", "Robot / AI", "Sports", "Surprise me"];
+const PAGE = 50;
+
+function Skeleton({ rows = 8 }: { rows?: number }) {
+  return <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{Array.from({ length: rows }, (_, i) => <div key={i} className="skel" style={{ height: 52, borderRadius: 12 }} />)}</div>;
+}
 
 export default function Discover() {
   const router = useRouter();
-  const [tab, setTab] = useState("Trending");
+  const [tab, setTab] = useState<Tab>("Trending");
   const [cat, setCat] = useState("All");
   const [idea, setIdea] = useState("");
-  let list = [...coins];
-  if (tab === "Gainers") list.sort((a, b) => b.chg - a.chg);
-  if (tab === "Losers") list.sort((a, b) => a.chg - b.chg);
-  if (cat === "Robinhood" || cat === "Base") list = list.filter((c) => c.chain === cat);
+  const [list, setList] = useState<LiveCoin[] | null>(null);
+  const [more, setMore] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const chain = cat === "Base" || cat === "Robinhood" ? cat : null;
+  const topic = chain || cat === "All" ? null : cat;
+
+  const load = useCallback(async (offset: number) => {
+    setBusy(true);
+    try {
+      const rows = await listCoins(tab, { chain, cat: topic, limit: PAGE, offset });
+      setList((cur) => (offset === 0 ? rows : [...(cur ?? []), ...rows]));
+      setMore(rows.length === PAGE);
+      setErr(null);
+    } catch (e) {
+      setErr(String((e as Error)?.message || e));
+      if (offset === 0) setList([]);
+    } finally { setBusy(false); }
+  }, [tab, chain, topic]);
+
+  useEffect(() => { setList(null); load(0); }, [load]);
+  // keep the first page fresh
+  useEffect(() => { const iv = setInterval(() => { if ((list?.length ?? 0) <= PAGE) load(0); }, 60_000); return () => clearInterval(iv); }, [load, list?.length]);
+
+  const hot = useLive(() => listCoins("Trending", { limit: 3 }), [], 60_000);
+  const live = useLive<LiveTrade[]>(() => recentTrades(8), [], 0);
+  useTradeFeed(() => live.reload());
+
   const go = (e?: React.FormEvent) => { e?.preventDefault(); router.push(`/create/?idea=${encodeURIComponent(idea)}`); };
 
   return (
@@ -43,30 +74,47 @@ export default function Discover() {
 
       <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}><IFire size={20} color="var(--burn)" /><h2 className="sec-title" style={{ fontSize: 22 }}>Hot right now</h2></div>
-        <div className="grid3 hide-m">{coins.slice(0, 3).map((c) => <HotCard key={c.id} c={c} />)}</div>
-        <div className="hscroll show-m" style={{ gap: 12, margin: "0 -16px", padding: "0 16px" }}>{coins.slice(0, 3).map((c) => <div key={c.id} style={{ flex: "none", width: 280 }}><HotCard c={c} /></div>)}</div>
+        {!hot.data ? <div className="grid3">{[0, 1, 2].map((i) => <div key={i} className="skel" style={{ height: 300, borderRadius: 22 }} />)}</div> : (
+          <>
+            <div className="grid3 hide-m">{hot.data.map((c) => <HotCard key={c.id} c={c} />)}</div>
+            <div className="hscroll show-m" style={{ gap: 12, margin: "0 -16px", padding: "0 16px" }}>{hot.data.map((c) => <div key={c.id} style={{ flex: "none", width: 280 }}><HotCard c={c} /></div>)}</div>
+          </>
+        )}
       </section>
 
       <section className="row">
         <div className="main-col">
           <div className="hscroll">{TABS.map((t) => <button key={t} type="button" className={`chip${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
           <div className="hscroll" style={{ gap: 6 }}>{CATS.map((t) => <button key={t} type="button" className={`chip sm${cat === t ? " on" : ""}`} onClick={() => setCat(t)}>{t}</button>)}</div>
-          <div className="hide-m"><CoinTable list={list} /></div>
-          <div className="show-m" style={{ margin: "0 -16px" }}><CoinRows list={list} /></div>
+          {(tab === "Launched here" || tab === "Bonding" || tab === "Graduated") && (
+            <div className="dim" style={{ fontSize: 13 }}>Coins launched on ArkhamPad. We are on testnet now: these are test coins with test money.</div>
+          )}
+          {list === null ? <Skeleton /> : list.length === 0 ? (
+            <div className="card" style={{ alignItems: "center", textAlign: "center", padding: 28 }}>
+              <span style={{ fontWeight: 700 }}>{err ? "Couldn't load coins right now" : "No coins here yet"}</span>
+              <span className="dim" style={{ fontSize: 13 }}>{err ? "Please try again in a moment." : "Check another tab, or launch the first one."}</span>
+            </div>
+          ) : (
+            <>
+              <div className="hide-m"><CoinTable list={list} /></div>
+              <div className="show-m" style={{ margin: "0 -16px" }}><CoinRows list={list} /></div>
+            </>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-            <span className="dim" style={{ fontSize: 13 }}>Ranked by real volume, launched here and on other DEXs.</span>
-            <button type="button" className="btn">Load more</button>
+            <span className="dim" style={{ fontSize: 13 }}>Coins from other DEXs are shown for discovery. Trading opens at launch.</span>
+            {more && list && list.length > 0 && <button type="button" className="btn" disabled={busy} onClick={() => load(list.length)}>{busy ? "Loading…" : "Load more"}</button>}
           </div>
         </div>
         <aside className="side-col">
           <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700 }}>Live trades</span><span className="mono up" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600 }}><span className="dot" style={{ background: "var(--up)" }} />Live</span></div>
-            {trades.map((t, i) => (
-              <div key={i} className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--muted)" }}><span><span style={{ color: "var(--text)" }}>{t.who}</span> {t.act}</span><span><span className={t.up ? "up" : "down"}>{t.amt}</span> {t.tick}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700 }}>Live trades <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· testnet</span></span><span className="mono up" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600 }}><span className="dot" style={{ background: "var(--up)" }} />Live</span></div>
+            {live.data && live.data.length === 0 && <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span>}
+            {(live.data ?? []).map((t) => (
+              <Link key={t.id} href={`/coin/?c=${t.chainId}-${t.coin}`} className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--muted)" }}><span><span style={{ color: "var(--text)" }}>{t.who}</span> {t.act}</span><span><span className={t.up ? "up" : "down"}>{t.amt}</span> {t.tick} <span style={{ color: "var(--faint)" }}>{ago(t.ts)}</span></span></Link>
             ))}
           </div>
           <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700 }}>Top traders this week</span><Link href="/traders/" className="volt" style={{ fontSize: 13 }}>See all</Link></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700 }}>Top traders <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· preview</span></span><Link href="/traders/" className="volt" style={{ fontSize: 13 }}>See all</Link></div>
             {traders.slice(0, 4).map((t) => (
               <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span className="mono dim" style={{ fontSize: 12, width: 14 }}>{t.rank}</span><Avatar name={t.name} c1={t.c1} c2={t.c2} size={32} round />
