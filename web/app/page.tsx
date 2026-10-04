@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { traders } from "@/lib/mock";
-import { listCoins, recentTrades, totalCoins, useLive, useTradeFeed, ago, type LiveCoin, type LiveTrade, type Tab } from "@/lib/live";
+import { listCoins, listPromoted, recentTrades, totalCoins, useLive, useTradeFeed, ago, type LiveCoin, type LiveTrade, type Tab } from "@/lib/live";
+import { Avatar as Av } from "@/components/bits";
 import { Avatar } from "@/components/bits";
 import { CoinRows, CoinTable, HotCard } from "@/components/market";
 import { IFire, ISpark } from "@/components/icons";
@@ -51,6 +52,7 @@ export default function Discover() {
   const hot = useLive(() => listCoins("Trending", { limit: 3 }), [], 30_000);
   const almost = useLive(async () => (await listCoins("Bonding", { limit: 30 })).filter((c) => c.progress >= 50).sort((a, b) => b.progress - a.progress).slice(0, 3), [], 60_000);
   const total = useLive(totalCoins, [], 120_000);
+  const promoted = useLive(listPromoted, [], 60_000);
   const [feat, setFeat] = useState<"hot" | "grad">("hot");
   const hasGrad = (almost.data?.length ?? 0) > 0;
   // Hot right now and Almost graduating take turns every 2 minutes.
@@ -84,6 +86,21 @@ export default function Discover() {
           {IDEAS.map((t) => <button key={t} type="button" className="chip sm" onClick={() => router.push(`/create/?idea=${encodeURIComponent(t)}`)}>{t}</button>)}
         </div>
       </section>
+
+      {promoted.data && promoted.data.length > 0 && (
+        <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="dim" style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}>🚀 PROMOTED</span>
+          <div className="hscroll" style={{ gap: 10 }}>
+            {promoted.data.map((c) => (
+              <Link key={c.id} href={`/coin/?c=${c.id}`} className="card" style={{ flex: "none", flexDirection: "row", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 16, minWidth: 220 }}>
+                <Av name={c.name} c1={c.c1} c2={c.c2} size={36} img={c.image} />
+                <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}><b style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</b><span className="mono dim" style={{ fontSize: 11 }}>{c.tick} · {c.mc}</span></span>
+                <span className={`mono ${c.chg >= 0 ? "up" : "down"}`} style={{ fontSize: 12, fontWeight: 700 }}>{c.chg >= 0 ? "+" : ""}{c.chg.toFixed(1)}%</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>

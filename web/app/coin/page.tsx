@@ -6,6 +6,7 @@ import { getCoin, useCoinMarket, shareCoin, prepareCard, usd, short, ago, listCo
 import { Avatar, Bar, ChainTag } from "@/components/bits";
 import { Intervals } from "@/components/trade";
 import { TradePanel } from "@/components/tradepanel";
+import { AboutCard, CreatorCard, HoldersCard, PromoteButton } from "@/components/cointools";
 import dynamic from "next/dynamic";
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
@@ -79,7 +80,7 @@ function CoinView() {
             {c.own && c.creator ? <>· by {short(c.creator)}</> : null} · {c.age} old
           </div>
         </div>
-        <button type="button" className="btn ghost sm" aria-label="Share on X" onClick={() => shareCoin(c)}><IShare size={15} />Share</button>
+        <span style={{ display: "flex", gap: 8 }}><button type="button" className="btn ghost sm" aria-label="Share on X" onClick={() => shareCoin(c)}><IShare size={15} />Share</button><PromoteButton c={c} /></span>
       </div>
 
       <div className="grid6 hide-m">
@@ -118,6 +119,9 @@ function CoinView() {
           </div>
         </div>
         <aside className="side-col" style={{ flexBasis: 360 }}>
+          <AboutCard c={c} />
+          {c.own && <CreatorCard c={c} onImage={(url) => setC({ ...c, image: url })} />}
+          {c.own && <HoldersCard c={c} />}
           {c.own && (
             <div className="card" style={{ gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span style={{ fontWeight: 700 }}>Graduation</span><span className="mono volt" style={{ fontWeight: 600 }}>{c.phase === 2 ? "Graduated" : `${usd(c.mcNum)} / ${usd(target)}`}</span></div>

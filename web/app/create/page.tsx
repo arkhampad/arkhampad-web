@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FrogArt } from "@/components/bits";
 import { ICopy, IFire, IGlobe, IRocket, ISpark, IX } from "@/components/icons";
 import { useApp } from "@/components/shell";
 import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCoin } from "@/lib/share";
 import { useWallet } from "@/components/wallet";
-import { FEE, TradeError, fromUsdc, launch, promote, toUsdc } from "@/lib/chain";
+import { FEE, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage } from "@/lib/chain";
 
 const OPTS = [
   { name: "Moonfrog", tick: "MFROG", desc: "An astronaut frog who only buys the dip. Floating in orbit, waiting for red candles.", c1: "#1B1F6B", c2: "#7C5CFF" },
@@ -38,6 +38,9 @@ function CreateView() {
   const [tgUrl, setTgUrl] = useState("");
   const [webUrl, setWebUrl] = useState("");
   const [busy, setBusy] = useState("");
+  const [imgFile, setImgFile] = useState<File | null>(null);
+  const [imgPreview, setImgPreview] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const w = useWallet();
   const chainId = chain === "Base" ? 84532 : 46630;
   const cash = fromUsdc(w.usdc[chainId] ?? 0n);
@@ -70,6 +73,14 @@ function CreateView() {
       setBusy("Launching…");
       const lockSeconds = lock === "Lock 24h" ? 86400 : lock === "Lock 1h" ? 3600 : 0;
       const r = await launch(chainId, { name: nm, symbol: tk, metadataURI, lockSeconds, feeMode: fee === "burn" ? 1 : 0, launchUsdc: toUsdc(first) }, w.signer);
+      if (imgFile) {
+        setBusy("Adding image…");
+        // the indexer needs a moment to see the new coin before the image can be attached
+        for (let i = 0; i < 6; i++) {
+          try { await uploadCoinImage(chainId, r.coin, imgFile, w.signer); break; }
+          catch (e) { if (i === 5 || !(e instanceof TradeError) || !/not found yet/i.test(e.message)) { toast(`Coin is live, but the image failed: ${(e as Error).message}`); break; } await new Promise((res) => setTimeout(res, 2500)); }
+        }
+      }
       if (boost !== "none") {
         setBusy("Promoting…");
         try { await promote(chainId, r.coin, boost === "10" ? 1 : 2, w.signer); }
@@ -90,7 +101,7 @@ function CreateView() {
     <div className="wrap page" style={{ maxWidth: 680 }}>
       <div className="card" style={{ background: "var(--card)", borderRadius: 22, padding: 20, gap: 16 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10 }}>
-          <span style={{ width: 92, height: 92, borderRadius: 26, overflow: "hidden", boxShadow: "0 20px 60px rgba(124,92,255,0.35)" }}><FrogArt c1={o.c1} c2={o.c2} /></span>
+          <span style={{ width: 92, height: 92, borderRadius: 26, overflow: "hidden", boxShadow: "0 20px 60px rgba(124,92,255,0.35)" }}>{imgPreview ? <img src={imgPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <FrogArt c1={o.c1} c2={o.c2} />}</span>
           <h1 style={{ margin: 0, fontSize: 32, fontWeight: 900, letterSpacing: -1 }}>{name} is live!</h1>
           <p className="muted" style={{ margin: 0, fontSize: 15 }}>Share it now. Everything is ready, including the contract address.</p>
         </div>
@@ -153,8 +164,9 @@ function CreateView() {
           </div>
           <div className="field"><label htmlFor="cd">Description</label><textarea id="cd" rows={2} className="inp" value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="btn ghost sm"><ISpark size={14} color="var(--volt-ink)" />New image</button>
-            <button type="button" className="btn ghost sm">Upload image</button>
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { setImgFile(f); setImgPreview(URL.createObjectURL(f)); } }} />
+            <button type="button" className="btn ghost sm" onClick={() => fileRef.current?.click()}>{imgFile ? "Change image" : "Upload image"}</button>
+            {imgFile && <button type="button" className="btn ghost sm" onClick={() => { setImgFile(null); setImgPreview(null); }}>Remove image</button>}
             <button type="button" className="btn ghost sm" aria-expanded={links} onClick={() => setLinks(!links)}>{links ? "Hide links" : "+ Add links (optional)"}</button>
           </div>
           {links && (
@@ -199,7 +211,7 @@ function CreateView() {
         <aside className="side-col" style={{ position: "sticky", top: 90 }}>
           <div className="card" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
             <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>Live preview</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}><span style={{ width: 64, height: 64, borderRadius: 18, overflow: "hidden", flex: "none" }}><FrogArt c1={o.c1} c2={o.c2} /></span><span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}><span style={{ fontWeight: 900, fontSize: 20, overflow: "hidden", textOverflow: "ellipsis" }}>{name || "Your coin"}</span><span className="mono dim" style={{ fontWeight: 600, fontSize: 13 }}>{tick || "TICKER"} · {chain}</span></span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}><span style={{ width: 64, height: 64, borderRadius: 18, overflow: "hidden", flex: "none" }}>{imgPreview ? <img src={imgPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <FrogArt c1={o.c1} c2={o.c2} />}</span><span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}><span style={{ fontWeight: 900, fontSize: 20, overflow: "hidden", textOverflow: "ellipsis" }}>{name || "Your coin"}</span><span className="mono dim" style={{ fontWeight: 600, fontSize: 13 }}>{tick || "TICKER"} · {chain}</span></span></div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {lock !== "No lock" && <span className="pill volt" style={{ background: "rgba(212,255,58,0.10)" }}>Dev locked {lock.replace("Lock ", "")}</span>}
               <span className="pill" style={{ background: fee === "burn" ? "rgba(255,138,61,0.12)" : "rgba(61,220,151,0.12)", color: fee === "burn" ? "var(--burn)" : "var(--up)" }}>{fee === "burn" ? "Buyback & burn" : "Fees to creator"}</span>

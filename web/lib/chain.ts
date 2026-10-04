@@ -1,6 +1,6 @@
 "use client";
 // On-chain side of ArkhamPad: networks, contract calls, signed (gasless) requests.
-import { createPublicClient, defineChain, http, parseAbi, parseEventLogs, type Address, type Hex, type PublicClient } from "viem";
+import { createPublicClient, defineChain, http, keccak256, parseAbi, parseEventLogs, type Address, type Hex, type PublicClient } from "viem";
 import { baseSepolia } from "viem/chains";
 
 export const RELAYER = process.env.NEXT_PUBLIC_RELAYER_URL || "https://arkhampad-web-production.up.railway.app";
@@ -55,6 +55,8 @@ export const CURVE = parseAbi([
   "function usdcReserve() view returns (uint256)",
   "function vUsdc() view returns (uint256)",
   "function vCoin() view returns (uint256)",
+  "function creatorFees() view returns (uint256)",
+  "function feeMode() view returns (uint8)",
   "event Trade(address indexed trader, bool indexed isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 fee, uint256 vUsdcAfter, uint256 vCoinAfter)",
 ]);
 export const HUB = parseAbi([
@@ -144,6 +146,11 @@ async function ensureAllowance(n: Net, s: Signer, token: Address, need: bigint) 
   permitted.add(key);
 }
 
+/** Signs the coin's one-time sell approval right after a buy, in the background. */
+function prepareSell(n: Net, s: Signer, coin: Address) {
+  setTimeout(() => { ensureAllowance(n, s, coin, 1n).catch(() => {}); }, 300);
+}
+
 // ---------------------------------------------------------------- reads
 export async function usdcBalance(chainId: number, who: Address) {
   const n = netOf(chainId);
@@ -192,6 +199,7 @@ export async function buy(chainId: number, curve: Address, coin: Address, usdcIn
   const rc = await confirm(n, await relay({ chainId: n.id, kind: "buy", user: s.address, curve, usdcIn: S(usdcIn), minCoinsOut: S(minOut), fee: S(FEE), nonce: S(nonce), deadline: S(dl), signature }));
   const t = tradeFrom(n, rc as never, curve, coin, s.address);
   emit(t);
+  prepareSell(n, s, coin);
   return t;
 }
 
@@ -242,6 +250,7 @@ export async function poolBuy(chainId: number, coin: Address, usdcIn: bigint, s:
   const rc = await confirm(n, await relay({ chainId: n.id, kind: "poolBuy", user: s.address, coin, usdcIn: S(usdcIn), minCoinsOut: S(minOut), fee: S(FEE), nonce: S(nonce), deadline: S(dl), signature }));
   const t = poolTradeFrom(n, rc as never, coin, s.address);
   emit(t);
+  prepareSell(n, s, coin);
   return t;
 }
 
@@ -292,7 +301,7 @@ export async function withdraw(chainId: number, to: Address, amount: bigint, s: 
   return confirm(n, await relay({ chainId: n.id, kind: "withdraw", user: s.address, to, amount: S(amount), fee: S(FEE), nonce: S(nonce), deadline: S(dl), signature }));
 }
 
-export async function promote(chainId: number, coin: Address, plan: 1 | 2 | 3, s: Signer) {
+export async function promote(chainId: number, coin: Address, plan: 1 | 2 | 3, s: Signer, coinChainId: number = chainId) {
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   const promoter = await client(chainId).readContract({ address: n.router, abi: ROUTER_VIEW, functionName: "promoter" });
@@ -302,8 +311,8 @@ export async function promote(chainId: number, coin: Address, plan: 1 | 2 | 3, s
   if (bal < price + FEE) throw new TradeError("Not enough USDC to promote.");
   await ensureAllowance(n, s, n.usdc, price + FEE);
   const nonce = randomNonce(), dl = deadline();
-  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Promote: TYPES.Promote }, primaryType: "Promote", message: { user: s.address, coin, coinChainId: BigInt(chainId), plan, maxPrice: price, fee: FEE, nonce, deadline: dl } });
-  return confirm(n, await relay({ chainId: n.id, kind: "promote", user: s.address, coin, coinChainId: String(chainId), plan: String(plan), maxPrice: S(price), fee: S(FEE), nonce: S(nonce), deadline: S(dl), signature }));
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Promote: TYPES.Promote }, primaryType: "Promote", message: { user: s.address, coin, coinChainId: BigInt(coinChainId), plan, maxPrice: price, fee: FEE, nonce, deadline: dl } });
+  return confirm(n, await relay({ chainId: n.id, kind: "promote", user: s.address, coin, coinChainId: String(coinChainId), plan: String(plan), maxPrice: S(price), fee: S(FEE), nonce: S(nonce), deadline: S(dl), signature }));
 }
 
 export async function faucet(chainId: number, to: Address) {
@@ -330,4 +339,90 @@ export async function coinFromChain(chainId: number, coin: Address) {
   ]);
   const price = fromUsdc(vUsdc) / fromCoin(vCoin);
   return { chain_id: chainId, address: coin.toLowerCase(), curve: curve.toLowerCase(), creator: creator.toLowerCase(), name, symbol, phase: Number(phase), price_usd: price, mc_usd: price * 1e9, start_mc_usd: chainId === 84532 || chainId === 46630 ? 450 : 4500, usdc_reserve: fromUsdc(reserve), trades_count: 0, created_at: new Date().toISOString(), volume_24h: 0, change_24h_pct: null, buyers: 0, metadata_uri: "" };
+}
+
+
+// ---------------------------------------------------------------- creator tools & upkeep
+
+export async function creatorFeesOf(chainId: number, curve: Address) {
+  const c = client(chainId);
+  const [fees, mode] = await Promise.all([
+    c.readContract({ address: curve, abi: CURVE, functionName: "creatorFees" }),
+    c.readContract({ address: curve, abi: CURVE, functionName: "feeMode" }),
+  ]);
+  return { fees, mode: Number(mode) };
+}
+
+/** Pays the creator (or buys back and burns) the fees a curve holds. Anyone can trigger it. */
+export async function settleFees(chainId: number, curve: Address) {
+  const n = netOf(chainId);
+  if (!n) throw new TradeError("Unknown network");
+  return confirm(n, await relay({ chainId, kind: "settle", curve }));
+}
+/** Graduated coins: collect the locked pool's trading fees (70% platform, 30% creator or buyback). */
+export async function collectPoolFees(chainId: number, coin: Address) {
+  const n = netOf(chainId);
+  if (!n) throw new TradeError("Unknown network");
+  return confirm(n, await relay({ chainId, kind: "collect", coin }));
+}
+export async function runBuyback(chainId: number, coin: Address) {
+  const n = netOf(chainId);
+  if (!n) throw new TradeError("Unknown network");
+  return confirm(n, await relay({ chainId, kind: "buyback", coin }));
+}
+
+/** Resizes to a 256px square WebP, signs it as the creator and uploads it. Returns the image URL. */
+export async function uploadCoinImage(chainId: number, coin: Address, file: File, s: Signer): Promise<string> {
+  const n = netOf(chainId);
+  if (!n) throw new TradeError("Unknown network");
+  if (!/^image\/(png|jpe?g|webp|gif)$/.test(file.type)) throw new TradeError("Use a PNG, JPG or WebP image.");
+  if (file.size > 10_000_000) throw new TradeError("Image is too large (max 10 MB).");
+  const dataUrl = await squareImage(file, 256);
+  const bytes = Uint8Array.from(atob(dataUrl.split(",")[1]), (ch) => ch.charCodeAt(0));
+  const signature = await s.signTypedData(chainId, {
+    domain: routerDomain(n),
+    types: { CoinImage: [{ name: "coin", type: "address" }, { name: "imageHash", type: "bytes32" }] },
+    primaryType: "CoinImage",
+    message: { coin, imageHash: keccak256(bytes) },
+  });
+  let r: Response;
+  try {
+    r = await fetch(`${RELAYER}/image`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chainId, coin, dataUrl, signature }) });
+  } catch { throw new TradeError("Can't reach ArkhamPad right now. Check your connection."); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new TradeError(j.error || "Upload failed, please try again.");
+  return j.url as string;
+}
+
+function squareImage(file: File, size: number): Promise<string> {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement("canvas");
+      cv.width = size; cv.height = size;
+      const ctx = cv.getContext("2d");
+      if (!ctx) { rej(new TradeError("Couldn't read the image.")); return; }
+      const side = Math.min(img.width, img.height); // centre crop to a square
+      ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      let out = cv.toDataURL("image/webp", 0.86);
+      if (!out.startsWith("data:image/webp")) out = cv.toDataURL("image/png");
+      res(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new TradeError("Couldn't read the image.")); };
+    img.src = url;
+  });
+}
+
+/** Biggest holders, from everyone who ever bought plus the creator, read live from the chain. */
+export async function holdersOf(chainId: number, coin: Address, wallets: string[]) {
+  const c = client(chainId);
+  const uniq = [...new Set(wallets.map((w) => w.toLowerCase()))].slice(0, 200);
+  const rows: { wallet: string; amount: number }[] = [];
+  for (let i = 0; i < uniq.length; i += 25) {
+    const part = await Promise.all(uniq.slice(i, i + 25).map(async (w) => ({ wallet: w, amount: fromCoin(await c.readContract({ address: coin, abi: ERC20, functionName: "balanceOf", args: [w as Address] }).catch(() => 0n)) })));
+    rows.push(...part.filter((r) => r.amount > 0));
+  }
+  return rows.sort((a, b) => b.amount - a.amount);
 }

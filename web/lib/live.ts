@@ -64,10 +64,21 @@ export type LiveCoin = Coin & {
   pool?: string | null; network?: string | null; dex?: string | null;
   priceNum: number | null; mcNum: number | null; volNum: number | null;
   phase?: number; startMc?: number; creator?: string; curve?: string; createdAt?: string | null;
+  about?: { description?: string; x?: string; telegram?: string; website?: string }; feeMode?: number;
 };
 
+/** Creator-written details stored with the coin (description and links). */
+export function parseMeta(uri: string | null | undefined): LiveCoin["about"] {
+  if (!uri || !uri.startsWith("data:application/json;base64,")) return undefined;
+  try {
+    const j = JSON.parse(decodeURIComponent(escape(atob(uri.slice(29)))));
+    const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
+    return { description: str(j.description, 280), x: str(j.x, 100), telegram: str(j.telegram, 100), website: str(j.website, 100) };
+  } catch { return undefined; }
+}
+
 type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null };
-type OwnRow = { chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
+type OwnRow = { image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
 
 export function fromExt(r: ExtRow): LiveCoin {
   const [c1, c2] = colours(r.address);
@@ -94,8 +105,9 @@ export function fromOwn(r: OwnRow): LiveCoin {
     price: price(Number(r.price_usd)), chg, mc: usd(mc), vol: usd(Number(r.volume_24h)), liq: usd(Number(r.usdc_reserve)),
     holders: count(r.buyers), trades: count(r.trades_count), c1, c2,
     spark: sparkOf([start, mc]), progress: r.phase >= 1 ? 100 : target > start ? Math.max(0, Math.min(100, ((mc - start) / (target - start)) * 100)) : 0,
-    chainId: r.chain_id, address: r.address, own: true, image: null, priceNum: Number(r.price_usd), mcNum: mc, volNum: Number(r.volume_24h),
+    chainId: r.chain_id, address: r.address, own: true, image: r.image_url ?? null, priceNum: Number(r.price_usd), mcNum: mc, volNum: Number(r.volume_24h),
     phase: r.phase, startMc: start, creator: r.creator, curve: r.curve, createdAt: r.created_at,
+    about: parseMeta(r.metadata_uri), feeMode: r.fee_mode,
   };
 }
 
@@ -369,4 +381,14 @@ export function useGraduations(cb: (coin: { symbol: string; name: string; chain_
       .subscribe();
     return () => { db().removeChannel(ch); };
   }, []);
+}
+
+
+/** Coins someone paid to promote, newest first (shown in the Promoted row). */
+export async function listPromoted(): Promise<LiveCoin[]> {
+  const { data } = await db().from("promotions").select("coin,coin_chain_id,ends_at").gt("ends_at", new Date().toISOString()).order("starts_at", { ascending: false }).limit(30);
+  const seen = new Set<string>();
+  const want = ((data ?? []) as { coin: string; coin_chain_id: number }[]).filter((p) => { const k = `${p.coin_chain_id}-${p.coin}`; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 10);
+  const out = await Promise.all(want.map((p) => getCoin(`${Number(p.coin_chain_id)}-${p.coin}`).catch(() => null)));
+  return out.filter(Boolean) as LiveCoin[];
 }

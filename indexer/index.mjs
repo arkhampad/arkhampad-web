@@ -42,6 +42,7 @@ const pool = new pg.Pool({
   ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL || "") ? false : { rejectUnauthorized: false },
   max: 4,
 });
+if (relayer) relayer.setDb(pool);
 
 async function lastBlock(chainId, start) {
   const r = await pool.query("select last_block from sync_state where chain_id = $1", [chainId]);

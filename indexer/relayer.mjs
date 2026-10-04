@@ -5,7 +5,7 @@
 //
 // Env: RELAYER_KEY (the relayer wallet's private key), and the chain RPC env vars.
 import fs from "node:fs";
-import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, getAddress, isAddress, isHex, parseSignature, nonceManager } from "viem";
+import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, decodeFunctionResult, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 const CHAINS = JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./chains.json", import.meta.url), "utf8"));
@@ -30,6 +30,14 @@ const ROUTER_ABI = [
   { type: "error", name: "CreatorLocked", inputs: [{ type: "uint256" }] }, { type: "error", name: "BadName", inputs: [] }, { type: "error", name: "NotAllowed", inputs: [] },
   { type: "error", name: "ERC20InsufficientBalance", inputs: [{ type: "address" }, { type: "uint256" }, { type: "uint256" }] },
   { type: "error", name: "ERC20InsufficientAllowance", inputs: [{ type: "address" }, { type: "uint256" }, { type: "uint256" }] },
+];
+// Permissionless upkeep calls (no user signature; the relayer pays the gas).
+const UPKEEP_ABI = [
+  { type: "function", name: "settleCreatorFees", stateMutability: "nonpayable", inputs: [], outputs: [{ name: "used", type: "uint256" }] },
+  { type: "function", name: "creatorFees", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "collectFees", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
+  { type: "function", name: "buyback", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
+  { type: "function", name: "isCurve", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] },
 ];
 const MINT_ABI = [{ type: "function", name: "mint", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [] }];
 
@@ -69,6 +77,9 @@ const str = (v, name, max) => { if (typeof v !== "string" || v.length > max) thr
 const sigOf = (b) => ({ deadline: big(b.deadline, "deadline"), nonce: big(b.nonce, "nonce"), signature: hex(b.signature, "signature") });
 const feeOf = (b) => { const f = big(b.fee, "fee"); if (f < MIN_FEE) throw new Error("fee too low"); return f; };
 
+const IMG_MAX = 200_000; // bytes of image data
+const IMAGE_TYPES = { CoinImage: [{ name: "coin", type: "address" }, { name: "imageHash", type: "bytes32" }] };
+
 export function makeRelayer() {
   const key = (process.env.RELAYER_KEY || "").trim();
   if (!key) return null;
@@ -83,6 +94,8 @@ export function makeRelayer() {
     nets.set(c.chainId, { c, pub: createPublicClient({ chain, transport }), wallet: createWalletClient({ account, chain, transport }), router: getAddress(c.router), faucet: c.faucet ? getAddress(c.usdc) : null });
   }
   const faucetLast = new Map();
+  let db = null;
+  const upkeepLast = new Map();
   log(`relayer ${account.address} on ${[...nets.values()].map((n) => n.c.name).join(", ")}`);
 
   async function send(n, to, data, fixedGas) {
@@ -136,6 +149,28 @@ export function makeRelayer() {
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "promote", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.coinChainId, "coinChainId"), Number(big(body.plan, "plan")), big(body.maxPrice, "maxPrice"), feeOf(body), sigOf(body)] });
     } else if (kind === "cancel") {
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "cancel", args: [addr(body.user, "user"), big(body.nonce, "nonce"), hex(body.signature, "signature")] });
+    } else if (kind === "settle" || kind === "collect" || kind === "buyback") {
+      // Anyone can trigger these; they only move fees where the contracts say. One per coin a minute.
+      const target = addr(kind === "settle" ? body.curve : body.coin, kind === "settle" ? "curve" : "coin");
+      const key = `${n.c.chainId}:${kind}:${target}`;
+      if (Date.now() - (upkeepLast.get(key) ?? 0) < 60_000) { const e = new Error("Already done a moment ago."); e.status = 429; throw e; }
+      if (kind === "settle") {
+        const ok = await n.pub.readContract({ address: getAddress(n.c.hub), abi: UPKEEP_ABI, functionName: "isCurve", args: [target] });
+        if (!ok) { const e = new Error("Unknown coin."); e.status = 400; throw e; }
+        const fees = await n.pub.readContract({ address: target, abi: UPKEEP_ABI, functionName: "creatorFees" });
+        if (fees < 10_000n) { const e = new Error("Nothing to claim yet."); e.status = 400; throw e; }
+        to = target;
+        data = encodeFunctionData({ abi: UPKEEP_ABI, functionName: "settleCreatorFees" });
+      } else {
+        if (!n.c.poolBuilder) { const e = new Error("Pools are not set up on this network."); e.status = 400; throw e; }
+        to = getAddress(n.c.poolBuilder);
+        data = encodeFunctionData({ abi: UPKEEP_ABI, functionName: kind === "collect" ? "collectFees" : "buyback", args: [target] });
+        const sim = await n.pub.call({ account: account.address, to, data }).catch(() => null);
+        const out = sim?.data ? decodeFunctionResult({ abi: UPKEEP_ABI, functionName: kind === "collect" ? "collectFees" : "buyback", data: sim.data }) : null;
+        if (!out || (out[0] === 0n && out[1] === 0n)) { const e = new Error("Nothing to collect yet."); e.status = 400; throw e; }
+      }
+      upkeepLast.set(key, Date.now());
+      fixedGas = 1_200_000n;
     } else if (kind === "faucet") {
       if (!n.faucet) { const e = new Error("no faucet on this network"); e.status = 400; throw e; }
       const who = addr(body.to, "to");
@@ -181,10 +216,48 @@ export function makeRelayer() {
     }
   }
 
+  /** Creator uploads a coin image, proven by a signature from the coin's creator wallet. */
+  async function saveImage(body, publicBase) {
+    if (!db) { const e = new Error("Images are not available right now."); e.status = 503; throw e; }
+    const n = nets.get(Number(body?.chainId));
+    if (!n) { const e = new Error("unsupported chain"); e.status = 400; throw e; }
+    const coin = addr(body.coin, "coin").toLowerCase();
+    const m = String(body.dataUrl || "").match(/^data:(image\/(?:webp|png|jpeg));base64,([A-Za-z0-9+/=]+)$/);
+    if (!m) { const e = new Error("Use a PNG, JPG or WebP image."); e.status = 400; throw e; }
+    const bytes = Buffer.from(m[2], "base64");
+    if (bytes.length > IMG_MAX) { const e = new Error("Image is too large."); e.status = 413; throw e; }
+    const imageHash = keccak256(bytes);
+    const signer = await recoverTypedDataAddress({
+      domain: { name: "ArkhamPad", version: "1", chainId: n.c.chainId, verifyingContract: n.router },
+      types: IMAGE_TYPES, primaryType: "CoinImage", message: { coin: getAddress(coin), imageHash },
+      signature: hex(body.signature, "signature"),
+    }).catch(() => null);
+    const row = (await db.query("select creator from coins where chain_id=$1 and address=$2", [n.c.chainId, coin])).rows[0];
+    if (!row) { const e = new Error("Coin not found yet. Try again in a few seconds."); e.status = 404; throw e; }
+    if (!signer || signer.toLowerCase() !== row.creator) { const e = new Error("Only the creator can change the image."); e.status = 403; throw e; }
+    await db.query(
+      `insert into coin_images (chain_id, coin, mime, data, updated_at) values ($1,$2,$3,$4,now())
+       on conflict (chain_id, coin) do update set mime=excluded.mime, data=excluded.data, updated_at=now()`,
+      [n.c.chainId, coin, m[1], bytes],
+    );
+    const url = `${publicBase}/img/${n.c.chainId}-${coin}?v=${Date.now().toString(36)}`;
+    await db.query("update coins set image_url=$3 where chain_id=$1 and address=$2", [n.c.chainId, coin, url]);
+    log(`${n.c.name} image ${coin} ${bytes.length}b`);
+    return { url };
+  }
+
+  async function image(id) {
+    if (!db) return null;
+    const mm = String(id).match(/^(\d+)-(0x[0-9a-f]{40})$/);
+    if (!mm) return null;
+    const r = await db.query("select mime, data from coin_images where chain_id=$1 and coin=$2", [Number(mm[1]), mm[2]]);
+    return r.rows[0] ?? null;
+  }
+
   function config() {
     return { relayer: account.address, minFee: String(MIN_FEE), chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, faucet: !!n.faucet })) };
   }
-  return { handle, config, graduate };
+  return { handle, config, graduate, saveImage, image, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -213,6 +286,25 @@ export function httpHandler(relayer, status) {
     if (url === "/health" || url === "/") return res.end(JSON.stringify(status));
     if (!relayer) { res.statusCode = 503; return res.end(JSON.stringify({ error: "relayer off" })); }
     if (url === "/config") return res.end(JSON.stringify(relayer.config()));
+    if (url.startsWith("/img/") && req.method === "GET") {
+      const img = await relayer.image(url.slice(5)).catch(() => null);
+      if (!img) { res.statusCode = 404; return res.end(JSON.stringify({ error: "not found" })); }
+      res.setHeader("content-type", img.mime);
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("cache-control", "public, max-age=31536000, immutable"); // the URL changes with every new image
+      return res.end(img.data);
+    }
+    if (url === "/image" && req.method === "POST") {
+      const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+      if (limited(ip)) { res.statusCode = 429; return res.end(JSON.stringify({ error: "Too many requests, slow down." })); }
+      let raw = "";
+      for await (const ch of req) { raw += ch; if (raw.length > 400_000) { res.statusCode = 413; return res.end(JSON.stringify({ error: "Image is too large." })); } }
+      let body;
+      try { body = JSON.parse(raw); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad request" })); }
+      const base = `${String(req.headers["x-forwarded-proto"] || "http").split(",")[0]}://${req.headers.host}`; // Railway sends https
+      try { return res.end(JSON.stringify(await relayer.saveImage(body, base))); }
+      catch (e) { res.statusCode = e.status || 500; return res.end(JSON.stringify({ error: e.status ? e.message : "Upload failed, please try again." })); }
+    }
     if (url === "/relay" && req.method === "POST") {
       const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
       if (limited(ip)) { res.statusCode = 429; return res.end(JSON.stringify({ error: "Too many requests, slow down." })); }
