@@ -15,7 +15,7 @@ export function db() {
 
 // Our launchpad runs on testnets for now; other DEX coins come from mainnets.
 export const OWN_CHAINS = [84532, 46630];
-export const chainName = (id: number): Chain => (id === 8453 || id === 84532 ? "Base" : id === 56 || id === 97 ? "BNB" : "Robinhood");
+export const chainName = (id: number): Chain => (id === 8453 || id === 84532 ? "Base" : id === 56 || id === 97 ? "BNB" : id === 5042 ? "Arc" : "Robinhood");
 export const isOwnChain = (id: number) => OWN_CHAINS.includes(id);
 
 // ---------------------------------------------------------------- formatting
@@ -111,7 +111,7 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
   const limit = opts.limit ?? 50, from = opts.offset ?? 0;
   const ownTab = tab === "Launched here" || tab === "Bonding" || tab === "Graduated";
   const ownIds = opts.chain ? OWN_CHAINS.filter((c) => chainName(c) === opts.chain) : OWN_CHAINS;
-  const extIds = opts.chain === "Base" ? [8453] : opts.chain === "Robinhood" ? [4663] : opts.chain === "BNB" ? [56] : [8453, 4663, 56];
+  const extIds = opts.chain === "Base" ? [8453] : opts.chain === "Robinhood" ? [4663] : opts.chain === "BNB" ? [56] : opts.chain === "Arc" ? [5042] : [8453, 4663, 56, 5042];
   const words = opts.cat ? CAT_WORDS[opts.cat] : null;
   const like = (col: string) => (words ? words.map((w) => `${col}.ilike.*${w}*`).join(",") : null);
 

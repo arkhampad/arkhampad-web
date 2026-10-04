@@ -31,7 +31,7 @@ export function Spark({ vals, up, w = 120, h = 40, height, fill = true, stroke =
 }
 
 export function ChainTag({ chain }: { chain: Chain }) {
-  return (<span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span className="dot" style={{ background: chain === "Base" ? "var(--base)" : chain === "BNB" ? "var(--bnb)" : "var(--rh)" }} />{chain}</span>);
+  return (<span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span className="dot" style={{ background: chain === "Base" ? "var(--base)" : chain === "BNB" ? "var(--bnb)" : chain === "Arc" ? "var(--arc)" : "var(--rh)" }} />{chain}</span>);
 }
 
 export function Chg({ n }: { n: number }) {

@@ -119,7 +119,7 @@ export function CoinRows({ list }: { list: Coin[] }) {
           <Avatar name={c.name} c1={c.c1} c2={c.c2} size={42} img={c.image} />
           <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
             <span style={{ fontWeight: 700, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
-            <span className="mono dim" style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}><span className="dot" style={{ width: 6, height: 6, background: c.chain === "Base" ? "var(--base)" : c.chain === "BNB" ? "var(--bnb)" : "var(--rh)" }} />{c.tick} · {c.age}</span>
+            <span className="mono dim" style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}><span className="dot" style={{ width: 6, height: 6, background: c.chain === "Base" ? "var(--base)" : c.chain === "BNB" ? "var(--bnb)" : c.chain === "Arc" ? "var(--arc)" : "var(--rh)" }} />{c.tick} · {c.age}</span>
           </span>
           <span style={{ width: 58 }}><Spark vals={c.spark} up={c.chg >= 0} height={26} fill={false} stroke={2.4} /></span>
           <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, minWidth: 80 }}>

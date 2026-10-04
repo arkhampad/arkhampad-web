@@ -1,5 +1,5 @@
 // Sample data for the design build. Replaced by live data from the indexer in a later package.
-export type Chain = "Robinhood" | "Base" | "BNB";
+export type Chain = "Robinhood" | "Base" | "BNB" | "Arc";
 export type Coin = {
   id: string; name: string; tick: string; chain: Chain; age: string;
   price: string; chg: number; mc: string; vol: string; liq: string;

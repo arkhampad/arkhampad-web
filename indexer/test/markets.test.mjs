@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import { rowsFromPools, updatesFromPairs, upsertTokens, applyUpdates, plumbing } from "../markets.mjs";
+import { rowsFromPools, updatesFromPairs, upsertTokens, applyUpdates, plumbing, dedupe } from "../markets.mjs";
 
 const NET = { id: "base", chainId: 8453 };
 const A = "0x1111111111111111111111111111111111111111";
@@ -66,5 +66,18 @@ test("database: upsert, update, spark history capped at 48", { skip: !url }, asy
   assert.equal(Number(rows[0].first), 0.013);
   assert.equal(Number(rows[0].v), 60);
   assert.equal(rows[0].tr, 1); // kept from the trending pass
+  await db.end();
+});
+
+test("the same token twice in one batch is stored once (keeps best rank and deepest pool)", { skip: !url }, async () => {
+  const db = new pg.Pool({ connectionString: url });
+  await db.query("delete from ext_tokens");
+  const page1 = rowsFromPools(GT_JSON, NET, 0);
+  const page2 = rowsFromPools({ ...GT_JSON, data: [pool("0xp9", A, 500000)] }, NET, 20);
+  assert.equal(dedupe([...page1, ...page2]).length, 1);
+  assert.equal(await upsertTokens(db, [...page1, ...page2]), 1);
+  const { rows } = await db.query("select pool, trending_rank from ext_tokens");
+  assert.equal(rows[0].pool, "0xp9");
+  assert.equal(rows[0].trending_rank, 1);
   await db.end();
 });

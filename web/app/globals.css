@@ -2,7 +2,7 @@
   --bg: #0A0B10; --bg2: #0D0E13; --card: #11131A; --raise: #161922; --line: #1C1F28; --line2: #262A35; --line3: #2E3340;
   --text: #F2F3F5; --text2: #C9CDD4; --muted: #A9AFBA; --dim: #8A909C; --faint: #7E8592;
   --volt: #D4FF3A; --mint: #5CFFB0; --up: #3DDC97; --down: #FF6B6B; --warn: #FFB43C; --burn: #FF8A3D;
-  --rh: #CCFF4D; --base: #5B8CFF; --bnb: #F0B90B; --usdc: #2775CA;
+  --rh: #CCFF4D; --base: #5B8CFF; --bnb: #F0B90B; --arc: #9B8CFF; --usdc: #2775CA;
   --sans: "Geist Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --mono: "Geist Mono", ui-monospace, Menlo, Consolas, monospace;
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);

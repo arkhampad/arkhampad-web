@@ -127,7 +127,21 @@ export function updatesFromPairs(pairs) {
 
 const COLS = ["chain_id", "address", "network", "pool", "dex", "name", "symbol", "image", "price_usd", "mcap_usd", "fdv_usd", "liq_usd", "vol_24h", "change_5m", "change_1h", "change_24h", "vol_1h", "txns_5m", "buys_24h", "sells_24h", "pool_created", "trending_rank"];
 
+/** One row per token: a token can show up on several pages or pools in one batch. */
+export function dedupe(rows) {
+  const best = new Map();
+  for (const r of rows) {
+    const k = `${r.chain_id}:${r.address}`;
+    const c = best.get(k);
+    const rank = c ? (c.trending_rank === null ? r.trending_rank : r.trending_rank === null ? c.trending_rank : Math.min(c.trending_rank, r.trending_rank)) : r.trending_rank;
+    if (!c || (r.liq_usd ?? 0) > (c.liq_usd ?? 0)) best.set(k, { ...r, trending_rank: rank ?? null });
+    else c.trending_rank = rank ?? null;
+  }
+  return [...best.values()];
+}
+
 export async function upsertTokens(pool, rows) {
+  rows = dedupe(rows);
   if (!rows.length) return 0;
   const vals = [], params = [];
   rows.forEach((r, i) => {
@@ -177,6 +191,7 @@ async function findNetworks() {
     for (const n of list) {
       const name = `${n?.id ?? ""} ${n?.attributes?.name ?? ""}`;
       if (/robinhood/i.test(name) && !/test/i.test(name) && !nets.some((x) => x.chainId === 4663)) nets.push({ id: n.id, chainId: 4663, ds: null });
+      if (/^arc\b|arc network|arc mainnet/i.test(`${n?.attributes?.name ?? ""}`) && !/test/i.test(name) && !nets.some((x) => x.chainId === 5042)) nets.push({ id: n.id, chainId: 5042, ds: null });
     }
     if (list.length < 100) break;
   }
@@ -199,21 +214,28 @@ const networks = () => (netsPromise ??= findNetworks().then((n) => { log(`networ
 
 async function discoverLoop(pool) {
   const nets = await networks();
+  // every network is crawled side by side, so a big chain never starves the others
+  await Promise.all(nets.map((net) => crawlNetwork(pool, net)));
+}
+
+async function crawlNetwork(pool, net) {
   for (;;) {
-    for (const net of nets) {
+    try {
       const dexes = await dexesOf(net);
       for (const dex of dexes) {
         for (const sort of ["h24_volume_usd_desc", "h24_tx_count_desc"]) {
           for (let page = 1; page <= 10; page++) {
             const j = await gt(`/networks/${net.id}/dexes/${dex}/pools?include=base_token&sort=${sort}&page=${page}`).catch(() => null);
-            const rows = rowsFromPools(j, net);
-            await upsertTokens(pool, rows);
+            await upsertTokens(pool, rowsFromPools(j, net));
             if ((j?.data ?? []).length < 20) break; // last page of this dex
           }
         }
       }
       const { rows } = await pool.query("select count(*)::int n from ext_tokens where chain_id = $1", [net.chainId]);
       log(`${net.id}: ${rows[0].n} coins after a full pass over ${dexes.length} DEXs`);
+    } catch (e) {
+      log(`crawl ${net.id} error: ${e.message}`);
+      await sleep(30_000);
     }
   }
 }
@@ -223,6 +245,7 @@ async function hotLoop(pool, nets) {
   for (;;) {
     const started = Date.now();
     for (const net of nets) {
+      try {
       const rows = [];
       for (let page = 1; page <= 3; page++) {
         const j = await gt(`/networks/${net.id}/trending_pools?include=base_token&duration=5m&page=${page}`).catch(() => null);
@@ -240,6 +263,9 @@ async function hotLoop(pool, nets) {
       }
       const j = await gt(`/networks/${net.id}/new_pools?include=base_token&page=1`).catch(() => null);
       await upsertTokens(pool, rowsFromPools(j, net));
+      } catch (e) {
+        log(`hot ${net.id} error: ${e.message}`);
+      }
     }
     await sleep(Math.max(5_000, 60_000 - (Date.now() - started)));
   }
