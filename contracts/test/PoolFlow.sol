@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
@@ -180,8 +180,11 @@ abstract contract PoolFlow is Test {
 
     /// Gasless: a user with only USDC (no ETH) permits, launches, buys and sells through the router.
     function _flow_gasless() internal {
-        uint256 pk = 0xC0FFEE;
+        // A fresh, unguessable key: well-known test keys (like 0xC0FFEE) can hold
+        // EIP-7702 delegations on real networks, which changes how USDC checks signatures.
+        uint256 pk = uint256(keccak256(abi.encode("arkhampad gasless test user", block.chainid)));
         address u = vm.addr(pk);
+        assertEq(u.code.length, 0, "test user must be a plain wallet");
         address relayer = address(0x5E1A);
         _fund(u, 500e6);
         assertEq(u.balance, 0, "user has no ETH");
@@ -223,7 +226,10 @@ abstract contract PoolFlow is Test {
         uint256 dl = vm.getBlockTimestamp() + 1 hours;
         bytes32 sh = keccak256(abi.encode(PERMIT, owner, address(router), type(uint256).max, IPermitView(token).nonces(owner), dl));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, keccak256(abi.encodePacked("\x19\x01", IPermitView(token).DOMAIN_SEPARATOR(), sh)));
-        router.permit(token, owner, type(uint256).max, dl, v, r, s);
+        // Call the token directly first so a failure shows the token's own reason.
+        try IPermitCall(token).permit(owner, address(router), type(uint256).max, dl, v, r, s) {}
+        catch Error(string memory reason) { revert(string.concat("permit failed: ", reason)); }
+        catch (bytes memory data) { console2.logBytes(data); revert("permit failed (no reason)"); }
         assertEq(IERC20(token).allowance(owner, address(router)), type(uint256).max, "permit worked");
     }
 
@@ -235,6 +241,10 @@ abstract contract PoolFlow is Test {
         vm.stopPrank();
         vm.revertToState(snap);
     }
+}
+
+interface IPermitCall {
+    function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external;
 }
 
 interface IPermitView {
