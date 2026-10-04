@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { IAlert, IX } from "./icons";
+import { BrandMark } from "./bits";
 
 function Overlay({ onClose, label, children, wide }: { onClose: () => void; label: string; children: React.ReactNode; wide?: boolean }) {
   useEffect(() => {
@@ -24,7 +25,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
     <Overlay onClose={onClose} label="Mainnet soon">
       <div style={{ display: "flex", justifyContent: "flex-end" }}><Close onClose={onClose} /></div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12, marginTop: -18 }}>
-        <span className="logo-mark" style={{ width: 44, height: 44, borderRadius: 14 }}><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="#0A0B10" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11 L8 5 L13 11" /></svg></span>
+        <BrandMark size={52} />
         <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt)", fontWeight: 800 }}><span className="dot" style={{ background: "var(--volt)" }} />Testnet live</span>
         <h2 style={{ margin: 0, fontSize: 30, fontWeight: 900, letterSpacing: -0.8 }}>Mainnet soon</h2>
         <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>Sign-ups, launching and trading open very soon. Follow us on X and turn on notifications 🔔 so you don&apos;t miss the launch.</p>
@@ -54,6 +55,7 @@ export function WelcomeModal({ onClose }: { onClose: () => void }) {
     <Overlay onClose={onClose} label="Welcome to ArkhamPad">
       <div style={{ display: "flex", justifyContent: "flex-end" }}><Close onClose={onClose} /></div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, marginTop: -18 }}>
+        <BrandMark size={56} />
         <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt)", fontWeight: 800, fontSize: 13 }}><span className="dot" style={{ background: "var(--volt)" }} />Testnet live</span>
         <h2 style={{ margin: 0, fontSize: 34, fontWeight: 900, letterSpacing: -1, lineHeight: 1.05 }}>Mainnet is coming soon</h2>
         <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>Create a coin with one sentence and trade thousands with USDC. Follow <b style={{ color: "var(--text)" }}>@Arkhampad</b> on X for the latest updates and turn on notifications 🔔 to be first at launch.</p>

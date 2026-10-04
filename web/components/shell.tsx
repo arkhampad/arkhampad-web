@@ -1,4 +1,5 @@
 "use client";
+import { BrandMark } from "./bits";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
@@ -13,7 +14,7 @@ export const useApp = () => useContext(AppCtx);
 export function Logo() {
   return (
     <Link href="/" className="logo" aria-label="ArkhamPad home">
-      <span className="logo-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#0A0B10" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11 L8 5 L13 11" /></svg></span>
+      <BrandMark size={34} />
       <span className="logo-text">ArkhamPad</span>
     </Link>
   );

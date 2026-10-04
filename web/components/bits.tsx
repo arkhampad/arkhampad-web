@@ -49,3 +49,28 @@ export function FrogArt({ c1 = "#1B1F6B", c2 = "#7C5CFF" }: { c1?: string; c2?: 
     </svg>
   );
 }
+
+/** ArkhamPad mark: chrome A with an orbit ring. */
+export function BrandMark({ size = 32, tile = true }: { size?: number; tile?: boolean }) {
+  const id = useId().replace(/:/g, "");
+  const svg = (
+    <svg width={tile ? Math.round(size * 0.82) : size} height={tile ? Math.round(size * 0.82) : size} viewBox="0 0 100 100" aria-hidden="true">
+      <defs>
+        <linearGradient id={`${id}c`} x1="0.1" y1="0" x2="0.5" y2="1">
+          <stop offset="0" stopColor="#FFFFFF" /><stop offset="0.28" stopColor="#DCE1EA" /><stop offset="0.5" stopColor="#8790A3" /><stop offset="0.68" stopColor="#F5F7FB" /><stop offset="1" stopColor="#5D6577" />
+        </linearGradient>
+        <linearGradient id={`${id}o`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#5CFFB0" stopOpacity="0.2" /><stop offset="0.6" stopColor="#D4FF3A" /><stop offset="1" stopColor="#D4FF3A" stopOpacity="0.4" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="50" cy="60" rx="44" ry="13" fill="none" stroke={`url(#${id}o)`} strokeWidth="4" transform="rotate(-14 50 60)" opacity="0.55" />
+      <path d="M50 8 L86 90 L68 90 L50 46 L32 90 L14 90 Z" fill={`url(#${id}c)`} />
+      <path d="M8 66 Q50 82 92 54" fill="none" stroke={`url(#${id}o)`} strokeWidth="4" strokeLinecap="round" transform="rotate(-4 50 60)" />
+      <circle cx="90" cy="52" r="4.5" fill="#D4FF3A" />
+    </svg>
+  );
+  if (!tile) return svg;
+  return (
+    <span style={{ width: size, height: size, borderRadius: Math.round(size * 0.28), background: "radial-gradient(circle at 30% 20%, #232838, #05060A 72%)", border: "1px solid #262A35", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{svg}</span>
+  );
+}
