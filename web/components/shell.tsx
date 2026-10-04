@@ -20,6 +20,26 @@ export function Logo() {
   );
 }
 
+function ThemeButton() {
+  const [light, setLight] = useState(false);
+  useEffect(() => { setLight(document.documentElement.dataset.theme === "light"); }, []);
+  const flip = () => {
+    const next = light ? "dark" : "light";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("ap_theme", next); } catch { /* storage off */ }
+    setLight(!light);
+  };
+  return (
+    <button type="button" className="icon-btn theme-btn" aria-label={light ? "Switch to dark mode" : "Switch to light mode"} title={light ? "Dark mode" : "Light mode"} onClick={flip}>
+      {light ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2 12h2.2M19.8 12H22M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6" /></svg>
+      )}
+    </button>
+  );
+}
+
 const NAV = [["/", "Discover"], ["/terminal/", "Terminal"], ["/traders/", "Traders"], ["/analytics/", "Analytics"], ["/learn/", "Learn"]] as const;
 
 function Ticker() {
@@ -71,7 +91,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider value={ctx}>
-      <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--bg)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}>Testnet live · Mainnet soon · Follow @Arkhampad on X for the latest updates →</a>
+      <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--on-volt)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}>Testnet live · Mainnet soon · Follow @Arkhampad on X for the latest updates →</a>
       <Ticker />
       <header className="hdr">
         <div className="wrap hdr-in">
@@ -85,6 +105,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <input type="search" placeholder="Search coins, traders or contract address" />
           </label>
           <span style={{ flex: 1 }} className="show-m" />
+          <ThemeButton />
           <Link href="/alerts/" className="icon-btn" aria-label="Alerts"><IBell size={18} color="var(--text2)" /></Link>
           <Link href="/create/" className="btn volt hide-m">Create coin</Link>
           <button type="button" className="btn white" onClick={() => setLogin(true)}>Log in</button>

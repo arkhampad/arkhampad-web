@@ -12,7 +12,7 @@ const OPTS = [
   { name: "Orbit Toad", tick: "OTOAD", desc: "Zero gravity, zero panic. This toad buys dips from low orbit.", c1: "#3B1B0B", c2: "#FF8A3D" },
 ];
 const Step = ({ n, t }: { n: number; t: string }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 10 }}><span className="mono" style={{ width: 26, height: 26, borderRadius: 8, background: "var(--volt)", color: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{n}</span><span style={{ fontWeight: 800, fontSize: 18, letterSpacing: -0.3 }}>{t}</span></div>
+  <div style={{ display: "flex", alignItems: "center", gap: 10 }}><span className="mono" style={{ width: 26, height: 26, borderRadius: 8, background: "var(--volt)", color: "var(--on-volt)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{n}</span><span style={{ fontWeight: 800, fontSize: 18, letterSpacing: -0.3 }}>{t}</span></div>
 );
 const Label = ({ t, sub }: { t: string; sub?: string }) => <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontWeight: 700, fontSize: 14 }}>{t}</span>{sub && <span style={{ fontSize: 12, color: "var(--faint)" }}>{sub}</span>}</div>;
 
@@ -29,6 +29,7 @@ function CreateView() {
   const [fee, setFee] = useState("burn");
   const [boost, setBoost] = useState("none");
   const [first, setFirst] = useState(0);
+  const [links, setLinks] = useState(false);
   const [done, setDone] = useState(false);
   const o = OPTS[pick];
   const choose = (i: number) => { setPick(i); setName(OPTS[i].name); setTick(OPTS[i].tick); setDesc(OPTS[i].desc); };
@@ -38,7 +39,7 @@ function CreateView() {
 
   if (done) return (
     <div className="wrap page" style={{ maxWidth: 680 }}>
-      <div className="card" style={{ background: "#0F1117", borderRadius: 22, padding: 20, gap: 16 }}>
+      <div className="card" style={{ background: "var(--card)", borderRadius: 22, padding: 20, gap: 16 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10 }}>
           <span style={{ width: 92, height: 92, borderRadius: 26, overflow: "hidden", boxShadow: "0 20px 60px rgba(124,92,255,0.35)" }}><FrogArt c1={o.c1} c2={o.c2} /></span>
           <h1 style={{ margin: 0, fontSize: 32, fontWeight: 900, letterSpacing: -1 }}>{name} is live!</h1>
@@ -48,7 +49,7 @@ function CreateView() {
           <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}><span style={{ fontSize: 11, color: "var(--faint)" }}>Contract address (CA)</span><span className="mono" style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ca}</span></span>
           <button type="button" className="btn volt" onClick={() => copy(ca, "Contract address copied")}><ICopy size={15} color="#0A0B10" />Copy CA</button>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700, fontSize: 14, display: "flex", gap: 6, alignItems: "center" }}><ISpark size={14} color="var(--volt)" />AI wrote your post</span><button type="button" className="btn ghost sm">Rewrite</button></div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700, fontSize: 14, display: "flex", gap: 6, alignItems: "center" }}><ISpark size={14} color="var(--volt-ink)" />AI wrote your post</span><button type="button" className="btn ghost sm">Rewrite</button></div>
         <div style={{ padding: "14px 16px", borderRadius: 16, background: "var(--bg)", border: "1px solid var(--line2)", fontSize: 14, lineHeight: 1.55, color: "#E3E5E9", whiteSpace: "pre-line", wordBreak: "break-word" }}>{post}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <a className="btn white" style={{ flex: "1 1 120px", height: 50 }} href={`https://x.com/intent/post?text=${encodeURIComponent(post)}`} target="_blank" rel="noopener noreferrer"><IX size={15} color="#0A0B10" w={2.4} />Post on X</a>
@@ -65,64 +66,81 @@ function CreateView() {
 
   return (
     <div className="wrap page" style={{ maxWidth: 1240, paddingBottom: 150 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <span className="pill" style={{ alignSelf: "flex-start", border: "1px solid var(--line2)", color: "var(--text2)" }}><ISpark size={14} color="var(--volt)" />Create with AI</span>
-        <h1 className="h-title">One sentence. One coin.</h1>
-        <p className="h-sub">Write your idea in any language. AI makes the name, ticker, story and image.</p>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <h1 style={{ margin: 0, fontSize: "clamp(24px, 3vw, 32px)", fontWeight: 900, letterSpacing: -0.8 }}>One sentence. One coin.</h1>
+        <p className="h-sub" style={{ fontSize: 14 }}>Any language. AI makes the name, ticker, story and image.</p>
       </div>
       <div className="row">
-        <div className="main-col card" style={{ background: "#0F1117", borderRadius: 22, padding: 20, gap: 16 }}>
+        <div className="main-col card" style={{ background: "var(--card)", borderRadius: 22, padding: 16, gap: 12 }}>
           <Step n={1} t="Describe it" />
-          <label htmlFor="cidea" className="muted" style={{ fontSize: 13 }}>Describe your coin in any language</label>
-          <div style={{ borderRadius: 16, background: "var(--bg)", border: "1px solid var(--line3)", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <label htmlFor="cidea" className="sr">Describe your coin in any language</label>
+          <div style={{ borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line3)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             <textarea id="cidea" rows={2} value={idea} onChange={(e) => setIdea(e.target.value)} style={{ resize: "none", background: "transparent", border: 0, outline: "none", fontSize: 16, fontWeight: 500, lineHeight: 1.5 }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span className="pill mono" style={{ background: "#161922", color: "var(--muted)", fontSize: 11 }}><IGlobe size={12} />Any language → English coin</span>
+              <span className="pill mono" style={{ background: "var(--raise)", color: "var(--muted)", fontSize: 11 }}><IGlobe size={12} />Any language → English coin</span>
               <button type="button" className="btn volt"><ISpark size={15} color="#0A0B10" />Regenerate</button>
             </div>
           </div>
-          <div className="opts">
+          <div className="grid3" style={{ gap: 8 }}>
             {OPTS.map((x, i) => (
-              <button key={x.tick} type="button" onClick={() => choose(i)} style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 18, border: pick === i ? "2px solid var(--volt)" : "1px solid var(--line2)", background: "var(--card)", minWidth: 0 }}>
-                <span style={{ display: "block", aspectRatio: "1 / 1", borderRadius: 14, overflow: "hidden" }}><FrogArt c1={x.c1} c2={x.c2} /></span>
-                <span style={{ display: "flex", justifyContent: "space-between", gap: 6 }}><span style={{ fontWeight: 800, fontSize: 15 }}>{x.name}</span><span className="mono volt" style={{ fontWeight: 700, fontSize: 12 }}>${x.tick}</span></span>
-                <span className="muted" style={{ fontSize: 12, lineHeight: 1.45 }}>{x.desc}</span>
+              <button key={x.tick} type="button" onClick={() => choose(i)} style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 14, border: pick === i ? "2px solid var(--volt)" : "1px solid var(--line2)", background: pick === i ? "rgba(212,255,58,0.06)" : "var(--bg)", minWidth: 0 }}>
+                <span style={{ width: 52, height: 52, borderRadius: 12, overflow: "hidden", flex: "none" }}><FrogArt c1={x.c1} c2={x.c2} /></span>
+                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                  <span style={{ fontWeight: 800, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.name}</span>
+                  <span className="mono volt" style={{ fontWeight: 700, fontSize: 11 }}>${x.tick}</span>
+                </span>
               </button>
             ))}
           </div>
           <div style={{ height: 1, background: "var(--line)" }} />
           <Step n={2} t="Make it yours" />
-          <div className="grid2" style={{ gap: 10 }}>
+          <div className="grid2" style={{ gap: 8 }}>
             <div className="field"><label htmlFor="cn">Name</label><input id="cn" className="inp" value={name} maxLength={32} onChange={(e) => setName(e.target.value)} /></div>
             <div className="field"><label htmlFor="ct">Ticker</label><input id="ct" className="inp mono" value={tick} maxLength={10} onChange={(e) => setTick(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} /></div>
           </div>
           <div className="field"><label htmlFor="cd">Description</label><textarea id="cd" rows={2} className="inp" value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" className="btn ghost sm"><ISpark size={14} color="var(--volt)" />New image</button><button type="button" className="btn ghost sm">Upload my own image</button></div>
-          <div className="grid3" style={{ gap: 8 }}>
-            <div className="field"><label htmlFor="cx">X (optional)</label><input id="cx" className="inp" placeholder="x.com/yourcoin" /></div>
-            <div className="field"><label htmlFor="ctg">Telegram (optional)</label><input id="ctg" className="inp" placeholder="t.me/yourcoin" /></div>
-            <div className="field"><label htmlFor="cw">Website (optional)</label><input id="cw" className="inp" placeholder="yourcoin.com" /></div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" className="btn ghost sm"><ISpark size={14} color="var(--volt-ink)" />New image</button>
+            <button type="button" className="btn ghost sm">Upload image</button>
+            <button type="button" className="btn ghost sm" aria-expanded={links} onClick={() => setLinks(!links)}>{links ? "Hide links" : "+ Add links (optional)"}</button>
           </div>
+          {links && (
+            <div className="grid3" style={{ gap: 8 }}>
+              <div className="field"><label htmlFor="cx">X</label><input id="cx" className="inp" placeholder="x.com/yourcoin" /></div>
+              <div className="field"><label htmlFor="ctg">Telegram</label><input id="ctg" className="inp" placeholder="t.me/yourcoin" /></div>
+              <div className="field"><label htmlFor="cw">Website</label><input id="cw" className="inp" placeholder="yourcoin.com" /></div>
+            </div>
+          )}
           <div style={{ height: 1, background: "var(--line)" }} />
           <Step n={3} t="Launch settings" />
+          <div className="grid2" style={{ gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Label t="Chain" sub="pick one" />
           <div className="grid2 keep" style={{ gap: 8 }}>
             {[["Robinhood", "var(--rh)"], ["Base", "var(--base)"]].map(([n, col]) => (
-              <button key={n} type="button" onClick={() => setChain(n)} className="seg" style={{ height: 54, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 700, fontSize: 14, border: chain === n ? `2px solid ${col}` : undefined }}><span className="dot" style={{ width: 10, height: 10, background: col }} />{n}</button>
+              <button key={n} type="button" onClick={() => setChain(n)} className="seg" style={{ height: 46, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 700, fontSize: 14, border: chain === n ? `2px solid ${col}` : undefined }}><span className="dot" style={{ width: 10, height: 10, background: col }} />{n}</button>
             ))}
           </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Label t="Creator lock" sub="shows buyers you won't dump" />
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{["No lock", "Lock 1h", "Lock 24h"].map((t) => <button key={t} type="button" className={`seg${lock === t ? " on" : ""}`} onClick={() => setLock(t)}>{t}</button>)}</div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Label t="Creator fees" />
           <div className="grid2 keep" style={{ gap: 8 }}>
-            <button type="button" onClick={() => setFee("you")} style={{ textAlign: "left", padding: 14, borderRadius: 14, border: fee === "you" ? "1px solid var(--volt)" : "1px solid var(--line2)", background: fee === "you" ? "rgba(212,255,58,0.08)" : "transparent", display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontWeight: 700, fontSize: 14 }}>To you</span><span className="dim" style={{ fontSize: 12, lineHeight: 1.4 }}>Creator fees go to your balance.</span></button>
-            <button type="button" onClick={() => setFee("burn")} style={{ textAlign: "left", padding: 14, borderRadius: 14, border: fee === "burn" ? "1px solid var(--burn)" : "1px solid var(--line2)", background: fee === "burn" ? "rgba(255,138,61,0.08)" : "transparent", display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontWeight: 700, fontSize: 14, display: "flex", gap: 6, alignItems: "center" }}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</span><span className="dim" style={{ fontSize: 12, lineHeight: 1.4 }}>Fees buy your coin and burn it.</span></button>
+            <button type="button" onClick={() => setFee("you")} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: fee === "you" ? "1px solid var(--volt)" : "1px solid var(--line2)", background: fee === "you" ? "rgba(212,255,58,0.08)" : "transparent", display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontWeight: 700, fontSize: 14 }}>To you</span><span className="dim" style={{ fontSize: 12, lineHeight: 1.4 }}>Creator fees go to your balance.</span></button>
+            <button type="button" onClick={() => setFee("burn")} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: fee === "burn" ? "1px solid var(--burn)" : "1px solid var(--line2)", background: fee === "burn" ? "rgba(255,138,61,0.08)" : "transparent", display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontWeight: 700, fontSize: 14, display: "flex", gap: 6, alignItems: "center" }}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</span><span className="dim" style={{ fontSize: 12, lineHeight: 1.4 }}>Fees buy your coin and burn it.</span></button>
           </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Label t="Boost" sub="optional" />
           <div className="grid3" style={{ gap: 8, gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
             {[["none", "No boost", ""], ["10", "$10", "6 hours on top"], ["20", "$20", "24 hours on top"]].map(([k, a, b]) => (
-              <button key={k} type="button" onClick={() => setBoost(k)} className={`seg${boost === k ? " on" : ""}`} style={{ height: 64, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, minWidth: 0 }}><span className={b ? "mono" : ""} style={{ fontWeight: 700, fontSize: b ? 15 : 13 }}>{a}</span>{b && <span className="dim" style={{ fontSize: 11 }}>{b}</span>}</button>
+              <button key={k} type="button" onClick={() => setBoost(k)} className={`seg${boost === k ? " on" : ""}`} style={{ height: 52, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, minWidth: 0 }}><span className={b ? "mono" : ""} style={{ fontWeight: 700, fontSize: b ? 15 : 13 }}>{a}</span>{b && <span className="dim" style={{ fontSize: 11 }}>{b}</span>}</button>
             ))}
+          </div>
+            </div>
           </div>
         </div>
         <aside className="side-col" style={{ position: "sticky", top: 90 }}>
@@ -142,7 +160,7 @@ function CreateView() {
           </div>
         </aside>
       </div>
-      <div className="show-m" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(74px + var(--safe-bottom))", zIndex: 25, padding: "10px 16px", background: "rgba(10,11,16,0.97)", borderTop: "1px solid #1B1E25" }}>
+      <div className="show-m" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(74px + var(--safe-bottom))", zIndex: 25, padding: "10px 16px", background: "var(--bar-bg)", borderTop: "1px solid var(--line)" }}>
         <button type="button" className="btn volt lg" style={{ width: "100%", fontWeight: 900 }} onClick={openLogin}>Launch {name || "coin"} · {boost === "none" ? "Free" : `$${boost}`}</button>
       </div>
       <button type="button" className="sr" onClick={openLogin}>Log in</button>

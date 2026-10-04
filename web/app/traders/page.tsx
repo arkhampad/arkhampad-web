@@ -23,7 +23,7 @@ export default function Traders() {
           <div className="hscroll" style={{ gap: 6 }}>{["All chains", "Robinhood", "Base"].map((t) => <button key={t} type="button" className={`chip sm${chain === t ? " on" : ""}`} onClick={() => setChain(t)}>{t}</button>)}</div>
         </div>
       </div>
-      <div className="ai-note"><ISpark size={16} color="var(--volt)" /><span><b>AI insight:</b> alphawolf has the steadiest results this month, with small losses and few big swings. mira.eth wins big but takes more risk.</span></div>
+      <div className="ai-note"><ISpark size={16} color="var(--volt-ink)" /><span><b>AI insight:</b> alphawolf has the steadiest results this month, with small losses and few big swings. mira.eth wins big but takes more risk.</span></div>
       <div className="grid3 hide-m">{top.map((t) => <Podium key={t.name} t={t} onFollow={openLogin} />)}</div>
       <div className="hscroll show-m" style={{ gap: 12, margin: "0 -16px", padding: "0 16px" }}>{top.map((t) => <div key={t.name} style={{ flex: "none", width: 280 }}><Podium t={t} onFollow={openLogin} /></div>)}</div>
       <div className="row">
@@ -61,7 +61,7 @@ export default function Traders() {
           <div className="card">
             <span style={{ fontWeight: 800, fontSize: 16 }}>Copy in one tap</span>
             {[["Follow a trader", "Pick someone whose results you like."], ["Get an alert", "When they buy, you get a notification on web and phone."], ["Tap Copy", "Buy the same coin with your preset amount."]].map(([a, b], i) => (
-              <div key={a} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}><span className="mono volt" style={{ width: 28, height: 28, flex: "none", borderRadius: 9, background: "#1E2129", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{i + 1}</span><span style={{ display: "flex", flexDirection: "column", gap: 2 }}><b style={{ fontSize: 14 }}>{a}</b><span className="dim" style={{ fontSize: 12, lineHeight: 1.45 }}>{b}</span></span></div>
+              <div key={a} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}><span className="mono volt" style={{ width: 28, height: 28, flex: "none", borderRadius: 9, background: "var(--raise2)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{i + 1}</span><span style={{ display: "flex", flexDirection: "column", gap: 2 }}><b style={{ fontSize: 14 }}>{a}</b><span className="dim" style={{ fontSize: 12, lineHeight: 1.45 }}>{b}</span></span></div>
             ))}
             <span className="dim" style={{ fontSize: 12 }}>My copy amount</span>
             <div style={{ display: "flex", gap: 6 }}>{[10, 25, 50, 100].map((v) => <button key={v} type="button" className={`seg mono${copyAmt === v ? " on" : ""}`} style={{ height: 38, minWidth: 0 }} onClick={() => setCopyAmt(v)}>${v}</button>)}</div>
@@ -74,7 +74,7 @@ export default function Traders() {
 
 function Podium({ t, onFollow }: { t: (typeof traders)[number]; onFollow: () => void }) {
   return (
-    <div className="card" style={{ position: "relative", borderRadius: 24, padding: 20, gap: 14, borderColor: "#22252F", overflow: "hidden" }}>
+    <div className="card" style={{ position: "relative", borderRadius: 24, padding: 20, gap: 14, borderColor: "var(--line2)", overflow: "hidden" }}>
       <span className="mono" style={{ position: "absolute", top: 14, right: 16, fontWeight: 900, fontSize: 44, color: "#1C1F28" }}>#{t.rank}</span>
       <span style={{ display: "flex", alignItems: "center", gap: 12 }}><Avatar name={t.name} c1={t.c1} c2={t.c2} size={56} /><span style={{ display: "flex", flexDirection: "column", gap: 4 }}><b style={{ fontSize: 18 }}>{t.name}</b><span className="volt" style={{ alignSelf: "flex-start", padding: "3px 8px", borderRadius: 6, background: "rgba(212,255,58,0.10)", fontSize: 11, fontWeight: 600 }}>{t.badge}</span></span></span>
       <span style={{ display: "flex", flexDirection: "column", gap: 2 }}><span className="dim" style={{ fontSize: 12 }}>Profit · 7d</span><span className="mono up" style={{ fontWeight: 800, fontSize: 32, letterSpacing: -1 }}>{t.pnl}</span></span>

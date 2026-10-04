@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import type { Candle } from "./trade";
 
-const UP = "#3DDC97", DOWN = "#FF6B6B";
+const css = (name: string, fallback: string) => (typeof window === "undefined" ? fallback : getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback);
+function palette() {
+  return { up: css("--up", "#3DDC97"), down: css("--down", "#FF6B6B"), text: css("--dim", "#8A909C"), grid: css("--row", "#15171E"), line: css("--line", "#1B1E25"), cross: css("--line3", "#3A3F4B"), label: css("--raise2", "#1E2129") };
+}
 
 function fmt(v: number, mc: boolean): string {
   if (!Number.isFinite(v)) return "";
@@ -22,7 +25,7 @@ function fmt(v: number, mc: boolean): string {
 }
 
 /** `supply` turns prices into market cap (price × supply) for the MC view. */
-export default function TvChart({ candles, supply, height = 380 }: { candles: Candle[] | null; supply: number | null; height?: number }) {
+export default function TvChart({ candles, supply, height = 380, empty = "No trades yet for a chart." }: { candles: Candle[] | null; supply: number | null; height?: number; empty?: string }) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const candle = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -35,22 +38,30 @@ export default function TvChart({ candles, supply, height = 380 }: { candles: Ca
   // create once
   useEffect(() => {
     if (!box.current) return;
+    const p = palette();
     const c = createChart(box.current, {
       autoSize: true,
       localization: { locale: "en-US" },
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: "#8A909C", fontFamily: "var(--mono), ui-monospace, monospace", fontSize: 11, attributionLogo: false },
-      grid: { vertLines: { color: "#15171E" }, horzLines: { color: "#15171E" } },
-      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "#3A3F4B", labelBackgroundColor: "#1E2129" }, horzLine: { color: "#3A3F4B", labelBackgroundColor: "#1E2129" } },
-      rightPriceScale: { borderColor: "#1B1E25", scaleMargins: { top: 0.08, bottom: 0.24 } },
-      timeScale: { borderColor: "#1B1E25", timeVisible: true, secondsVisible: false, rightOffset: 4, barSpacing: 8 },
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: p.text, fontFamily: "var(--mono), ui-monospace, monospace", fontSize: 11, attributionLogo: false },
+      grid: { vertLines: { color: "var(--line)" }, horzLines: { color: "var(--line)" } },
+      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "#3A3F4B", labelBackgroundColor: "var(--raise2)" }, horzLine: { color: "#3A3F4B", labelBackgroundColor: "var(--raise2)" } },
+      rightPriceScale: { borderColor: "var(--line)", scaleMargins: { top: 0.08, bottom: 0.24 } },
+      timeScale: { borderColor: "var(--line)", timeVisible: true, secondsVisible: false, rightOffset: 4, barSpacing: 8 },
       handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
     });
-    candle.current = c.addSeries(CandlestickSeries, { upColor: UP, downColor: DOWN, borderUpColor: UP, borderDownColor: DOWN, wickUpColor: UP, wickDownColor: DOWN, priceLineVisible: true, priceLineStyle: 2 });
+    candle.current = c.addSeries(CandlestickSeries, { upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down, priceLineVisible: true, priceLineStyle: 2 });
     volume.current = c.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
     c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 }, visible: false });
     chart.current = c;
-    return () => { c.remove(); chart.current = null; candle.current = null; volume.current = null; lastKey.current = ""; };
+    // follow the light/dark switch
+    const mo = new MutationObserver(() => {
+      const q = palette();
+      c.applyOptions({ layout: { textColor: q.text }, grid: { vertLines: { color: q.grid }, horzLines: { color: q.grid } }, crosshair: { vertLine: { color: q.cross, labelBackgroundColor: q.label }, horzLine: { color: q.cross, labelBackgroundColor: q.label } }, rightPriceScale: { borderColor: q.line }, timeScale: { borderColor: q.line } });
+      candle.current?.applyOptions({ upColor: q.up, downColor: q.down, borderUpColor: q.up, borderDownColor: q.down, wickUpColor: q.up, wickDownColor: q.down });
+    });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => { mo.disconnect(); c.remove(); chart.current = null; candle.current = null; volume.current = null; lastKey.current = ""; };
   }, []);
 
   // data + price / market-cap view
@@ -76,18 +87,18 @@ export default function TvChart({ candles, supply, height = 380 }: { candles: Ca
 
   return (
     <div style={{ position: "relative" }}>
-      <div style={{ position: "absolute", top: 6, left: 8, zIndex: 3, display: "flex", gap: 2, background: "rgba(10,11,16,0.8)", borderRadius: 8, padding: 2 }}>
+      <div style={{ position: "absolute", top: 6, left: 8, zIndex: 3, display: "flex", gap: 2, background: "var(--hdr)", borderRadius: 8, padding: 2 }}>
         {(["MC", "Price"] as const).map((t) => {
           const on = (t === "MC") === useMc;
-          return <button key={t} type="button" disabled={t === "MC" && !mcOk} onClick={() => setMc(t === "MC")} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: 6, border: 0, background: on ? "#1E2129" : "transparent", color: on ? "var(--text)" : "var(--dim)", fontWeight: 600, fontSize: 11 }}>{t}</button>;
+          return <button key={t} type="button" disabled={t === "MC" && !mcOk} onClick={() => setMc(t === "MC")} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: 6, border: 0, background: on ? "var(--raise2)" : "transparent", color: on ? "var(--text)" : "var(--dim)", fontWeight: 600, fontSize: 11 }}>{t}</button>;
         })}
       </div>
-      <div ref={box} style={{ height, width: "100%" }} aria-label="Price chart" role="img" />
+      <div ref={box} className="tv-box" style={{ ["--tv-h" as string]: `${height}px`, width: "100%" }} aria-label="Price chart" role="img" />
       {candles && candles.length === 0 && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}><span className="dim" style={{ fontSize: 14 }}>No trades yet for a chart.</span></div>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}><span className="dim" style={{ fontSize: 14 }}>{empty}</span></div>
       )}
       {!candles && <div className="skel" style={{ position: "absolute", inset: 0, borderRadius: 12 }} />}
-      <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer" style={{ position: "absolute", left: 8, bottom: 2, fontSize: 9, color: "#3A3F4B", lineHeight: 1 }}>TradingView</a>
+      <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer" style={{ position: "absolute", left: 8, bottom: 2, fontSize: 9, color: "var(--line3)", lineHeight: 1 }}>TradingView</a>
     </div>
   );
 }

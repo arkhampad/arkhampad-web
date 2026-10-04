@@ -12,8 +12,8 @@ export default function Learn() {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, paddingTop: 12 }}>
         <h1 className="h-title" style={{ fontSize: "clamp(36px, 5vw, 52px)" }}>Learn</h1>
         <p className="h-sub" style={{ maxWidth: 560, fontSize: 17 }}>Short, clear guides to create, trade and stay safe. Or just ask.</p>
-        <form onSubmit={(e) => e.preventDefault()} style={{ width: "100%", maxWidth: 720, display: "flex", alignItems: "center", gap: 10, padding: "8px 8px 8px 16px", borderRadius: 16, background: "#12141B", border: "1px solid var(--line3)", flexWrap: "wrap" }}>
-          <ISpark size={18} color="var(--volt)" /><label htmlFor="lq" className="sr">Ask a question</label>
+        <form onSubmit={(e) => e.preventDefault()} style={{ width: "100%", maxWidth: 720, display: "flex", alignItems: "center", gap: 10, padding: "8px 8px 8px 16px", borderRadius: 16, background: "var(--field)", border: "1px solid var(--line3)", flexWrap: "wrap" }}>
+          <ISpark size={18} color="var(--volt-ink)" /><label htmlFor="lq" className="sr">Ask a question</label>
           <input id="lq" placeholder="Ask anything, e.g. how do I withdraw to my exchange?" style={{ flex: "1 1 200px", minWidth: 0, height: 44, background: "transparent", border: 0, outline: "none", fontSize: 15 }} />
           <button type="submit" className="btn volt">Ask AI</button>
         </form>

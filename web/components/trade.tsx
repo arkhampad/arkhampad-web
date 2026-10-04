@@ -18,7 +18,7 @@ export function CandleChart({ height = 340, seed = 3 }: { height?: number; seed?
   return (
     <div>
       <svg width="100%" height={height} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Price chart">
-        {[40, 100, 160, 220, 280].map((y) => <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="#1A1D25" />)}
+        {[40, 100, 160, 220, 280].map((y) => <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="var(--line)" />)}
         {data.cs.map(([o, c, h, l], i) => {
           const x = i * cw + cw / 2, up = c >= o, col = up ? "#3DDC97" : "#FF6B6B", top = data.Y(Math.max(o, c));
           return (<g key={i}><line x1={x} y1={data.Y(h)} x2={x} y2={data.Y(l)} stroke={col} strokeWidth="1.2" vectorEffect="non-scaling-stroke" /><rect x={x - cw * 0.34} y={top} width={cw * 0.68} height={Math.max(1.5, data.Y(Math.min(o, c)) - top)} rx="1" fill={col} /></g>);
@@ -40,7 +40,7 @@ export function Intervals({ extra, value, onChange }: { extra?: boolean; value?:
     <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
       <div className="hscroll" style={{ gap: 2 }}>
         {["1m", "5m", "15m", "1h", "4h", "1d"].map((t) => (
-          <button key={t} type="button" onClick={() => setIv(t)} className="mono" style={{ height: 30, padding: "0 10px", borderRadius: 7, border: 0, background: iv === t ? "#1E2129" : "transparent", color: iv === t ? "var(--text)" : "var(--dim)", fontWeight: 600, fontSize: 12 }}>{t}</button>
+          <button key={t} type="button" onClick={() => setIv(t)} className="mono" style={{ height: 30, padding: "0 10px", borderRadius: 7, border: 0, background: iv === t ? "var(--raise2)" : "transparent", color: iv === t ? "var(--text)" : "var(--dim)", fontWeight: 600, fontSize: 12 }}>{t}</button>
         ))}
       </div>
       {extra && <div style={{ display: "flex", gap: 2 }}>{["MC", "Price", "Log"].map((t) => <button key={t} type="button" className="mono" style={{ height: 30, padding: "0 10px", borderRadius: 7, border: 0, background: "transparent", color: "var(--dim)", fontWeight: 600, fontSize: 12 }}>{t}</button>)}</div>}
@@ -49,7 +49,7 @@ export function Intervals({ extra, value, onChange }: { extra?: boolean; value?:
 }
 
 export function WhyMoving({ text }: { text: string }) {
-  return <div className="ai-note"><ISpark size={16} color="var(--volt)" /><span><b>Why it&apos;s moving:</b> {text}</span></div>;
+  return <div className="ai-note"><ISpark size={16} color="var(--volt-ink)" /><span><b>Why it&apos;s moving:</b> {text}</span></div>;
 }
 
 function Amt({ v, on, set }: { v: number; on: boolean; set: (n: number) => void }) {
@@ -171,7 +171,7 @@ export function LiveChart({ candles, height = 320, loading = false }: { candles:
   return (
     <div>
       <svg width="100%" height={height} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Price chart">
-        {[40, 100, 160, 220, 280].map((y) => <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="#1A1D25" />)}
+        {[40, 100, 160, 220, 280].map((y) => <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="var(--line)" />)}
         {cs.map((k, i) => {
           const x = i * cw + cw / 2, up = k.c >= k.o, col = up ? "#3DDC97" : "#FF6B6B", top = Y(Math.max(k.o, k.c));
           return (<g key={k.t}><line x1={x} y1={Y(k.h)} x2={x} y2={Y(k.l)} stroke={col} strokeWidth="1.2" vectorEffect="non-scaling-stroke" /><rect x={x - cw * 0.34} y={top} width={Math.max(1, cw * 0.68)} height={Math.max(1.5, Y(Math.min(k.o, k.c)) - top)} rx="1" fill={col} /></g>);

@@ -51,7 +51,7 @@ export function CoinTable({ list, start = 0 }: { list: Coin[]; start?: number })
                   <Avatar name={c.name} c1={c.c1} c2={c.c2} size={38} img={c.image} />
                   <span style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</span>
-                    <span className="mono dim" style={{ fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>{c.tick}<ChainTag chain={c.chain} />· {c.age}{c.own && <span className="pill" style={{ padding: "1px 7px", fontSize: 10, background: "rgba(212,255,58,0.12)", color: "var(--volt)" }}>Testnet</span>}</span>
+                    <span className="mono dim" style={{ fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>{c.tick}<ChainTag chain={c.chain} />· {c.age}{c.own && <span className="pill" style={{ padding: "1px 7px", fontSize: 10, background: "rgba(212,255,58,0.12)", color: "var(--volt-ink)" }}>Testnet</span>}</span>
                   </span>
                 </Link>
               </td>

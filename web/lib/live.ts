@@ -107,6 +107,7 @@ const CAT_WORDS: Record<string, string[]> = {
 };
 
 export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: string | null; limit?: number; offset?: number; q?: string } = {}): Promise<LiveCoin[]> {
+  if (opts.q) opts = { ...opts, q: opts.q.replace(/[^A-Za-z0-9 ._$-]/g, "").trim().slice(0, 42).replace(/^\$/, "") };
   const limit = opts.limit ?? 50, from = opts.offset ?? 0;
   const ownTab = tab === "Launched here" || tab === "Bonding" || tab === "Graduated";
   const ownIds = opts.chain ? OWN_CHAINS.filter((c) => chainName(c) === opts.chain) : OWN_CHAINS;
@@ -226,3 +227,55 @@ export function useLive<T>(load: () => Promise<T>, deps: unknown[], every = 30_0
   }, deps);
   return { data, error, reload: () => load().then(setData).catch(() => {}) };
 }
+
+// ---------------------------------------------------------------- one coin's market (chart + trades)
+export type ExtTrade = { id: string; side: "Buy" | "Sell"; usd: string; who: string; at: string };
+export async function extTrades(c: LiveCoin): Promise<ExtTrade[]> {
+  if (!c.network || !c.pool) return [];
+  const r = await fetch(`https://api.geckoterminal.com/api/v2/networks/${c.network}/pools/${c.pool}/trades`, { headers: { accept: "application/json" } }).catch(() => null);
+  if (!r || !r.ok) return [];
+  const j = await r.json().catch(() => null);
+  return (j?.data ?? []).slice(0, 25).map((t: { id: string; attributes: { kind: string; volume_in_usd: string; tx_from_address: string; block_timestamp: string } }) => ({
+    id: t.id, side: t.attributes.kind === "sell" ? "Sell" : "Buy", usd: usd(Number(t.attributes.volume_in_usd)), who: short(t.attributes.tx_from_address || ""), at: t.attributes.block_timestamp,
+  }));
+}
+
+export const IV_SECONDS: Record<string, number> = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
+
+/** Live chart candles and latest trades for one coin; own coins update instantly on new trades. */
+export function useCoinMarket(c: LiveCoin | null | undefined, iv: string, onFresh?: (c: LiveCoin) => void) {
+  const [candles, setCandles] = useState<Candle[] | null>(null);
+  const [own, setOwn] = useState<LiveTrade[] | null>(null);
+  const [ext, setExt] = useState<ExtTrade[] | null>(null);
+  const fresh = useRef(onFresh);
+  fresh.current = onFresh;
+  const key = c ? `${c.id}|${iv}` : "";
+  const run = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!c) return;
+    let alive = true;
+    setCandles(null); setOwn(null); setExt(null);
+    const load = async () => {
+      if (c.own) {
+        const [f, ks, ts] = await Promise.all([getCoin(c.id), ownCandles(c.chainId, c.address, IV_SECONDS[iv] ?? 900), recentTrades(25, { chainId: c.chainId, address: c.address })]);
+        if (!alive) return;
+        if (f) fresh.current?.(f);
+        setCandles(ks); setOwn(ts);
+      } else {
+        const [ks, ts] = await Promise.all([c.network && c.pool ? extCandles(c.network, c.pool, iv).catch(() => []) : Promise.resolve([]), extTrades(c)]);
+        if (!alive) return;
+        setCandles(ks); setExt(ts);
+      }
+    };
+    run.current = () => { load().catch(() => {}); };
+    run.current();
+    const t = setInterval(run.current, c.own ? 20_000 : 60_000);
+    return () => { alive = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  useTradeFeed(() => { if (c?.own) run.current(); }, c?.own ? { chainId: c.chainId, address: c.address } : undefined);
+  return { candles, own, ext };
+}
+
+/** Text typed into search, made safe for a PostgREST filter. */
+export const cleanSearch = (s: string) => s.replace(/[^A-Za-z0-9 ._$-]/g, "").trim().slice(0, 42);

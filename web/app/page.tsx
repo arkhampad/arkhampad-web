@@ -6,6 +6,7 @@ import { listCoins, recentTrades, useLive, useTradeFeed, ago, type LiveCoin, typ
 import { Avatar } from "@/components/bits";
 import { CoinRows, CoinTable, HotCard } from "@/components/market";
 import { IFire, ISpark } from "@/components/icons";
+import { ScrollTabs } from "@/components/scrolltabs";
 import { useRouter } from "next/navigation";
 
 const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
@@ -55,17 +56,16 @@ export default function Discover() {
 
   return (
     <div className="wrap page">
-      <section style={{ padding: "28px 0 12px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 18 }}>
-        <span className="pill" style={{ border: "1px solid var(--line2)", color: "var(--text2)" }}><ISpark size={14} color="var(--volt)" />AI launchpad on Robinhood and Base</span>
-        <h1 style={{ margin: 0, fontSize: "clamp(40px, 7vw, 76px)", lineHeight: 0.98, fontWeight: 900, letterSpacing: "-0.04em", maxWidth: 900 }}>
-          Create and trade<br />with <span style={{ background: "linear-gradient(90deg, var(--volt), var(--mint))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>intelligence.</span>
+      <section style={{ padding: "8px 0 2px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12 }}>
+        <h1 style={{ margin: 0, fontSize: "clamp(28px, 4.2vw, 48px)", lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.035em", maxWidth: 900 }}>
+          Create and trade with <span className="grad-text" style={{ background: "linear-gradient(90deg, var(--volt), var(--mint))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>intelligence.</span>
         </h1>
-        <p className="h-sub" style={{ maxWidth: 560, fontSize: 18 }}>Type an idea, get a ready coin. Deposit USDC and buy anything with one tap.</p>
-        <form onSubmit={go} style={{ width: "100%", maxWidth: 760, display: "flex", alignItems: "center", gap: 10, padding: "8px 8px 8px 18px", borderRadius: 18, background: "#12141B", border: "1px solid var(--line3)", flexWrap: "wrap" }}>
-          <ISpark size={20} color="var(--volt)" />
+        <p className="h-sub" style={{ maxWidth: 560, fontSize: 15 }}>Type an idea, get a ready coin. Trade thousands of coins with USDC.</p>
+        <form onSubmit={go} style={{ width: "100%", maxWidth: 720, display: "flex", alignItems: "center", gap: 10, padding: "6px 6px 6px 16px", borderRadius: 16, background: "var(--field)", border: "1px solid var(--line3)", flexWrap: "wrap" }}>
+          <ISpark size={20} color="var(--volt-ink)" />
           <label htmlFor="idea" className="sr">Describe your coin</label>
-          <input id="idea" value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Describe your coin… a frog astronaut who only buys the dip" style={{ flex: "1 1 220px", minWidth: 0, height: 48, background: "transparent", border: 0, outline: "none", fontSize: 16 }} />
-          <button type="submit" className="btn volt" style={{ height: 50, padding: "0 22px", fontSize: 15, borderRadius: 13 }}>Generate coin</button>
+          <input id="idea" value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Describe your coin… a frog astronaut who only buys the dip" style={{ flex: "1 1 220px", minWidth: 0, height: 42, background: "transparent", border: 0, outline: "none", fontSize: 16 }} />
+          <button type="submit" className="btn volt" style={{ height: 44, padding: "0 20px", fontSize: 14, borderRadius: 12 }}>Generate coin</button>
         </form>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
           {IDEAS.map((t) => <button key={t} type="button" className="chip sm" onClick={() => router.push(`/create/?idea=${encodeURIComponent(t)}`)}>{t}</button>)}
@@ -84,8 +84,8 @@ export default function Discover() {
 
       <section className="row">
         <div className="main-col">
-          <div className="hscroll">{TABS.map((t) => <button key={t} type="button" className={`chip${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
-          <div className="hscroll" style={{ gap: 6 }}>{CATS.map((t) => <button key={t} type="button" className={`chip sm${cat === t ? " on" : ""}`} onClick={() => setCat(t)}>{t}</button>)}</div>
+          <ScrollTabs>{TABS.map((t) => <button key={t} type="button" className={`chip${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</ScrollTabs>
+          <ScrollTabs gap={6}>{CATS.map((t) => <button key={t} type="button" className={`chip sm${cat === t ? " on" : ""}`} onClick={() => setCat(t)}>{t}</button>)}</ScrollTabs>
           {(tab === "Launched here" || tab === "Bonding" || tab === "Graduated") && (
             <div className="dim" style={{ fontSize: 13 }}>Coins launched on ArkhamPad. We are on testnet now: these are test coins with test money.</div>
           )}
@@ -124,7 +124,7 @@ export default function Discover() {
             ))}
             <Link href="/traders/" className="btn ghost sm" style={{ height: 40 }}>Follow and copy with one tap</Link>
           </div>
-          <div className="card" style={{ background: "var(--volt)", color: "var(--bg)", border: 0 }}>
+          <div className="card" style={{ background: "var(--volt)", color: "var(--on-volt)", border: 0 }}>
             <span style={{ fontWeight: 800, fontSize: 17 }}>Invite friends, earn on every trade</span>
             <span style={{ fontSize: 13, lineHeight: 1.45 }}>You get a share of our fee on everything your friends trade.</span>
             <Link href="/profile/" className="btn" style={{ alignSelf: "flex-start", height: 38, background: "var(--bg)", color: "var(--text)", border: 0 }}>Get my link</Link>

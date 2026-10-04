@@ -8,7 +8,7 @@ export function Avatar({ name, c1, c2, size = 40, round = false, img }: { name: 
   const radius = round ? "50%" : Math.round(size * 0.3);
   if (img && !broken) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={img} alt="" width={size} height={size} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(true)} style={{ width: size, height: size, borderRadius: radius, objectFit: "cover", flex: "none", background: "#161922" }} />;
+    return <img src={img} alt="" width={size} height={size} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(true)} style={{ width: size, height: size, borderRadius: radius, objectFit: "cover", flex: "none", background: "var(--raise)" }} />;
   }
   return (
     <span className="av" style={{ width: size, height: size, borderRadius: radius, background: `linear-gradient(135deg, ${c1}, ${c2})`, fontSize: Math.round(size * 0.34) }}>

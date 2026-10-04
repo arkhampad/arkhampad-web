@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getCoin, ownCandles, extCandles, recentTrades, useTradeFeed, usd, short, ago, listCoins, type LiveCoin, type LiveTrade, type Candle } from "@/lib/live";
+import { getCoin, useCoinMarket, usd, short, ago, listCoins, type LiveCoin } from "@/lib/live";
 import { Avatar, Bar, ChainTag } from "@/components/bits";
 import { Intervals, TradePanel } from "@/components/trade";
 import dynamic from "next/dynamic";
@@ -10,21 +10,9 @@ const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, load
 import { ICopy, IShare } from "@/components/icons";
 import { useApp } from "@/components/shell";
 
-const IV_SECONDS: Record<string, number> = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
 
 function Stat({ k, v, cls }: { k: string; v: string; cls?: string }) {
   return <div className="card" style={{ padding: "12px 14px", gap: 4, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>{k}</span><span className={`mono ${cls || ""}`} style={{ fontWeight: 700, fontSize: 17 }}>{v}</span></div>;
-}
-
-type ExtTrade = { id: string; side: "Buy" | "Sell"; usd: string; who: string; at: string };
-async function extTrades(c: LiveCoin): Promise<ExtTrade[]> {
-  if (!c.network || !c.pool) return [];
-  const r = await fetch(`https://api.geckoterminal.com/api/v2/networks/${c.network}/pools/${c.pool}/trades`, { headers: { accept: "application/json" } }).catch(() => null);
-  if (!r || !r.ok) return [];
-  const j = await r.json();
-  return (j?.data ?? []).slice(0, 25).map((t: { id: string; attributes: { kind: string; volume_in_usd: string; tx_from_address: string; block_timestamp: string } }) => ({
-    id: t.id, side: t.attributes.kind === "sell" ? "Sell" : "Buy", usd: usd(Number(t.attributes.volume_in_usd)), who: short(t.attributes.tx_from_address || ""), at: t.attributes.block_timestamp,
-  }));
 }
 
 function CoinView() {
@@ -33,9 +21,11 @@ function CoinView() {
   const { toast, openLogin } = useApp();
   const [c, setC] = useState<LiveCoin | null | undefined>(undefined);
   const [iv, setIv] = useState("15m");
-  const [candles, setCandles] = useState<Candle[] | null>(null);
-  const [own, setOwn] = useState<LiveTrade[] | null>(null);
-  const [ext, setExt] = useState<ExtTrade[] | null>(null);
+  const m = useCoinMarket(c, iv, setC);
+  const candles = m.candles, own = m.own, ext = m.ext;
+
+  // Always start at the top of the page when a coin opens.
+  useEffect(() => { window.scrollTo({ top: 0, left: 0 }); }, [id]);
 
   // Unknown or old links open the top trending coin.
   useEffect(() => {
@@ -47,22 +37,6 @@ function CoinView() {
     })();
     return () => { alive = false; };
   }, [id]);
-
-  const refresh = useCallback(async () => {
-    if (!c) return;
-    if (c.own) {
-      const [fresh, ks, ts] = await Promise.all([getCoin(c.id), ownCandles(c.chainId, c.address, IV_SECONDS[iv]), recentTrades(25, { chainId: c.chainId, address: c.address })]);
-      if (fresh) setC(fresh);
-      setCandles(ks); setOwn(ts);
-    } else {
-      const [ks, ts] = await Promise.all([c.network && c.pool ? extCandles(c.network, c.pool, iv).catch(() => []) : Promise.resolve([]), extTrades(c)]);
-      setCandles(ks); setExt(ts);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [c?.id, iv]);
-
-  useEffect(() => { setCandles(null); refresh(); const t = setInterval(refresh, c?.own ? 20_000 : 60_000); return () => clearInterval(t); }, [refresh, c?.own]);
-  useTradeFeed(() => { if (c?.own) refresh(); }, c?.own ? { chainId: c.chainId, address: c.address } : undefined);
 
   if (c === undefined) return <div className="wrap page"><div className="skel" style={{ height: 80, borderRadius: 16 }} /><div className="skel" style={{ height: 380, borderRadius: 16 }} /></div>;
   if (c === null) return (
@@ -84,12 +58,12 @@ function CoinView() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: -0.8, overflowWrap: "anywhere" }}>{c.name}</h1>
             <span className="mono dim" style={{ fontWeight: 600 }}>{c.tick}</span>
-            <span className="pill" style={{ background: "#161922", color: "var(--text2)" }}><ChainTag chain={c.chain} /></span>
-            {c.own ? <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt)" }}>Testnet</span> : <span className="pill" style={{ background: "#161922", color: "var(--muted)" }}>{c.dex ? c.dex.replace(/[-_]/g, " ") : "Other DEX"}</span>}
+            <span className="pill" style={{ background: "var(--raise)", color: "var(--text2)" }}><ChainTag chain={c.chain} /></span>
+            {c.own ? <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt-ink)" }}>Testnet</span> : <span className="pill" style={{ background: "var(--raise)", color: "var(--muted)" }}>{c.dex ? c.dex.replace(/[-_]/g, " ") : "Other DEX"}</span>}
           </div>
           <div className="mono dim" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, flexWrap: "wrap" }}>
             {short(c.address)}
-            <button type="button" aria-label="Copy contract address" onClick={async () => { try { await navigator.clipboard.writeText(c.address); toast("Contract address copied"); } catch { /* blocked */ } }} style={{ width: 28, height: 28, borderRadius: 7, border: 0, background: "#161922", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><ICopy size={13} color="var(--muted)" /></button>
+            <button type="button" aria-label="Copy contract address" onClick={async () => { try { await navigator.clipboard.writeText(c.address); toast("Contract address copied"); } catch { /* blocked */ } }} style={{ width: 28, height: 28, borderRadius: 7, border: 0, background: "var(--raise)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><ICopy size={13} color="var(--muted)" /></button>
             {c.own && c.creator ? <>· by {short(c.creator)}</> : null} · {c.age} old
           </div>
         </div>
@@ -108,20 +82,20 @@ function CoinView() {
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}><span className="mono" style={{ fontWeight: 800, fontSize: 28, letterSpacing: -0.8 }}>{c.price}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 700 }}>{up ? "+" : ""}{c.chg.toFixed(1)}%</span></div>
               <Intervals value={iv} onChange={setIv} />
             </div>
-            <TvChart candles={candles} supply={c.own ? 1e9 : c.mcNum && c.priceNum ? c.mcNum / c.priceNum : null} />
+            <TvChart candles={candles} supply={c.own ? 1e9 : c.mcNum && c.priceNum ? c.mcNum / c.priceNum : null} empty={c.own ? "No trades yet for a chart." : "Chart data is not available right now."} />
           </div>
           <div className="panel">
             <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""}</span>
             {c.own ? (
               own === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : own.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span> :
                 own.map((t) => (
-                  <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid #16181F", fontSize: 13, color: "var(--text2)" }}>
+                  <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid var(--row)", fontSize: 13, color: "var(--text2)" }}>
                     <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.up ? "up" : "down"} style={{ fontWeight: 700 }}>{t.up ? "Buy" : "Sell"}</span><span>{t.amt}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.ts)}</span>
                   </div>))
             ) : (
               ext === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : ext.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>Trades will show here.</span> :
                 ext.map((t) => (
-                  <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid #16181F", fontSize: 13, color: "var(--text2)" }}>
+                  <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid var(--row)", fontSize: 13, color: "var(--text2)" }}>
                     <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.side === "Buy" ? "up" : "down"} style={{ fontWeight: 700 }}>{t.side}</span><span>{t.usd}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.at)}</span>
                   </div>))
             )}
@@ -143,7 +117,7 @@ function CoinView() {
           <div className="hide-m"><TradePanel tick={c.tick} price={c.priceNum ?? 0} /></div>
         </aside>
       </div>
-      <div className="show-m" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(74px + var(--safe-bottom))", zIndex: 25, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "10px 16px", background: "rgba(10,11,16,0.97)", borderTop: "1px solid #1B1E25" }}>
+      <div className="show-m" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(74px + var(--safe-bottom))", zIndex: 25, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "10px 16px", background: "var(--bar-bg)", borderTop: "1px solid var(--line)" }}>
         <button type="button" className="btn buy lg" onClick={openLogin}>Buy</button>
         <button type="button" className="btn sell lg" onClick={openLogin}>Sell</button>
       </div>

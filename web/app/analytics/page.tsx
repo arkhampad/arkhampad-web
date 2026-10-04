@@ -16,7 +16,7 @@ function rand(seed: number) { let s = seed; return () => { s = (s * 16807) % 214
 function Stacked() {
   const bars = useMemo(() => { const r = rand(5); return Array.from({ length: 30 }, (_, i) => [(30 + r() * 60) * (0.6 + i / 30), (20 + r() * 50) * (0.6 + i / 30)]); }, []);
   const mx = Math.max(...bars.map((b) => b[0] + b[1])), W = 900, H = 260, bw = W / 30;
-  return <svg width="100%" height={260} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Daily volume by chain">{[20, 80, 140, 200].map((y) => <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="#1A1D25" />)}{bars.map(([r, b], i) => { const hr = (r / mx) * (H - 20), hb = (b / mx) * (H - 20), x = i * bw + bw * 0.15; return <g key={i}><rect x={x} y={H - hr - hb} width={bw * 0.7} height={hb} rx="3" fill="#5B8CFF" /><rect x={x} y={H - hr} width={bw * 0.7} height={hr} rx="3" fill="#CCFF4D" /></g>; })}</svg>;
+  return <svg width="100%" height={260} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Daily volume by chain">{[20, 80, 140, 200].map((y) => <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="var(--line)" />)}{bars.map(([r, b], i) => { const hr = (r / mx) * (H - 20), hb = (b / mx) * (H - 20), x = i * bw + bw * 0.15; return <g key={i}><rect x={x} y={H - hr - hb} width={bw * 0.7} height={hb} rx="3" fill="#5B8CFF" /><rect x={x} y={H - hr} width={bw * 0.7} height={hr} rx="3" fill="#CCFF4D" /></g>; })}</svg>;
 }
 function DayBars({ seed, col, hi }: { seed: number; col: string; hi: string }) {
   const vals = useMemo(() => { const r = rand(seed); return Array.from({ length: 14 }, (_, i) => 20 + r() * 40 + i * 2); }, [seed]);
@@ -28,7 +28,7 @@ function Donut() {
   return <svg width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Volume by chain"><path d={arc(0, 0.58)} stroke="#CCFF4D" strokeWidth="22" fill="none" /><path d={arc(0.595, 0.985)} stroke="#5B8CFF" strokeWidth="22" fill="none" /><text x="90" y="86" textAnchor="middle" fontFamily="Geist Mono, monospace" fontSize="22" fontWeight="700" fill="#F2F3F5">$18.4M</text><text x="90" y="108" textAnchor="middle" fontSize="12" fill="#8A909C">24h volume</text></svg>;
 }
 function Rec({ k, v, s }: { k: string; v: string; s: string }) {
-  return <div className="card" style={{ background: "linear-gradient(160deg, #151826, #0D0E13)", borderColor: "#22252F", gap: 6 }}><span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>{k}</span><span className="mono" style={{ fontWeight: 800, fontSize: 22, letterSpacing: -0.6 }}>{v}</span><span className="muted" style={{ fontSize: 12 }}>{s}</span></div>;
+  return <div className="card" style={{ background: "linear-gradient(160deg, #151826, #0D0E13)", borderColor: "var(--line2)", gap: 6 }}><span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>{k}</span><span className="mono" style={{ fontWeight: 800, fontSize: 22, letterSpacing: -0.6 }}>{v}</span><span className="muted" style={{ fontSize: 12 }}>{s}</span></div>;
 }
 
 export default function Analytics() {
@@ -42,7 +42,7 @@ export default function Analytics() {
           <a href="#" className="btn white sm" style={{ borderRadius: 999 }}>Verify on-chain ↗</a>
         </div>
       </div>
-      <div className="ai-note" style={{ padding: "18px 20px", borderRadius: 20, fontSize: 15 }}><ISpark size={18} color="var(--volt)" /><span><b>Today in 30 seconds:</b> Volume is up 24% vs yesterday, driven by animal coins on Base. Robinhood had more launches, Base had more graduations. The average time to graduate fell to 41 minutes.</span></div>
+      <div className="ai-note" style={{ padding: "18px 20px", borderRadius: 20, fontSize: 15 }}><ISpark size={18} color="var(--volt-ink)" /><span><b>Today in 30 seconds:</b> Volume is up 24% vs yesterday, driven by animal coins on Base. Robinhood had more launches, Base had more graduations. The average time to graduate fell to 41 minutes.</span></div>
       <div className="grid4">
         <Kpi k="Volume" v="$18.4M" d="+24.1% vs prev" /><Kpi k="Coins launched" v="1,920" d="+12.3% vs prev" /><Kpi k="Graduated" v="412" d="21.4% graduation rate" col="var(--volt)" /><Kpi k="Traders" v="38.2K" d="+8.7% vs prev" />
         <Kpi k="Creator earnings" v="$642K" d="+31.0% vs prev" /><Kpi k="Bought back & burned" v="$88.4K" d="from Buyback mode coins" col="var(--burn)" /><Kpi k="Unique creators" v="14.6K" d="lifetime total" col="var(--dim)" /><Kpi k="Holders" v="211K" d="lifetime total" col="var(--dim)" />

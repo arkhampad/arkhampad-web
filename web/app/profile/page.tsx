@@ -20,14 +20,14 @@ export default function Profile() {
   return (
     <div className="wrap page" style={{ maxWidth: 1300 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <span className="av" style={{ width: 68, height: 68, borderRadius: 22, background: "linear-gradient(135deg, var(--volt), var(--mint))", color: "var(--bg)", fontSize: 24, fontWeight: 900 }}>YO</span>
+        <span className="av" style={{ width: 68, height: 68, borderRadius: 22, background: "linear-gradient(135deg, var(--volt), var(--mint))", color: "var(--on-volt)", fontSize: 24, fontWeight: 900 }}>YO</span>
         <div style={{ flex: "1 1 220px", display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontWeight: 900, fontSize: 26, letterSpacing: -0.6 }}>you</span><span className="mono dim" style={{ fontSize: 13 }}>Joined Oct 2026 · <b style={{ color: "var(--text)" }}>12</b> following · <b style={{ color: "var(--text)" }}>48</b> followers</span></div>
         <div style={{ display: "flex", gap: 8 }}><button type="button" className="btn ghost sm" style={{ height: 40 }}>Edit profile</button><button type="button" className="icon-btn" aria-label="Share profile"><IShare size={16} /></button></div>
       </div>
       <div className="row">
         <div className="main-col">
           <div style={{ borderRadius: 26, padding: 1, background: "linear-gradient(140deg, var(--volt), var(--line2) 40%, var(--line2) 70%, var(--mint))" }}>
-            <div style={{ borderRadius: 25, background: "#0F1117", padding: 22, display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ borderRadius: 25, background: "var(--card)", padding: 22, display: "flex", flexDirection: "column", gap: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span className="dim" style={{ fontSize: 13 }}>Total balance</span><span className="mono" style={{ fontWeight: 800, fontSize: "clamp(34px, 5vw, 46px)", letterSpacing: -1.6 }}>$356.10</span><span className="mono up" style={{ fontWeight: 700, fontSize: 14 }}>+$41.10 today · +13.0%</span></div>
                 <div style={{ display: "flex", gap: 10 }}><button type="button" className="btn buy" style={{ height: 52, padding: "0 24px", borderRadius: 15 }} onClick={() => openFunds("deposit")}>Deposit</button><button type="button" className="btn" style={{ height: 52, padding: "0 24px", borderRadius: 15 }} onClick={() => openFunds("withdraw")}>Withdraw</button></div>
@@ -35,11 +35,11 @@ export default function Profile() {
               <div className="grid3" style={{ gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}><Stat k="Cash (USDC)" v="$248.50" /><Stat k="Coins" v="$107.60" /><Stat k="All-time profit" v="+$88.40" cls="up" /></div>
             </div>
           </div>
-          <div className="ai-note"><ISpark size={16} color="var(--volt)" /><span><b>Your week:</b> Best trade was MFROG (+147%). You made most of your profit on Base. One coin is down more than 20%.</span></div>
+          <div className="ai-note"><ISpark size={16} color="var(--volt-ink)" /><span><b>Your week:</b> Best trade was MFROG (+147%). You made most of your profit on Base. One coin is down more than 20%.</span></div>
           <div className="panel">
             <div className="hscroll" style={{ gap: 4 }}>{["Holdings", "Activity", "Orders", "Following"].map((t) => <button key={t} type="button" className={`tab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
             {tab === "Holdings" ? HOLD.map(([i, amt, val, pnl, pc]) => { const c = coins[i]; const up = !pnl.startsWith("-"); return (
-              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderTop: "1px solid #16181F" }}>
+              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderTop: "1px solid var(--row)" }}>
                 <Link href={`/coin/?c=${c.id}`}><Avatar name={c.name} c1={c.c1} c2={c.c2} size={40} /></Link>
                 <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}><b style={{ fontSize: 15 }}>{c.name}</b><span className="mono dim" style={{ fontSize: 12 }}>{amt} {c.tick}</span></span>
                 <span className="hide-m" style={{ width: 70 }}><Spark vals={c.spark} up={up} height={26} fill={false} stroke={2.4} /></span>
@@ -49,7 +49,7 @@ export default function Profile() {
           </div>
         </div>
         <aside className="side-col">
-          <div className="card" style={{ background: "var(--volt)", color: "var(--bg)", border: 0, gap: 10 }}>
+          <div className="card" style={{ background: "var(--volt)", color: "var(--on-volt)", border: 0, gap: 10 }}>
             <span style={{ fontWeight: 900, fontSize: 18 }}>Invite friends, earn on every trade</span>
             <span style={{ fontSize: 13, lineHeight: 1.45 }}>You get a share of our fee on everything your friends trade. Paid to your cash balance.</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 6px 6px 12px", borderRadius: 12, background: "rgba(10,11,16,0.08)" }}>
