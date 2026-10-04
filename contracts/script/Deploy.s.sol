@@ -19,7 +19,7 @@ import {IPadHub} from "../src/interfaces.sol";
 /// @notice Deploys ArkhamPad on the current chain.
 /// Env: PRIVATE_KEY (deployer), ADMIN, TREASURY, GUARDIAN (optional),
 ///      USDC (optional on testnets: a TestUSDC is deployed when empty),
-///      CURVE (optional: "test" = $15 -> $25 graduation, default "main" = $4.5K -> $7.5K).
+///      CURVE (optional: "test" = $450 -> $750 graduation, default "main" = $4.5K -> $7.5K).
 contract Deploy is Script {
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
@@ -71,7 +71,7 @@ contract Deploy is Script {
         V4 memory v = _chain();
 
         PadHub.CurveParams memory cp = testCurve
-            ? PadHub.CurveParams({vUsdc: 15e6, vCoin: 1e27, coinsForSale: 225403301517032142044922890, coinsReserved: 1e27 - 225403301517032142044922890})
+            ? PadHub.CurveParams({vUsdc: 450e6, vCoin: 1e27, coinsForSale: 225403330717033245926072205, coinsReserved: 774596669282966754073927795})
             : PadHub.CurveParams({vUsdc: 4500e6, vCoin: 1e27, coinsForSale: 225403330717033245926072205, coinsReserved: 774596669282966754073927795});
 
         vm.startBroadcast(key);
@@ -90,11 +90,20 @@ contract Deploy is Script {
         PadHub hub = new PadHub(IERC20(v.usdc), builder, cp, deployer, treasury);
         builder.bindHub(IPadHub(address(hub)));
         PadPromote promote = new PadPromote(IERC20(v.usdc), admin, treasury);
-        PadRouter router = new PadRouter(hub, promote);
+        PadRouter router = new PadRouter(hub, promote, builder);
         hub.setRouter(address(router));
         if (guardian != address(0)) hub.setGuardian(guardian);
         if (admin != deployer) hub.proposeAdmin(admin);
+        // The chain's own block number from the RPC: on Arbitrum-based chains (Robinhood)
+        // block.number inside the EVM is Ethereum's block number, not the chain's.
         uint256 startBlock = block.number;
+        try vm.rpc("eth_blockNumber", "[]") returns (bytes memory raw) {
+            if (raw.length > 0 && raw.length <= 32) {
+                uint256 n;
+                for (uint256 i; i < raw.length; ++i) n = (n << 8) | uint8(raw[i]);
+                if (n > 0) startBlock = n > 50 ? n - 50 : n; // a little margin before our first transaction
+            }
+        } catch {}
         vm.stopBroadcast();
 
         string memory o = "deploy";

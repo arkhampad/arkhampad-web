@@ -89,7 +89,7 @@ abstract contract PoolFlow is Test {
         assertEq(address(builder), predicted, "builder address prediction");
         hub = new PadHub(usdc, builder, PadHub.CurveParams({vUsdc: 4500e6, vCoin: 1e27, coinsForSale: FOR_SALE, coinsReserved: RESERVED}), admin, treasury);
         builder.bindHub(IPadHub(address(hub)));
-        router = new PadRouter(hub, new PadPromote(usdc, admin, treasury));
+        router = new PadRouter(hub, new PadPromote(usdc, admin, treasury), builder);
         vm.prank(admin);
         hub.setRouter(address(router));
         swapper = new TestSwapper(pm);
@@ -214,6 +214,66 @@ abstract contract PoolFlow is Test {
         assertEq(usdc.balanceOf(relayer), 0.03e6, "relayer repaid in USDC");
         assertEq(usdc.balanceOf(address(router)), 0);
         assertEq(u.balance, 0, "user still never needed ETH");
+    }
+
+    /// Gasless trading in the locked pool after graduation: quote, buy, sell, slippage and guards.
+    function _flow_gaslessPool() internal {
+        uint256 pk = uint256(keccak256(abi.encode("arkhampad pool trader", block.chainid)));
+        address u = vm.addr(pk);
+        address relayer = address(0x5E1A);
+        _fund(u, 1_000e6);
+        _permitTo(address(usdc), pk, u);
+        (PadCoin coin,) = _launchAndGraduate(PadCurve.FeeMode.ToCreator);
+        uint256 dl = vm.getBlockTimestamp() + 60;
+
+        // quote = what the buy really gives
+        uint256 q = router.quotePool(address(coin), true, 50e6);
+        assertGt(q, 0, "quote");
+        // demanding one more coin than the quote fails
+        PadRouter.Sig memory tight = PadRouter.Sig(dl, 10, _signR(pk, keccak256(abi.encode(router.POOL_BUY_TYPEHASH(), u, address(coin), uint256(50e6), q + 1, uint256(0.01e6), uint256(10), dl))));
+        vm.prank(relayer);
+        vm.expectRevert();
+        router.poolBuy(u, address(coin), 50e6, q + 1, 0.01e6, tight);
+        // exact quote fills
+        PadRouter.Sig memory s1 = PadRouter.Sig(dl, 11, _signR(pk, keccak256(abi.encode(router.POOL_BUY_TYPEHASH(), u, address(coin), uint256(50e6), q, uint256(0.01e6), uint256(11), dl))));
+        uint256 u0 = usdc.balanceOf(u);
+        vm.prank(relayer);
+        uint256 got = router.poolBuy(u, address(coin), 50e6, q, 0.01e6, s1);
+        assertEq(got, q, "got the quoted amount");
+        assertEq(coin.balanceOf(u), got);
+        assertEq(u0 - usdc.balanceOf(u), 50e6 + 0.01e6);
+
+        // sell everything back
+        _permitTo(address(coin), pk, u);
+        uint256 qs = router.quotePool(address(coin), false, got);
+        PadRouter.Sig memory s2 = PadRouter.Sig(dl, 12, _signR(pk, keccak256(abi.encode(router.POOL_SELL_TYPEHASH(), u, address(coin), got, qs - 0.01e6, uint256(0.01e6), uint256(12), dl))));
+        uint256 u1 = usdc.balanceOf(u);
+        vm.prank(relayer);
+        uint256 back = router.poolSell(u, address(coin), got, qs - 0.01e6, 0.01e6, s2);
+        assertEq(back, qs - 0.01e6, "sold at the quote");
+        assertEq(usdc.balanceOf(u) - u1, back);
+        assertEq(coin.balanceOf(u), 0);
+        assertApproxEqRel(back, 50e6 * 98 / 100, 0.01e18, "round trip loses ~2% (1% pool fee each way)");
+        assertEq(usdc.balanceOf(address(router)), 0, "router keeps no USDC");
+        assertEq(coin.balanceOf(address(router)), 0, "router keeps no coins");
+        assertEq(u.balance, 0, "user never needed ETH");
+        assertEq(usdc.balanceOf(relayer), 0.02e6);
+    }
+
+    /// Pool trading is refused before a coin graduates.
+    function _flow_poolNeedsGraduation() internal {
+        uint256 pk = uint256(keccak256(abi.encode("arkhampad early pool", block.chainid)));
+        address u = vm.addr(pk);
+        _fund(u, 100e6);
+        _permitTo(address(usdc), pk, u);
+        vm.prank(creator);
+        (address c,) = hub.createCoin("Early", "ERLY", "", 0, PadCurve.FeeMode.ToCreator, 0, 0);
+        uint256 dl = vm.getBlockTimestamp() + 60;
+        PadRouter.Sig memory s = PadRouter.Sig(dl, 1, _signR(pk, keccak256(abi.encode(router.POOL_BUY_TYPEHASH(), u, c, uint256(10e6), uint256(0), uint256(0), uint256(1), dl))));
+        vm.expectRevert(PadRouter.NotGraduated.selector);
+        router.poolBuy(u, c, 10e6, 0, 0, s);
+        vm.expectRevert(PadRouter.NotGraduated.selector);
+        router.quotePool(c, true, 10e6);
     }
 
     function _signR(uint256 pk, bytes32 structHash) internal view returns (bytes memory) {

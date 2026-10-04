@@ -8,6 +8,7 @@ import {PadCurve} from "../src/PadCurve.sol";
 import {PadCoin} from "../src/PadCoin.sol";
 import {PadPromote} from "../src/PadPromote.sol";
 import {PadRouter} from "../src/PadRouter.sol";
+import {PadPoolBuilder} from "../src/PadPoolBuilder.sol";
 import {MockUSDC, MockPoolBuilder} from "./Mocks.sol";
 
 contract RouterTest is Test {
@@ -33,7 +34,7 @@ contract RouterTest is Test {
         MockPoolBuilder b = new MockPoolBuilder(IERC20(address(usdc)));
         hub = new PadHub(IERC20(address(usdc)), b, PadHub.CurveParams({vUsdc: 4500e6, vCoin: 1e27, coinsForSale: FOR_SALE, coinsReserved: RESERVED}), admin, treasury);
         promo = new PadPromote(IERC20(address(usdc)), admin, treasury);
-        router = new PadRouter(hub, promo);
+        router = new PadRouter(hub, promo, PadPoolBuilder(address(0)));
         vm.prank(admin);
         hub.setRouter(address(router));
         usdc.mint(alice, 10_000e6);
