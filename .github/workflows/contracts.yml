@@ -16,6 +16,7 @@ jobs:
       BASE_SEPOLIA_RPC: ${{ secrets.BASE_SEPOLIA_RPC }}
       BASE_RPC: ${{ secrets.BASE_RPC }}
       ROBINHOOD_TESTNET_RPC: ${{ secrets.ROBINHOOD_TESTNET_RPC }}
+      ROBINHOOD_RPC: ${{ secrets.ROBINHOOD_RPC }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,9 +42,9 @@ jobs:
       - name: Unit and local Uniswap tests
         run: forge test -vv --no-match-path "test/PoolFork.t.sol"
 
-      - name: Real-network tests (Base Sepolia, Base, Robinhood testnet)
+      - name: Real-network tests (Base Sepolia, Base, Robinhood testnet, Robinhood mainnet)
         run: |
-          for s in BaseSepoliaForkTest BaseMainnetForkTest RobinhoodTestnetForkTest; do
+          for s in BaseSepoliaForkTest BaseMainnetForkTest RobinhoodTestnetForkTest RobinhoodMainnetForkTest; do
             echo "::group::$s"
             forge test -vv --match-contract "$s" || { sleep 10; forge test -vv --match-contract "$s"; }
             echo "::endgroup::"
