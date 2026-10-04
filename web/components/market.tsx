@@ -8,10 +8,14 @@ import { useApp } from "./shell";
 
 const href = (c: Coin) => `/coin/?c=${c.id}`;
 
-export function HotCard({ c }: { c: Coin }) {
+export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
   const { openLogin } = useApp();
+  const router = useRouter();
+  const p = Math.max(0, Math.min(100, c.progress));
+  // heartbeat speeds up as the coin nears graduation
+  const beat = p >= 70 ? `${(1.4 - ((p - 70) / 30) * 1.0).toFixed(2)}s` : "0s";
   return (
-    <div className="card" style={{ borderRadius: 22, padding: 20, gap: 14 }}>
+    <div className="card click-card" style={{ borderRadius: 22, padding: 20, gap: 14, cursor: "pointer" }} onClick={(e) => { if (!(e.target as HTMLElement).closest("button,a")) router.push(href(c)); }}>
       <Link href={href(c)} style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <Avatar name={c.name} c1={c.c1} c2={c.c2} size={48} img={c.image} />
         <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
@@ -21,7 +25,19 @@ export function HotCard({ c }: { c: Coin }) {
         <Chg n={c.chg} />
       </Link>
       <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span className="mono" style={{ fontWeight: 700, fontSize: 34, letterSpacing: -1 }}>{c.mc}</span><span className="dim" style={{ fontSize: 13 }}>market cap</span></span>
-      <Spark vals={c.spark} up={c.chg >= 0} w={300} h={90} height={90} />
+      {grad ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
+            <span style={{ fontWeight: 700 }}>Graduation</span>
+            <span className="mono volt" style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
+              {p >= 70 && <span className="beat" aria-hidden="true" style={{ ["--beat" as string]: beat, fontSize: 12 + Math.round(((p - 70) / 30) * 8) }}>🔥</span>}
+              {p.toFixed(0)}%
+            </span>
+          </div>
+          <div className="bar" style={{ height: 12, borderRadius: 6 }}><span style={{ width: `${Math.max(2, p)}%` }} /></div>
+          <span className="dim" style={{ fontSize: 12 }}>At 100% it moves to a locked pool forever.</span>
+        </div>
+      ) : <Spark vals={c.spark} up={c.chg >= 0} w={300} h={90} height={90} />}
       <span className="grid3" style={{ gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8, fontSize: 12, color: "var(--dim)" }}>
         <span>Vol 24h<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.vol}</b></span>
         <span>Liquidity<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.liq}</b></span>

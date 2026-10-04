@@ -7,9 +7,10 @@ import { Avatar, Spark } from "@/components/bits";
 import { Intervals, TradePanel } from "@/components/trade";
 import { IDown, ISearch } from "@/components/icons";
 import { ScrollTabs } from "@/components/scrolltabs";
-import { getCoin, listCoins, useCoinMarket, useLive, ago, short, type LiveCoin, type Tab } from "@/lib/live";
+import { getCoin, listCoins, useCoinMarket, useLive, ago, short, shareCoin, type LiveCoin, type Tab } from "@/lib/live";
 
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
+const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
 const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
 
 function CoinList({ tab, q, sel, onPick }: { tab: Tab; q: string; sel: string | null; onPick: (c: LiveCoin) => void }) {
@@ -34,7 +35,7 @@ function TerminalView() {
   const q = useSearchParams();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("Trending");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(q.get("q") || "");
   const [qDebounced, setQ] = useState("");
   const [picker, setPicker] = useState(false);
   const [c, setC] = useState<LiveCoin | null>(null);
@@ -87,10 +88,10 @@ function TerminalView() {
           </div>
         )}
         <div className="panel" style={{ padding: 12, gap: 8 }}>
-          <Intervals value={iv} onChange={setIv} />
-          {c && <TvChart candles={m.candles} supply={c.own ? 1e9 : c.mcNum && c.priceNum ? c.mcNum / c.priceNum : null} empty={c.own ? "No trades yet for a chart." : "Chart data is not available right now."} height={420} />}
+          {c?.own && <Intervals value={iv} onChange={setIv} />}
+          {c && (c.own ? <TvChart candles={m.candles} supply={1e9} empty="No trades yet for a chart." height={420} /> : <ExtChart network={c.network} pool={c.pool} height={460} />)}
         </div>
-        {c && <div className="show-m" style={{ display: "flex", flexDirection: "column", gap: 12 }}><TradePanel tick={c.tick} price={c.priceNum ?? 0} /></div>}
+        {c && <div className="show-m" style={{ display: "flex", flexDirection: "column", gap: 12 }}><TradePanel tick={c.tick} price={c.priceNum ?? 0} onShare={() => shareCoin(c)} /></div>}
         <div className="panel" style={{ padding: 12, gap: 8 }}>
           <span style={{ fontWeight: 700 }}>Latest trades{c?.own ? " · testnet" : ""}</span>
           {c?.own ? (
@@ -109,7 +110,7 @@ function TerminalView() {
         </div>
       </section>
       <aside className="hide-m" style={{ flex: "1 1 320px", maxWidth: 380, minWidth: 0, display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 84 }}>
-        {c && <TradePanel tick={c.tick} price={c.priceNum ?? 0} withLimit />}
+        {c && <TradePanel tick={c.tick} price={c.priceNum ?? 0} withLimit onShare={() => shareCoin(c)} />}
         {c && !c.own && (
           <div className="card" style={{ gap: 6, padding: 14 }}>
             <span style={{ fontWeight: 700, fontSize: 14 }}>Trading opens at launch</span>

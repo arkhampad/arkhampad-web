@@ -171,3 +171,10 @@ textarea.inp { height: auto; padding: 12px 14px; line-height: 1.5; resize: none;
 .theme-btn svg { display: block; }
 .tv-box { height: var(--tv-h, 380px); }
 @media (max-width: 760px) { .tv-box { height: min(var(--tv-h, 380px), 300px); } }
+.click-card:hover { border-color: var(--line3); }
+.beat { display: inline-block; animation: beat var(--beat, 1.2s) ease-in-out infinite; transform-origin: center; }
+@keyframes beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.35); } 30% { transform: scale(1); } 45% { transform: scale(1.2); } }
+.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 90; overflow: hidden; }
+.confetti i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation: confetti-fall var(--d, 2.6s) cubic-bezier(.2,.6,.4,1) forwards; }
+@keyframes confetti-fall { to { transform: translate3d(var(--x, 0), 105vh, 0) rotate(var(--r, 540deg)); opacity: 0.9; } }
+@media (prefers-reduced-motion: reduce) { .confetti { display: none; } .beat { animation: none; } }

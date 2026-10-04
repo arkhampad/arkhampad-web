@@ -57,7 +57,7 @@ export default function TvChart({ candles, supply, height = 380, empty = "No tra
     // follow the light/dark switch
     const mo = new MutationObserver(() => {
       const q = palette();
-      c.applyOptions({ layout: { textColor: q.text }, grid: { vertLines: { color: q.grid }, horzLines: { color: q.grid } }, crosshair: { vertLine: { color: q.cross, labelBackgroundColor: q.label }, horzLine: { color: q.cross, labelBackgroundColor: q.label } }, rightPriceScale: { borderColor: q.line }, timeScale: { borderColor: q.line } });
+      c.applyOptions({ layout: { textColor: q.text }, crosshair: { vertLine: { color: q.cross, labelBackgroundColor: q.label }, horzLine: { color: q.cross, labelBackgroundColor: q.label } }, rightPriceScale: { borderColor: q.line }, timeScale: { borderColor: q.line } });
       candle.current?.applyOptions({ upColor: q.up, downColor: q.down, borderUpColor: q.up, borderDownColor: q.down, wickUpColor: q.up, wickDownColor: q.down });
     });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });

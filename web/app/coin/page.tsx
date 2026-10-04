@@ -2,11 +2,12 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getCoin, useCoinMarket, usd, short, ago, listCoins, type LiveCoin } from "@/lib/live";
+import { getCoin, useCoinMarket, shareCoin, usd, short, ago, listCoins, type LiveCoin } from "@/lib/live";
 import { Avatar, Bar, ChainTag } from "@/components/bits";
 import { Intervals, TradePanel } from "@/components/trade";
 import dynamic from "next/dynamic";
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
+const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
 import { ICopy, IShare } from "@/components/icons";
 import { useApp } from "@/components/shell";
 
@@ -67,7 +68,7 @@ function CoinView() {
             {c.own && c.creator ? <>· by {short(c.creator)}</> : null} · {c.age} old
           </div>
         </div>
-        <button type="button" className="icon-btn" aria-label="Share" onClick={async () => { try { await navigator.clipboard.writeText(window.location.href); toast("Link copied"); } catch { /* blocked */ } }}><IShare size={16} /></button>
+        <button type="button" className="btn ghost sm" aria-label="Share on X" onClick={() => shareCoin(c)}><IShare size={15} />Share</button>
       </div>
 
       <div className="grid6">
@@ -80,9 +81,9 @@ function CoinView() {
           <div className="panel">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}><span className="mono" style={{ fontWeight: 800, fontSize: 28, letterSpacing: -0.8 }}>{c.price}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 700 }}>{up ? "+" : ""}{c.chg.toFixed(1)}%</span></div>
-              <Intervals value={iv} onChange={setIv} />
+              {c.own && <Intervals value={iv} onChange={setIv} />}
             </div>
-            <TvChart candles={candles} supply={c.own ? 1e9 : c.mcNum && c.priceNum ? c.mcNum / c.priceNum : null} empty={c.own ? "No trades yet for a chart." : "Chart data is not available right now."} />
+            {c.own ? <TvChart candles={candles} supply={1e9} empty="No trades yet for a chart." /> : <ExtChart network={c.network} pool={c.pool} />}
           </div>
           <div className="panel">
             <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""}</span>
@@ -114,7 +115,7 @@ function CoinView() {
               <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>This coin trades on another DEX. You will be able to buy and sell it here with USDC when ArkhamPad opens.</span>
             </div>
           )}
-          <div className="hide-m"><TradePanel tick={c.tick} price={c.priceNum ?? 0} /></div>
+          <div className="hide-m"><TradePanel tick={c.tick} price={c.priceNum ?? 0} onShare={() => shareCoin(c)} /></div>
         </aside>
       </div>
       <div className="show-m" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(74px + var(--safe-bottom))", zIndex: 25, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "10px 16px", background: "var(--bar-bg)", borderTop: "1px solid var(--line)" }}>

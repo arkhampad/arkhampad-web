@@ -56,7 +56,7 @@ function Amt({ v, on, set }: { v: number; on: boolean; set: (n: number) => void 
   return <button type="button" className="seg mono" style={{ height: 38, minWidth: 0 }} aria-pressed={on} onClick={() => set(v)} data-on={on}><span style={{ color: on ? "var(--volt)" : undefined }}>${v}</span></button>;
 }
 
-export function TradePanel({ tick, price = 0.00412, withLimit = false }: { tick: string; price?: number; withLimit?: boolean }) {
+export function TradePanel({ tick, price = 0.00412, withLimit = false, onShare }: { tick: string; price?: number; withLimit?: boolean; onShare?: () => void }) {
   const { openLogin } = useApp();
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [mode, setMode] = useState("Market");
@@ -84,8 +84,8 @@ export function TradePanel({ tick, price = 0.00412, withLimit = false }: { tick:
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">You get</span><span className="mono">≈ {side === "buy" ? `${fmt(tokens)} ${tick}` : `$${n.toFixed(2)}`}</span></div>
       <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={openLogin} style={{ fontSize: 17 }}>{side === "buy" ? "Buy" : "Sell"} {tick}</button>
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }}><IBell size={15} />Price alert</button>
-        <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }}><IShare size={15} />Share</button>
+        <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={openLogin}><IBell size={15} />Price alert</button>
+        <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={onShare}><IShare size={15} />Share</button>
       </div>
     </div>
   );

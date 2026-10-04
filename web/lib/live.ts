@@ -262,9 +262,10 @@ export function useCoinMarket(c: LiveCoin | null | undefined, iv: string, onFres
         if (f) fresh.current?.(f);
         setCandles(ks); setOwn(ts);
       } else {
-        const [ks, ts] = await Promise.all([c.network && c.pool ? extCandles(c.network, c.pool, iv).catch(() => []) : Promise.resolve([]), extTrades(c)]);
+        // The chart for other-DEX coins is an embedded DexScreener/GeckoTerminal chart; only trades here.
+        const ts = await extTrades(c);
         if (!alive) return;
-        setCandles(ks); setExt(ts);
+        setCandles([]); setExt(ts);
       }
     };
     run.current = () => { load().catch(() => {}); };
@@ -279,3 +280,55 @@ export function useCoinMarket(c: LiveCoin | null | undefined, iv: string, onFres
 
 /** Text typed into search, made safe for a PostgREST filter. */
 export const cleanSearch = (s: string) => s.replace(/[^A-Za-z0-9 ._$-]/g, "").trim().slice(0, 42);
+
+// ---------------------------------------------------------------- sharing, search by address, totals
+export function shareCoin(c: LiveCoin) {
+  const url = `https://arkhampad.com/coin/?c=${c.id}`;
+  const text = `$${c.tick} on @Arkhampad\nMC ${c.mc} · ${c.chg >= 0 ? "+" : ""}${c.chg.toFixed(1)}% 24h\nCA: ${c.address}`;
+  const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
+  // Phones get the system share sheet (X, Telegram, WhatsApp…); computers go straight to X.
+  if (nav.share && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    nav.share({ title: `${c.name} ($${c.tick})`, text, url }).catch(() => {});
+    return;
+  }
+  window.open(`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, "_blank", "noopener,noreferrer");
+}
+
+/** Finds a coin by contract address on any chain we list. */
+export async function findByAddress(address: string): Promise<LiveCoin | null> {
+  const a = address.trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(a)) return null;
+  const own = await db().from("coin_list").select("*").eq("address", a).limit(1);
+  if (own.data && own.data.length) return fromOwn(own.data[0] as OwnRow);
+  const ext = await db().from("ext_tokens").select("*").eq("address", a).limit(1);
+  if (ext.data && ext.data.length) return fromExt(ext.data[0] as ExtRow);
+  return null;
+}
+
+/** How many coins the site lists (launched here + other DEXs). */
+export async function totalCoins(): Promise<number> {
+  const [a, b] = await Promise.all([
+    db().from("ext_tokens").select("address", { count: "exact", head: true }),
+    db().from("coins").select("address", { count: "exact", head: true }),
+  ]);
+  return (a.count ?? 0) + (b.count ?? 0);
+}
+
+/** Calls back when one of our coins graduates (Supabase Realtime). */
+export function useGraduations(cb: (coin: { symbol: string; name: string; chain_id: number; address: string }) => void) {
+  const ref = useRef(cb);
+  ref.current = cb;
+  useEffect(() => {
+    const seen = new Set<string>();
+    const ch = db().channel(`grads-${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "coins", filter: "phase=eq.2" }, (p) => {
+        const n = p.new as { symbol: string; name: string; chain_id: number; address: string; graduated_at: string | null };
+        const k = `${n.chain_id}-${n.address}`;
+        if (seen.has(k) || !n.graduated_at || Date.now() - Date.parse(n.graduated_at) > 120_000) return;
+        seen.add(k);
+        ref.current(n);
+      })
+      .subscribe();
+    return () => { db().removeChannel(ch); };
+  }, []);
+}

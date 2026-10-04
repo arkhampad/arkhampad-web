@@ -6,6 +6,9 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import { listCoins, recentTrades, useLive, useTradeFeed, type LiveCoin, type LiveTrade } from "@/lib/live";
 import { IBell, IChart, IHome, IPlus, ISearch, IUser } from "./icons";
 import { LoginModal, FundsModal, WelcomeModal } from "./modals";
+import { Celebrate } from "./celebrate";
+import { useRouter } from "next/navigation";
+import { findByAddress } from "@/lib/live";
 
 type Ctx = { openLogin: () => void; openFunds: (t: "deposit" | "withdraw") => void; toast: (m: string) => void; loggedIn: boolean };
 const AppCtx = createContext<Ctx>({ openLogin: () => {}, openFunds: () => {}, toast: () => {}, loggedIn: false });
@@ -17,6 +20,30 @@ export function Logo() {
       <BrandMark size={34} />
       <span className="logo-text">ArkhamPad</span>
     </Link>
+  );
+}
+
+function HeaderSearch() {
+  const router = useRouter();
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  const go = async (text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    if (/^0x[0-9a-fA-F]{40}$/.test(t)) {
+      setBusy(true);
+      const c = await findByAddress(t).catch(() => null);
+      setBusy(false);
+      if (c) { router.push(`/coin/?c=${c.id}`); setQ(""); return; }
+    }
+    router.push(`/terminal/?q=${encodeURIComponent(t)}`);
+  };
+  return (
+    <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); go(q); }}>
+      <ISearch size={17} color="var(--faint)" />
+      <label className="sr" htmlFor="hdr-search">Search</label>
+      <input id="hdr-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} onPaste={(e) => { const t = e.clipboardData.getData("text"); if (/^\s*0x[0-9a-fA-F]{40}\s*$/.test(t)) { e.preventDefault(); setQ(t.trim()); go(t); } }} placeholder={busy ? "Finding coin…" : "Search coins or paste a contract address"} />
+    </form>
   );
 }
 
@@ -99,11 +126,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <nav className="nav" aria-label="Main">
             {NAV.map(([href, label]) => (<Link key={href} href={href} className={isOn(path, href) ? "on" : ""}>{label}</Link>))}
           </nav>
-          <label className="search">
-            <ISearch size={17} color="var(--faint)" />
-            <span className="sr">Search</span>
-            <input type="search" placeholder="Search coins, traders or contract address" />
-          </label>
+          <HeaderSearch />
           <span style={{ flex: 1 }} className="show-m" />
           <ThemeButton />
           <Link href="/alerts/" className="icon-btn" aria-label="Alerts"><IBell size={18} color="var(--text2)" /></Link>
@@ -122,6 +145,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       {welcome && <WelcomeModal onClose={closeWelcome} />}
       {login && <LoginModal onClose={() => setLogin(false)} />}
       {funds && <FundsModal tab={funds} setTab={setFunds} onClose={() => setFunds(null)} />}
+      <Celebrate toast={toast} />
       {msg && <div className="toast" role="status">{msg}</div>}
     </AppCtx.Provider>
   );

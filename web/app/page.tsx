@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { traders } from "@/lib/mock";
-import { listCoins, recentTrades, useLive, useTradeFeed, ago, type LiveCoin, type LiveTrade, type Tab } from "@/lib/live";
+import { listCoins, recentTrades, totalCoins, useLive, useTradeFeed, ago, type LiveCoin, type LiveTrade, type Tab } from "@/lib/live";
 import { Avatar } from "@/components/bits";
 import { CoinRows, CoinTable, HotCard } from "@/components/market";
 import { IFire, ISpark } from "@/components/icons";
@@ -49,6 +49,13 @@ export default function Discover() {
   useEffect(() => { const iv = setInterval(() => { if ((list?.length ?? 0) <= PAGE) load(0); }, 60_000); return () => clearInterval(iv); }, [load, list?.length]);
 
   const hot = useLive(() => listCoins("Trending", { limit: 3 }), [], 60_000);
+  const almost = useLive(async () => (await listCoins("Bonding", { limit: 30 })).filter((c) => c.progress >= 50).sort((a, b) => b.progress - a.progress).slice(0, 3), [], 60_000);
+  const total = useLive(totalCoins, [], 120_000);
+  const [feat, setFeat] = useState<"hot" | "grad">("hot");
+  const hasGrad = (almost.data?.length ?? 0) > 0;
+  // Hot right now and Almost graduating take turns every 2 minutes.
+  useEffect(() => { if (!hasGrad) { setFeat("hot"); return; } const t = setInterval(() => setFeat((f) => (f === "hot" ? "grad" : "hot")), 120_000); return () => clearInterval(t); }, [hasGrad]);
+  const featured = feat === "grad" && hasGrad ? almost.data : hot.data;
   const live = useLive<LiveTrade[]>(() => recentTrades(8), [], 0);
   useTradeFeed(() => live.reload());
 
@@ -61,6 +68,12 @@ export default function Discover() {
           Create and trade with <span className="grad-text" style={{ background: "linear-gradient(90deg, var(--volt), var(--mint))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>intelligence.</span>
         </h1>
         <p className="h-sub" style={{ maxWidth: 560, fontSize: 15 }}>Type an idea, get a ready coin. Trade thousands of coins with USDC.</p>
+        {total.data ? (
+          <span className="pill mono" style={{ border: "1px solid var(--line2)", color: "var(--text2)", fontSize: 13, padding: "6px 12px" }}>
+            <span className="dot" style={{ background: "var(--up)", boxShadow: "0 0 0 3px rgba(61,220,151,0.18)" }} />
+            <b style={{ color: "var(--text)" }}>{total.data.toLocaleString("en-US")}</b> coins on Base &amp; Robinhood
+          </span>
+        ) : null}
         <form onSubmit={go} style={{ width: "100%", maxWidth: 720, display: "flex", alignItems: "center", gap: 10, padding: "6px 6px 6px 16px", borderRadius: 16, background: "var(--field)", border: "1px solid var(--line3)", flexWrap: "wrap" }}>
           <ISpark size={20} color="var(--volt-ink)" />
           <label htmlFor="idea" className="sr">Describe your coin</label>
@@ -73,11 +86,14 @@ export default function Discover() {
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}><IFire size={20} color="var(--burn)" /><h2 className="sec-title" style={{ fontSize: 22 }}>Hot right now</h2></div>
-        {!hot.data ? <div className="grid3">{[0, 1, 2].map((i) => <div key={i} className="skel" style={{ height: 300, borderRadius: 22 }} />)}</div> : (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <button type="button" className={`tab${feat === "hot" || !hasGrad ? " on" : ""}`} style={{ height: 40, fontSize: 18, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }} onClick={() => setFeat("hot")}><IFire size={18} color="var(--burn)" />Hot right now</button>
+          {hasGrad && <button type="button" className={`tab${feat === "grad" ? " on" : ""}`} style={{ height: 40, fontSize: 18, fontWeight: 800 }} onClick={() => setFeat("grad")}>🎓 Almost graduating</button>}
+        </div>
+        {!featured ? <div className="grid3">{[0, 1, 2].map((i) => <div key={i} className="skel" style={{ height: 300, borderRadius: 22 }} />)}</div> : (
           <>
-            <div className="grid3 hide-m">{hot.data.map((c) => <HotCard key={c.id} c={c} />)}</div>
-            <div className="hscroll show-m" style={{ gap: 12, margin: "0 -16px", padding: "0 16px" }}>{hot.data.map((c) => <div key={c.id} style={{ flex: "none", width: 280 }}><HotCard c={c} /></div>)}</div>
+            <div className="grid3 hide-m">{featured.map((c) => <HotCard key={c.id} c={c} grad={feat === "grad" && hasGrad} />)}</div>
+            <div className="hscroll show-m" style={{ gap: 12, margin: "0 -16px", padding: "0 16px" }}>{featured.map((c) => <div key={c.id} style={{ flex: "none", width: 280 }}><HotCard c={c} grad={feat === "grad" && hasGrad} /></div>)}</div>
           </>
         )}
       </section>
