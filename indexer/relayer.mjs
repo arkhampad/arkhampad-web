@@ -75,7 +75,8 @@ export function makeRelayer() {
   const account = privateKeyToAccount(key.startsWith("0x") ? key : `0x${key}`, { nonceManager });
   const nets = new Map();
   for (const c of CHAINS) {
-    const rpc = (process.env[c.rpcEnv] || "").trim();
+    // The relayer can use its own (faster, paid) RPC; the indexer keeps the one with big log ranges.
+    const rpc = ((c.relayRpcEnv && process.env[c.relayRpcEnv]) || process.env[c.rpcEnv] || "").trim();
     if (!rpc || !c.router) continue;
     const chain = { id: c.chainId, name: c.name, nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } };
     const transport = http(rpc, { retryCount: 2, timeout: 20_000 });

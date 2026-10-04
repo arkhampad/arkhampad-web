@@ -15,7 +15,8 @@
     "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     "faucet": false,
     "guard": "0xFe92db0aF76Eb08B553a3FC6aea9A9F1C5D3a000",
-    "poolManager": "0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408"
+    "poolManager": "0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408",
+    "relayRpcEnv": "BASE_SEPOLIA_RELAY_RPC"
   },
   {
     "name": "robinhood-testnet",
@@ -32,6 +33,7 @@
     "usdc": "0x47AfD49069EAbEcfb153926f1f652249fFb61b57",
     "faucet": true,
     "guard": "0x9F9d5d8fCAbdB8b4764A005E0846Ef66Bb842000",
-    "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951"
+    "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+    "relayRpcEnv": "ROBINHOOD_TESTNET_RELAY_RPC"
   }
 ]
