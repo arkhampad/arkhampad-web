@@ -5,7 +5,7 @@ import type { Address } from "viem";
 import { IBell, IShare } from "./icons";
 import { useApp } from "./shell";
 import { useWallet } from "./wallet";
-import { FEE, buy, fromCoin, fromUsdc, onLocalTrade, quoteBuy, quoteSell, sell, tokenBalance, toUsdc, TradeError } from "@/lib/chain";
+import { FEE, buy, fromCoin, fromUsdc, onLocalTrade, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError } from "@/lib/chain";
 import type { LiveCoin } from "@/lib/live";
 
 const fmtCoins = (t: number) => (!Number.isFinite(t) || t <= 0 ? "0" : t >= 1e9 ? (t / 1e9).toFixed(2) + "B" : t >= 1e6 ? (t / 1e6).toFixed(2) + "M" : t >= 1e3 ? (t / 1e3).toFixed(1) + "K" : t.toFixed(t < 1 ? 4 : 2));
@@ -22,7 +22,9 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState("");
   const seq = useRef(0);
-  const tradable = coin.own && (coin.phase ?? 0) === 0 && !!coin.curve;
+  const phase = coin.phase ?? 0;
+  const inPool = coin.own && phase === 2; // graduated: trades in its locked Uniswap pool
+  const tradable = coin.own && (phase === 0 ? !!coin.curve : phase === 2);
   const curve = coin.curve as Address | undefined;
   const cash = fromUsdc(w.usdc[coin.chainId] ?? 0n);
   const usd = Number(amt) || 0;
@@ -40,24 +42,25 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
 
   // live quote (debounced)
   useEffect(() => {
-    if (!tradable || !curve) { setQuote(null); return; }
+    if (!tradable) { setQuote(null); return; }
     const n = ++seq.current;
     const t = setTimeout(async () => {
       try {
+        const token = coin.address as Address;
         if (side === "buy") {
-          const v = usd > 0 ? fromCoin(await quoteBuy(coin.chainId, curve, toUsdc(usd))) : 0;
-          if (n === seq.current) setQuote(v);
+          const raw = usd <= 0 ? 0n : inPool ? await quotePool(coin.chainId, token, true, toUsdc(usd)) : await quoteBuy(coin.chainId, curve as Address, toUsdc(usd));
+          if (n === seq.current) setQuote(fromCoin(raw));
         } else {
-          const v = sellAmount > 0n ? fromUsdc(await quoteSell(coin.chainId, curve, sellAmount)) - fromUsdc(FEE) : 0;
-          if (n === seq.current) setQuote(Math.max(0, v));
+          const raw = sellAmount <= 0n ? 0n : inPool ? await quotePool(coin.chainId, token, false, sellAmount) : await quoteSell(coin.chainId, curve as Address, sellAmount);
+          if (n === seq.current) setQuote(Math.max(0, fromUsdc(raw) - fromUsdc(FEE)));
         }
       } catch { if (n === seq.current) setQuote(null); }
     }, 200);
     return () => clearTimeout(t);
-  }, [side, usd, sellAmount, tradable, curve, coin.chainId, coin.mcNum]);
+  }, [side, usd, sellAmount, tradable, inPool, curve, coin.chainId, coin.address, coin.mcNum]);
 
   const go = async () => {
-    if (!tradable || !curve) return;
+    if (!tradable) return;
     if (!w.signedIn || !w.signer) { w.login(); return; }
     if (mode !== "Market") { openSoon(); return; }
     setBusy(true);
@@ -65,12 +68,12 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       if (side === "buy") {
         if (usd <= 0) throw new TradeError("Enter an amount.");
         setStep("Buying…");
-        const t = await buy(coin.chainId, curve, coin.address as Address, toUsdc(usd), w.signer);
+        const t = inPool ? await poolBuy(coin.chainId, coin.address as Address, toUsdc(usd), w.signer) : await buy(coin.chainId, curve as Address, coin.address as Address, toUsdc(usd), w.signer);
         toast(`Bought ${fmtCoins(t?.coins ?? 0)} ${coin.tick}`);
       } else {
         if (sellAmount <= 0n) throw new TradeError("You don't hold this coin yet.");
         setStep("Selling…");
-        const t = await sell(coin.chainId, curve, coin.address as Address, sellAmount, w.signer);
+        const t = inPool ? await poolSell(coin.chainId, coin.address as Address, sellAmount, w.signer) : await sell(coin.chainId, curve as Address, coin.address as Address, sellAmount, w.signer);
         toast(`Sold for $${((t?.usdc ?? 0) - fromUsdc(FEE)).toFixed(2)}`);
       }
       await w.refresh();
@@ -82,7 +85,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   };
 
   const modes = withLimit ? ["Market", "Limit", "Auto"] : ["Market", "Auto"];
-  const label = !coin.own ? "Opens at launch" : (coin.phase ?? 0) > 0 ? "Graduating" : !w.signedIn ? "Log in to trade" : busy ? step : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
+  const label = !coin.own ? "Opens at launch" : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
   return (
     <div className="card" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 4, borderRadius: 14, background: "var(--bg)" }}>
@@ -113,7 +116,8 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       )}
       <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={go} disabled={busy || !tradable} aria-busy={busy} style={{ fontSize: 17, opacity: !tradable ? 0.55 : 1 }}>{label}</button>
       {!coin.own && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>This coin trades on another DEX. Trading here opens at launch.</span>}
-      {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>Testnet · test USDC has no value</span>}
+      {coin.own && phase === 1 && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>Moving to its locked pool. Trading reopens in a few seconds.</span>}
+      {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{inPool ? "Graduated · trades in its locked pool · " : ""}Testnet · test USDC has no value</span>}
       <div style={{ display: "flex", gap: 8 }}>
         <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={openSoon}><IBell size={15} />Price alert</button>
         <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={onShare}><IShare size={15} />Share</button>

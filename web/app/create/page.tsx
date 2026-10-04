@@ -190,7 +190,7 @@ function CreateView() {
               {lock !== "No lock" && <span className="pill volt" style={{ background: "rgba(212,255,58,0.10)" }}>Dev locked {lock.replace("Lock ", "")}</span>}
               <span className="pill" style={{ background: fee === "burn" ? "rgba(255,138,61,0.12)" : "rgba(61,220,151,0.12)", color: fee === "burn" ? "var(--burn)" : "var(--up)" }}>{fee === "burn" ? "Buyback & burn" : "Fees to creator"}</span>
             </div>
-            {[["Starts at", "$15 market cap (testnet)"], ["Graduates at", "$25 (testnet)"], ["Your USDC on " + chain, w.signedIn ? `$${cash.toFixed(2)}` : "—"]].map(([a, b]) => <div key={a} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">{a}</span><span className="mono">{b}</span></div>)}
+            {[["Starts at", "$450 market cap (testnet)"], ["Graduates at", "$750 (testnet)"], ["Your USDC on " + chain, w.signedIn ? `$${cash.toFixed(2)}` : "—"]].map(([a, b]) => <div key={a} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">{a}</span><span className="mono">{b}</span></div>)}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Launch cost</span><span className="mono up">{boost === "none" ? "Free" : `$${boost} boost`}</span></div>
             <span className="dim" style={{ fontSize: 13 }}>Be the first buyer (optional)</span>
             <div style={{ display: "flex", gap: 6 }}>{[0, 10, 25, 50].map((v) => <button key={v} type="button" className={`seg mono${first === v ? " on" : ""}`} style={{ height: 38, minWidth: 0 }} onClick={() => setFirst(v)}>${v}</button>)}</div>

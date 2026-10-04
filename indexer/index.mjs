@@ -8,6 +8,7 @@ import pg from "pg";
 import { createPublicClient, http as viemHttp, parseAbiItem, getAddress } from "viem";
 import { startMarkets } from "./markets.mjs";
 import { makeRelayer, httpHandler } from "./relayer.mjs";
+import { poolIdOf, poolTrade } from "./poolmath.mjs";
 const relayer = process.env.ONCE ? null : makeRelayer();
 
 const POLL_DEFAULT = process.env.POLL_SECONDS ? Number(process.env.POLL_SECONDS) * 1000 : null;
@@ -25,13 +26,12 @@ const EV = {
   bought: parseAbiItem("event Bought(address indexed user, address indexed curve, uint256 usdcSpent, uint256 coinsOut, uint256 fee, uint256 nonce)"),
   sold: parseAbiItem("event Sold(address indexed user, address indexed curve, uint256 coinAmount, uint256 usdcOut, uint256 fee, uint256 nonce)"),
   rpromoted: parseAbiItem("event Promoted(address indexed user, address indexed coin, uint8 plan, uint256 fee, uint256 nonce)"),
+  ptraded: parseAbiItem("event PoolTraded(address indexed user, address indexed coin, bool isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 fee, uint256 nonce)"),
+  // Uniswap v4 PoolManager: amounts are from the swapper's side (negative = paid in)
+  swap: parseAbiItem("event Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)"),
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const usd = (x) => Number(x) / 1e6;
-const tok = (x) => Number(x) / 1e18;
-const lc = (a) => a.toLowerCase();
-const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -79,7 +79,7 @@ async function syncChain(c, client) {
       const address = watched.slice(i, i + 500);
       logs = logs.concat(await call("getLogs", () => client.getLogs({ address, events: ALL, fromBlock: from, toBlock: to })));
     }
-    const routerLogs = c.router ? await call("getLogs router", () => client.getLogs({ address: c.router, events: [EV.bought, EV.sold, EV.rpromoted], fromBlock: from, toBlock: to })) : [];
+    const routerLogs = c.router ? await call("getLogs router", () => client.getLogs({ address: c.router, events: [EV.bought, EV.sold, EV.rpromoted, EV.ptraded], fromBlock: from, toBlock: to })) : [];
     // tx hash + curve -> the user who signed a gasless trade
     const viaRouter = new Map();
     for (const e of routerLogs) if (e.eventName === "Bought" || e.eventName === "Sold") viaRouter.set(`${e.transactionHash}:${lc(e.args.curve)}`, lc(e.args.user));
@@ -169,10 +169,43 @@ async function syncChain(c, client) {
           [c.chainId, e.transactionHash, e.logIndex, lc(a.coin), String(a.chainId), promoPayer.get(e.transactionHash) ?? lc(a.payer), Number(a.plan), Number(a.seconds_), usd(a.price), at, new Date(at.getTime() + Number(a.seconds_) * 1000)],
         );
       }
+      // Trades in the locked Uniswap pools of graduated coins (from any app, not only ours).
+      let poolTrades = 0;
+      if (c.poolManager && c.guard && c.usdc) {
+        const grad = (await db.query("select address, creator from coins where chain_id=$1 and phase=2", [c.chainId])).rows;
+        if (grad.length) {
+          const byId = new Map(grad.map((r) => [poolIdOf(c.usdc, r.address, c.guard), r]));
+          const ids = [...byId.keys()];
+          const viaPool = new Map();
+          for (const e of routerLogs) if (e.eventName === "PoolTraded") viaPool.set(`${e.transactionHash}:${lc(e.args.coin)}`, lc(e.args.user));
+          for (let i = 0; i < ids.length; i += 100) {
+            const swaps = await call("getLogs pools", () => client.getLogs({ address: c.poolManager, event: EV.swap, args: { id: ids.slice(i, i + 100) }, fromBlock: from, toBlock: to }));
+            for (const e of swaps) {
+              const r = byId.get(e.args.id);
+              if (!r) continue;
+              const usdcIs0 = BigInt(c.usdc) < BigInt(r.address);
+              const t = poolTrade(e.args, usdcIs0);
+              let trader = lc(e.args.sender);
+              if (c.router && trader === lc(c.router)) trader = viaPool.get(`${e.transactionHash}:${r.address}`) ?? trader;
+              const at = await ts(e.blockNumber);
+              const ins = await db.query(
+                `insert into trades (chain_id, tx_hash, log_index, coin, trader, is_buy, usdc, coins, fee, price_usd, mc_usd, block, ts)
+                 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict do nothing`,
+                [c.chainId, e.transactionHash, e.logIndex, r.address, trader, t.isBuy, t.usdc, t.coins, t.fee, t.price, t.price * SUPPLY, String(e.blockNumber), at],
+              );
+              if (ins.rowCount) {
+                poolTrades++;
+                await db.query("update coins set price_usd=$3, mc_usd=$4, trades_count=trades_count+1, volume_usd=volume_usd+$5, last_trade_at=$6 where chain_id=$1 and address=$2",
+                  [c.chainId, r.address, t.price, t.price * SUPPLY, t.usdc, at]);
+              }
+            }
+          }
+        }
+      }
       await db.query("update sync_state set last_block=$2, updated_at=now() where chain_id=$1", [c.chainId, String(to)]);
       await db.query("commit");
-      if (created.length || trades.length || grads.length || promos.length)
-        log(`${c.name}: blocks ${from}-${to} coins+${created.length} trades+${trades.length} grads+${grads.length} promos+${promos.length}`);
+      if (created.length || trades.length || grads.length || promos.length || poolTrades)
+        log(`${c.name}: blocks ${from}-${to} coins+${created.length} trades+${trades.length} pool+${poolTrades} grads+${grads.length} promos+${promos.length}`);
     } catch (err) {
       await db.query("rollback");
       throw err;
@@ -192,6 +225,7 @@ async function loop(c) {
   c.hub = getAddress(c.hub);
   if (c.promote) c.promote = getAddress(c.promote);
   if (c.router) c.router = getAddress(c.router);
+  if (c.poolManager) c.poolManager = getAddress(c.poolManager);
   log(`${c.name}: indexing from block ${c.startBlock}`);
   for (;;) {
     try {

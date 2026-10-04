@@ -18,6 +18,9 @@ const ROUTER_ABI = [
   { type: "function", name: "launch", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "l", type: "tuple", components: [{ name: "name", type: "string" }, { name: "symbol", type: "string" }, { name: "metadataURI", type: "string" }, { name: "lockSeconds", type: "uint256" }, { name: "feeMode", type: "uint8" }, { name: "launchUsdc", type: "uint256" }, { name: "minCoinsOut", type: "uint256" }] }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [{ type: "address" }, { type: "address" }] },
   { type: "function", name: "withdraw", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "to", type: "address" }, { name: "amount", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [] },
   { type: "function", name: "promote", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "coin", type: "address" }, { name: "coinChainId", type: "uint256" }, { name: "plan", type: "uint8" }, { name: "maxPrice", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [] },
+  { type: "function", name: "poolBuy", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "coin", type: "address" }, { name: "usdcIn", type: "uint256" }, { name: "minCoinsOut", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "poolSell", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "coin", type: "address" }, { name: "coinAmount", type: "uint256" }, { name: "minUsdcOut", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [{ type: "uint256" }] },
+  { type: "error", name: "NotGraduated", inputs: [] },
   { type: "function", name: "cancel", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }], outputs: [] },
   { type: "error", name: "Expired", inputs: [] }, { type: "error", name: "NonceAlreadyUsed", inputs: [] }, { type: "error", name: "BadSignature", inputs: [] },
   { type: "error", name: "NotACurve", inputs: [] }, { type: "error", name: "FeeTooHigh", inputs: [] }, { type: "error", name: "ZeroAddress", inputs: [] },
@@ -44,6 +47,7 @@ const FRIENDLY = {
   CreatorLocked: "Creator coins are locked for now.",
   BadName: "Name or ticker is not valid.",
   NotAllowed: "Not allowed right now.",
+  NotGraduated: "This coin trades on its bonding curve, not in the pool yet.",
   ERC20InsufficientBalance: "Not enough balance.",
   ERC20InsufficientAllowance: "Approval missing. Please try again.",
 };
@@ -112,6 +116,10 @@ export function makeRelayer() {
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "buy", args: [addr(body.user, "user"), addr(body.curve, "curve"), big(body.usdcIn, "usdcIn"), big(body.minCoinsOut, "minCoinsOut"), feeOf(body), sigOf(body)] });
     } else if (kind === "sell") {
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "sell", args: [addr(body.user, "user"), addr(body.curve, "curve"), big(body.coinAmount, "coinAmount"), big(body.minUsdcOut, "minUsdcOut"), feeOf(body), sigOf(body)] });
+    } else if (kind === "poolBuy") {
+      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "poolBuy", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.usdcIn, "usdcIn"), big(body.minCoinsOut, "minCoinsOut"), feeOf(body), sigOf(body)] });
+    } else if (kind === "poolSell") {
+      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "poolSell", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.coinAmount, "coinAmount"), big(body.minUsdcOut, "minUsdcOut"), feeOf(body), sigOf(body)] });
     } else if (kind === "launch") {
       const l = body.launch ?? {};
       const launch = { name: str(l.name, "name", 32), symbol: str(l.symbol, "symbol", 10), metadataURI: str(l.metadataURI ?? "", "metadataURI", 1200), lockSeconds: big(l.lockSeconds, "lockSeconds"), feeMode: Number(l.feeMode) === 1 ? 1 : 0, launchUsdc: big(l.launchUsdc, "launchUsdc"), minCoinsOut: big(l.minCoinsOut, "minCoinsOut") };

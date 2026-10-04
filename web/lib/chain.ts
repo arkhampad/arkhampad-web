@@ -17,8 +17,8 @@ export type Net = { id: number; name: string; short: string; rpc: string; hub: A
 
 // Contract addresses come from contracts/deployments/<chainId>.json.
 const DEFAULT_NETS: Net[] = [
-  { id: 84532, name: "Base Sepolia", short: "Base", rpc: "https://sepolia.base.org", hub: "0x5f549f51B12bb996444Fb0ec5A68CC0aE6c9997e", router: "0x66E3A8F62d225D8575d1577405c16B2E52A907d9", usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", faucet: false, faucetUrl: "https://faucet.circle.com" },
-  { id: 46630, name: "Robinhood Testnet", short: "Robinhood", rpc: "https://rpc.testnet.chain.robinhood.com", hub: "0x281535c6513a52Ccc4F1306c7c9f2fF93CaE4F02", router: "0xD57c5A1d5dBa101CBa9B373480446755be63b592", usdc: "0xD3b65d20e991a732AF81C2f42C86d2C1619E56F8", faucet: true },
+  { id: 84532, name: "Base Sepolia", short: "Base", rpc: "https://sepolia.base.org", hub: "0x27e9ba5b6C405c01b1D1714Fd72e99Be1ED0D125", router: "0xB5d157e046fa4363330B38E767b82eeB8b8460c1", usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", faucet: false, faucetUrl: "https://faucet.circle.com" },
+  { id: 46630, name: "Robinhood Testnet", short: "Robinhood", rpc: "https://rpc.testnet.chain.robinhood.com", hub: "0x742f9EF29655202138CA48b8Ad3645653E95276F", router: "0x1Cf054C53A5e263881aC4b4DD235576dD36a7F42", usdc: "0x47AfD49069EAbEcfb153926f1f652249fFb61b57", faucet: true },
 ];
 // Local test builds can point everything at a local chain.
 export const NETS: Net[] = process.env.NEXT_PUBLIC_NETS ? JSON.parse(process.env.NEXT_PUBLIC_NETS) : DEFAULT_NETS;
@@ -62,7 +62,8 @@ export const HUB = parseAbi([
   "event CoinCreated(address indexed coin, address indexed curve, address indexed creator, string name, string symbol, string metadataURI, uint256 lockSeconds, uint8 feeMode)",
 ]);
 export const PROMOTE = parseAbi(["function plans(uint8) view returns (uint64 seconds_, uint128 price, bool active)", "function promoter() view returns (address)"]);
-const ROUTER_VIEW = parseAbi(["function promoter() view returns (address)"]);
+const ROUTER_VIEW = parseAbi(["function promoter() view returns (address)", "function quotePool(address coin, bool isBuy, uint256 amountIn) returns (uint256)"]);
+const POOL_EVENT = parseAbi(["event PoolTraded(address indexed user, address indexed coin, bool isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 fee, uint256 nonce)"]);
 
 export const FEE = 10_000n; // network fee the relayer gets back, in USDC (6 decimals): $0.01 on testnets
 export const MAX = 2n ** 256n - 1n;
@@ -79,6 +80,8 @@ const TYPES = {
   Sell: F([["user", "address"], ["curve", "address"], ["coinAmount", "uint256"], ["minUsdcOut", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]),
   Create: F([["user", "address"], ["name", "string"], ["symbol", "string"], ["metadataURI", "string"], ["lockSeconds", "uint256"], ["feeMode", "uint8"], ["launchUsdc", "uint256"], ["minCoinsOut", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]),
   Withdraw: F([["user", "address"], ["to", "address"], ["amount", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]),
+  PoolBuy: F([["user", "address"], ["coin", "address"], ["usdcIn", "uint256"], ["minCoinsOut", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]),
+  PoolSell: F([["user", "address"], ["coin", "address"], ["coinAmount", "uint256"], ["minUsdcOut", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]),
   Promote: F([["user", "address"], ["coin", "address"], ["coinChainId", "uint256"], ["plan", "uint8"], ["maxPrice", "uint256"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]),
   Permit: F([["owner", "address"], ["spender", "address"], ["value", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]]),
 };
@@ -206,6 +209,57 @@ export async function sell(chainId: number, curve: Address, coin: Address, coinA
   return t;
 }
 
+/** Graduated coins: what a pool trade gives right now (simulated on-chain, exact). */
+export async function quotePool(chainId: number, coin: Address, isBuy: boolean, amountIn: bigint) {
+  const n = netOf(chainId);
+  if (!n) return 0n;
+  const { result } = await client(chainId).simulateContract({ address: n.router, abi: ROUTER_VIEW, functionName: "quotePool", args: [coin, isBuy, amountIn] });
+  return result as bigint;
+}
+
+function poolTradeFrom(n: Net, rc: { logs: unknown[]; transactionHash: Hex }, coin: Address, user: Address): LocalTrade | null {
+  const ev = parseEventLogs({ abi: POOL_EVENT, logs: rc.logs as never, eventName: "PoolTraded" })[0];
+  if (!ev) return null;
+  const a = ev.args as { isBuy: boolean; usdcAmount: bigint; coinAmount: bigint };
+  const usdcN = fromUsdc(a.usdcAmount), coinsN = fromCoin(a.coinAmount);
+  const price = coinsN > 0 ? usdcN / coinsN : 0; // average fill price of this trade
+  return { chainId: n.id, coin, curve: coin, trader: user, isBuy: a.isBuy, usdc: usdcN, coins: coinsN, price, mc: price * 1e9, hash: rc.transactionHash, at: Date.now() };
+}
+
+export async function poolBuy(chainId: number, coin: Address, usdcIn: bigint, s: Signer) {
+  const n = netOf(chainId);
+  if (!n) throw new TradeError("Unknown network");
+  if (usdcIn <= 0n) throw new TradeError("Enter an amount.");
+  if ((await usdcBalance(chainId, s.address)) < usdcIn + FEE) throw new TradeError("Not enough USDC on this network.");
+  const quote = await quotePool(chainId, coin, true, usdcIn);
+  if (quote === 0n) throw new TradeError("Amount is too small.");
+  await ensureAllowance(n, s, n.usdc, usdcIn + FEE);
+  const minOut = (quote * (10_000n - SLIPPAGE_BPS)) / 10_000n;
+  const nonce = randomNonce(), dl = deadline();
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { PoolBuy: TYPES.PoolBuy }, primaryType: "PoolBuy", message: { user: s.address, coin, usdcIn, minCoinsOut: minOut, fee: FEE, nonce, deadline: dl } });
+  const rc = await confirm(n, await relay({ chainId: n.id, kind: "poolBuy", user: s.address, coin, usdcIn: S(usdcIn), minCoinsOut: S(minOut), fee: S(FEE), nonce: S(nonce), deadline: S(dl), signature }));
+  const t = poolTradeFrom(n, rc as never, coin, s.address);
+  emit(t);
+  return t;
+}
+
+export async function poolSell(chainId: number, coin: Address, coinAmount: bigint, s: Signer) {
+  const n = netOf(chainId);
+  if (!n) throw new TradeError("Unknown network");
+  if (coinAmount <= 0n) throw new TradeError("Enter an amount.");
+  if ((await tokenBalance(chainId, coin, s.address)) < coinAmount) throw new TradeError("You don't hold that many.");
+  const quote = await quotePool(chainId, coin, false, coinAmount);
+  if (quote <= FEE) throw new TradeError("This sale is too small to cover the network fee.");
+  await ensureAllowance(n, s, coin, coinAmount);
+  const minOut = ((quote - FEE) * (10_000n - SLIPPAGE_BPS)) / 10_000n;
+  const nonce = randomNonce(), dl = deadline();
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { PoolSell: TYPES.PoolSell }, primaryType: "PoolSell", message: { user: s.address, coin, coinAmount, minUsdcOut: minOut, fee: FEE, nonce, deadline: dl } });
+  const rc = await confirm(n, await relay({ chainId: n.id, kind: "poolSell", user: s.address, coin, coinAmount: S(coinAmount), minUsdcOut: S(minOut), fee: S(FEE), nonce: S(nonce), deadline: S(dl), signature }));
+  const t = poolTradeFrom(n, rc as never, coin, s.address);
+  emit(t);
+  return t;
+}
+
 export type LaunchInput = { name: string; symbol: string; metadataURI: string; lockSeconds: number; feeMode: 0 | 1; launchUsdc: bigint };
 export async function launch(chainId: number, l: LaunchInput, s: Signer): Promise<{ coin: Address; curve: Address }> {
   const n = netOf(chainId);
@@ -274,5 +328,5 @@ export async function coinFromChain(chainId: number, coin: Address) {
     c.readContract({ address: curve, abi: CURVE, functionName: "phase" }),
   ]);
   const price = fromUsdc(vUsdc) / fromCoin(vCoin);
-  return { chain_id: chainId, address: coin.toLowerCase(), curve: curve.toLowerCase(), creator: creator.toLowerCase(), name, symbol, phase: Number(phase), price_usd: price, mc_usd: price * 1e9, start_mc_usd: 4500 * (chainId === 84532 || chainId === 46630 ? 15 / 4500 : 1), usdc_reserve: fromUsdc(reserve), trades_count: 0, created_at: new Date().toISOString(), volume_24h: 0, change_24h_pct: null, buyers: 0, metadata_uri: "" };
+  return { chain_id: chainId, address: coin.toLowerCase(), curve: curve.toLowerCase(), creator: creator.toLowerCase(), name, symbol, phase: Number(phase), price_usd: price, mc_usd: price * 1e9, start_mc_usd: chainId === 84532 || chainId === 46630 ? 450 : 4500, usdc_reserve: fromUsdc(reserve), trades_count: 0, created_at: new Date().toISOString(), volume_24h: 0, change_24h_pct: null, buyers: 0, metadata_uri: "" };
 }
