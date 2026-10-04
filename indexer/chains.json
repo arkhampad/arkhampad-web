@@ -12,7 +12,8 @@
     "note": "Alchemy free tier allows 10 blocks per getLogs; raise blockRange after upgrading to PAYG",
     "rangeDelayMs": 150,
     "router": "0x66E3A8F62d225D8575d1577405c16B2E52A907d9",
-    "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "faucet": false
   },
   {
     "name": "robinhood-testnet",
@@ -26,6 +27,7 @@
     "pollSeconds": 5,
     "rangeDelayMs": 0,
     "router": "0xD57c5A1d5dBa101CBa9B373480446755be63b592",
-    "usdc": "0xD3b65d20e991a732AF81C2f42C86d2C1619E56F8"
+    "usdc": "0xD3b65d20e991a732AF81C2f42C86d2C1619E56F8",
+    "faucet": true
   }
 ]
