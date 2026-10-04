@@ -28,7 +28,7 @@ function Donut() {
   return <svg width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Volume by chain"><path d={arc(0, 0.58)} stroke="#CCFF4D" strokeWidth="22" fill="none" /><path d={arc(0.595, 0.985)} stroke="#5B8CFF" strokeWidth="22" fill="none" /><text x="90" y="86" textAnchor="middle" fontFamily="Geist Mono, monospace" fontSize="22" fontWeight="700" fill="#F2F3F5">$18.4M</text><text x="90" y="108" textAnchor="middle" fontSize="12" fill="#8A909C">24h volume</text></svg>;
 }
 function Rec({ k, v, s }: { k: string; v: string; s: string }) {
-  return <div className="card" style={{ background: "linear-gradient(160deg, #151826, #0D0E13)", borderColor: "var(--line2)", gap: 6 }}><span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>{k}</span><span className="mono" style={{ fontWeight: 800, fontSize: 22, letterSpacing: -0.6 }}>{v}</span><span className="muted" style={{ fontSize: 12 }}>{s}</span></div>;
+  return <div className="card" style={{ background: "linear-gradient(160deg, var(--hl1), var(--hl2))", borderColor: "var(--line2)", gap: 6 }}><span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>{k}</span><span className="mono" style={{ fontWeight: 800, fontSize: 22, letterSpacing: -0.6 }}>{v}</span><span className="muted" style={{ fontSize: 12 }}>{s}</span></div>;
 }
 
 export default function Analytics() {
@@ -36,10 +36,10 @@ export default function Analytics() {
   return (
     <div className="wrap page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><h1 className="h-title">Analytics</h1><p className="h-sub">Everything happening on ArkhamPad, live.</p></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><span className="pill" style={{ alignSelf: "flex-start", background: "rgba(255,180,60,0.14)", color: "var(--warn)" }}>Preview · sample data until launch</span><h1 className="h-title">Analytics</h1><p className="h-sub">Everything happening on ArkhamPad, live.</p></div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div className="hscroll" style={{ gap: 6 }}>{["24h", "7d", "30d", "All time"].map((t) => <button key={t} type="button" className={`chip sm${range === t ? " on" : ""}`} onClick={() => setRange(t)}>{t}</button>)}</div>
-          <a href="#" className="btn white sm" style={{ borderRadius: 999 }}>Verify on-chain ↗</a>
+          <a href="https://sepolia.basescan.org/address/0x75656d8d2A59293DBdA4178F11Af6EE506ef60dD" target="_blank" rel="noopener noreferrer" className="btn white sm" style={{ borderRadius: 999 }} title="Our contracts on the block explorer: every launch and trade is public">Verify on-chain ↗</a>
         </div>
       </div>
       <div className="ai-note" style={{ padding: "18px 20px", borderRadius: 20, fontSize: 15 }}><ISpark size={18} color="var(--volt-ink)" /><span><b>Today in 30 seconds:</b> Volume is up 24% vs yesterday, driven by animal coins on Base. Robinhood had more launches, Base had more graduations. The average time to graduate fell to 41 minutes.</span></div>

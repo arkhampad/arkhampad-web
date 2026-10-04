@@ -35,7 +35,7 @@ export default async function Article({ params }: { params: Promise<{ slug: stri
           <div style={{ height: 220, borderRadius: 22, background: `linear-gradient(135deg, ${g.c1}, ${g.c2})`, position: "relative", overflow: "hidden" }}><span style={{ position: "absolute", right: -40, bottom: -60, width: 300, height: 300, borderRadius: "50%", border: "36px solid rgba(10,11,16,0.12)" }} /></div>
           <div id="in-short" style={{ padding: "18px 20px", borderRadius: 18, background: "rgba(212,255,58,0.06)", border: "1px solid rgba(212,255,58,0.22)", display: "flex", flexDirection: "column", gap: 8 }}>
             <span className="mono volt" style={{ fontWeight: 700, fontSize: 12 }}>In short</span>
-            <p style={{ margin: 0, fontSize: 16, lineHeight: 1.6, color: "#E3E5E9" }}>{a.short}</p>
+            <p style={{ margin: 0, fontSize: 16, lineHeight: 1.6, color: "var(--note)" }}>{a.short}</p>
           </div>
           {a.sections.map(([h, p], i) => (
             <section key={h} id={`s${i}`} style={{ display: "flex", flexDirection: "column", gap: 10 }}>

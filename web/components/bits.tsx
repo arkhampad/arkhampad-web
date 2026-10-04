@@ -77,6 +77,6 @@ export function BrandMark({ size = 32, tile = true }: { size?: number; tile?: bo
   );
   if (!tile) return svg;
   return (
-    <span style={{ width: size, height: size, borderRadius: Math.round(size * 0.28), background: "radial-gradient(circle at 30% 20%, #232838, #05060A 72%)", border: "1px solid #262A35", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{svg}</span>
+    <span style={{ width: size, height: size, borderRadius: Math.round(size * 0.28), background: "radial-gradient(circle at 30% 20%, #232838, #05060A 72%)", border: "1px solid var(--line2)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{svg}</span>
   );
 }

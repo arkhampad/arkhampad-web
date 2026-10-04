@@ -50,7 +50,7 @@ function CreateView() {
           <button type="button" className="btn volt" onClick={() => copy(ca, "Contract address copied")}><ICopy size={15} color="#0A0B10" />Copy CA</button>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700, fontSize: 14, display: "flex", gap: 6, alignItems: "center" }}><ISpark size={14} color="var(--volt-ink)" />AI wrote your post</span><button type="button" className="btn ghost sm">Rewrite</button></div>
-        <div style={{ padding: "14px 16px", borderRadius: 16, background: "var(--bg)", border: "1px solid var(--line2)", fontSize: 14, lineHeight: 1.55, color: "#E3E5E9", whiteSpace: "pre-line", wordBreak: "break-word" }}>{post}</div>
+        <div style={{ padding: "14px 16px", borderRadius: 16, background: "var(--bg)", border: "1px solid var(--line2)", fontSize: 14, lineHeight: 1.55, color: "var(--note)", whiteSpace: "pre-line", wordBreak: "break-word" }}>{post}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <a className="btn white" style={{ flex: "1 1 120px", height: 50 }} href={`https://x.com/intent/post?text=${encodeURIComponent(post)}`} target="_blank" rel="noopener noreferrer"><IX size={15} color="#0A0B10" w={2.4} />Post on X</a>
           <a className="btn" style={{ flex: "1 1 120px", height: 50, background: "#2AABEE", border: 0, color: "#fff" }} href={`https://t.me/share/url?url=${encodeURIComponent("https://arkhampad.com/coin/?c=" + tick.toLowerCase())}&text=${encodeURIComponent(post)}`} target="_blank" rel="noopener noreferrer">Telegram</a>

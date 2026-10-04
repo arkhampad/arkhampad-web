@@ -12,12 +12,12 @@ export default function Daily() {
   return (
     <div className="wrap page" style={{ maxWidth: 1300 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 14 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><span className="mono volt" style={{ fontWeight: 700, fontSize: 12 }}>ArkhamPad Daily</span><h1 className="h-title">Today&apos;s highlights</h1></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><span className="pill" style={{ alignSelf: "flex-start", background: "rgba(255,180,60,0.14)", color: "var(--warn)" }}>Preview · sample data until launch</span><span className="mono volt" style={{ fontWeight: 700, fontSize: 12 }}>ArkhamPad Daily</span><h1 className="h-title">Today&apos;s highlights</h1></div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button type="button" className="icon-btn" aria-label="Previous day"><IBack size={16} /></button><span className="mono" style={{ fontWeight: 700, fontSize: 14, padding: "0 6px" }}>Oct 3, 2026</span><button type="button" className="icon-btn" aria-label="Next day"><INext size={16} /></button></div>
       </div>
       <div className="ai-note" style={{ padding: 20, borderRadius: 22, fontSize: 16, lineHeight: 1.6 }}><ISpark size={18} color="var(--volt-ink)" /><span><b>AI recap:</b> A big day for animal coins. Moonfrog led with a 640% run and graduated in under an hour. 412 coins graduated, the most this week, and Base took the lead in new graduations.</span></div>
       <div className="grid4">{TOP.map(([k, n, v, col, c1, c2]) => (
-        <div key={k} className="card" style={{ background: "linear-gradient(160deg, #151826, #0D0E13)", borderColor: "var(--line2)", borderRadius: 22, padding: 18, gap: 12 }}>
+        <div key={k} className="card" style={{ background: "linear-gradient(160deg, var(--hl1), var(--hl2))", borderColor: "var(--line2)", borderRadius: 22, padding: 18, gap: 12 }}>
           <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>{k}</span>
           <span style={{ display: "flex", alignItems: "center", gap: 12 }}><Avatar name={n} c1={c1} c2={c2} size={48} /><span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}><b style={{ fontSize: 18 }}>{n}</b><span className="mono" style={{ fontWeight: 700, color: col }}>{v}</span></span></span>
         </div>))}</div>
@@ -27,7 +27,7 @@ export default function Daily() {
         </div>
         <aside className="side-col"><div className="card">
           <span style={{ fontWeight: 800, fontSize: 16 }}>Share today&apos;s recap</span>
-          <div style={{ padding: 14, borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line2)", fontSize: 14, lineHeight: 1.55, color: "#E3E5E9" }}>{post}</div>
+          <div style={{ padding: 14, borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line2)", fontSize: 14, lineHeight: 1.55, color: "var(--note)" }}>{post}</div>
           <div style={{ display: "flex", gap: 8 }}>
             <a className="btn white" style={{ flex: 1 }} href={`https://x.com/intent/post?text=${encodeURIComponent(post)}`} target="_blank" rel="noopener noreferrer"><IX size={15} color="#0A0B10" w={2.4} />Post on X</a>
             <button type="button" className="btn" style={{ flex: 1 }} onClick={async () => { try { await navigator.clipboard.writeText(post); toast("Copied"); } catch { /* blocked */ } }}><ICopy size={15} />Copy</button>

@@ -44,7 +44,7 @@ export default function Profile() {
                 <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}><b style={{ fontSize: 15 }}>{c.name}</b><span className="mono dim" style={{ fontSize: 12 }}>{amt} {c.tick}</span></span>
                 <span className="hide-m" style={{ width: 70 }}><Spark vals={c.spark} up={up} height={26} fill={false} stroke={2.4} /></span>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, minWidth: 86 }}><span className="mono" style={{ fontWeight: 700, fontSize: 15 }}>{val}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 600, fontSize: 12 }}>{pnl} · {pc}</span></span>
-                <button type="button" className="btn sm" style={{ color: "var(--down)", background: "transparent", borderColor: "#3A2A2E" }}>Sell</button>
+                <button type="button" className="btn sm" style={{ color: "var(--down)", background: "transparent", borderColor: "var(--line2)" }}>Sell</button>
               </div>); }) : <div className="dim" style={{ fontSize: 13, padding: "14px 4px" }}>Nothing here yet.</div>}
           </div>
         </div>

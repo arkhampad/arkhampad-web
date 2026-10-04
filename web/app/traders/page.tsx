@@ -13,11 +13,13 @@ export default function Traders() {
   const [sort, setSort] = useState("Profit");
   const [copyAmt, setCopyAmt] = useState(25);
   const [chain, setChain] = useState("All chains");
-  const top = traders.slice(0, 3), rest = traders.slice(3);
+  const num = (v: string) => Number(String(v).replace(/[^0-9.-]/g, "")) || 0;
+  const key = (t: (typeof traders)[number]) => (sort === "Win rate" ? num(t.win) : sort === "ROI" ? num(t.roi) : sort === "Followers" ? num(t.fol) : num(t.pnl));
+  const top = traders.slice(0, 3), rest = [...traders.slice(3)].sort((a, b) => key(b) - key(a));
   return (
     <div className="wrap page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><h1 className="h-title">Top traders</h1><p className="h-sub">Follow the best. Copy their buys in one tap.</p></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><span className="pill" style={{ alignSelf: "flex-start", background: "rgba(255,180,60,0.14)", color: "var(--warn)" }}>Preview · sample data until launch</span><h1 className="h-title">Top traders</h1><p className="h-sub">Follow the best. Copy their buys in one tap.</p></div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <div className="hscroll" style={{ gap: 6 }}>{["24h", "7d", "30d", "All time"].map((t) => <button key={t} type="button" className={`chip sm${range === t ? " on" : ""}`} onClick={() => setRange(t)}>{t}</button>)}</div>
           <div className="hscroll" style={{ gap: 6 }}>{["All chains", "Robinhood", "Base"].map((t) => <button key={t} type="button" className={`chip sm${chain === t ? " on" : ""}`} onClick={() => setChain(t)}>{t}</button>)}</div>
@@ -75,7 +77,7 @@ export default function Traders() {
 function Podium({ t, onFollow }: { t: (typeof traders)[number]; onFollow: () => void }) {
   return (
     <div className="card" style={{ position: "relative", borderRadius: 24, padding: 20, gap: 14, borderColor: "var(--line2)", overflow: "hidden" }}>
-      <span className="mono" style={{ position: "absolute", top: 14, right: 16, fontWeight: 900, fontSize: 44, color: "#1C1F28" }}>#{t.rank}</span>
+      <span className="mono" style={{ position: "absolute", top: 14, right: 16, fontWeight: 900, fontSize: 44, color: "var(--line2)" }}>#{t.rank}</span>
       <span style={{ display: "flex", alignItems: "center", gap: 12 }}><Avatar name={t.name} c1={t.c1} c2={t.c2} size={56} /><span style={{ display: "flex", flexDirection: "column", gap: 4 }}><b style={{ fontSize: 18 }}>{t.name}</b><span className="volt" style={{ alignSelf: "flex-start", padding: "3px 8px", borderRadius: 6, background: "rgba(212,255,58,0.10)", fontSize: 11, fontWeight: 600 }}>{t.badge}</span></span></span>
       <span style={{ display: "flex", flexDirection: "column", gap: 2 }}><span className="dim" style={{ fontSize: 12 }}>Profit · 7d</span><span className="mono up" style={{ fontWeight: 800, fontSize: 32, letterSpacing: -1 }}>{t.pnl}</span></span>
       <Spark vals={t.spark} up height={56} />

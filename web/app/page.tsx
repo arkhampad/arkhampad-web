@@ -71,7 +71,7 @@ export default function Discover() {
         {total.data ? (
           <span className="pill mono" style={{ border: "1px solid var(--line2)", color: "var(--text2)", fontSize: 13, padding: "6px 12px" }}>
             <span className="dot" style={{ background: "var(--up)", boxShadow: "0 0 0 3px rgba(61,220,151,0.18)" }} />
-            <b style={{ color: "var(--text)" }}>{total.data.toLocaleString("en-US")}</b> coins on Base &amp; Robinhood
+            <b style={{ color: "var(--text)" }}>{total.data.toLocaleString("en-US")}</b> coins to trade
           </span>
         ) : null}
         <form onSubmit={go} style={{ width: "100%", maxWidth: 720, display: "flex", alignItems: "center", gap: 10, padding: "6px 6px 6px 16px", borderRadius: 16, background: "var(--field)", border: "1px solid var(--line3)", flexWrap: "wrap" }}>
