@@ -4,7 +4,9 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getCoin, ownCandles, extCandles, recentTrades, useTradeFeed, usd, short, ago, listCoins, type LiveCoin, type LiveTrade, type Candle } from "@/lib/live";
 import { Avatar, Bar, ChainTag } from "@/components/bits";
-import { Intervals, LiveChart, TradePanel } from "@/components/trade";
+import { Intervals, TradePanel } from "@/components/trade";
+import dynamic from "next/dynamic";
+const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
 import { ICopy, IShare } from "@/components/icons";
 import { useApp } from "@/components/shell";
 
@@ -106,7 +108,7 @@ function CoinView() {
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}><span className="mono" style={{ fontWeight: 800, fontSize: 28, letterSpacing: -0.8 }}>{c.price}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 700 }}>{up ? "+" : ""}{c.chg.toFixed(1)}%</span></div>
               <Intervals value={iv} onChange={setIv} />
             </div>
-            <LiveChart candles={candles} loading={candles === null} />
+            <TvChart candles={candles} supply={c.own ? 1e9 : c.mcNum && c.priceNum ? c.mcNum / c.priceNum : null} />
           </div>
           <div className="panel">
             <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""}</span>

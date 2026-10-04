@@ -173,7 +173,13 @@ export async function ownCandles(chainId: number, address: string, seconds: numb
   const { data, error } = await db().rpc("coin_candles", { p_chain: chainId, p_coin: address, p_interval: seconds, p_limit: 200 });
   if (error || !data) return [];
   return (data as { t: string; o: number; h: number; l: number; c: number; v: number }[])
-    .map((r) => ({ t: Date.parse(r.t), o: Number(r.o), h: Number(r.h), l: Number(r.l), c: Number(r.c), v: Number(r.v) })).reverse();
+    .map((r) => ({ t: Date.parse(r.t), o: Number(r.o), h: Number(r.h), l: Number(r.l), c: Number(r.c), v: Number(r.v) })).reverse()
+    // Each candle opens where the previous one closed, so the chart has no gaps.
+    .map((k, i, all) => {
+      if (i === 0) return k;
+      const o = all[i - 1].c;
+      return { ...k, o, h: Math.max(k.h, o), l: Math.min(k.l, o) };
+    });
 }
 
 // GeckoTerminal OHLCV for coins on other DEXs (called from the browser).
