@@ -184,3 +184,25 @@ textarea.inp { height: auto; padding: 12px 14px; line-height: 1.5; resize: none;
 .flash-down { animation: flash-down 1.2s ease-out; }
 @keyframes flash-up { 0% { background: rgba(61,220,151,0.28); } 100% { background: transparent; } }
 @keyframes flash-down { 0% { background: rgba(255,107,107,0.28); } 100% { background: transparent; } }
+
+/* phones: tighter, calmer layout */
+@media (max-width: 760px) {
+  .hdr-in { padding-top: 8px; padding-bottom: 8px; }
+  .logo-text { font-size: 18px; }
+  .hero-h1 { font-size: 26px !important; }
+  .icon-btn { width: 40px; height: 40px; }
+  .bal { height: 40px; padding: 0 10px; font-size: 13px; }
+  .page { gap: 14px; }
+  .card { padding: 14px; border-radius: 16px; }
+  .panel { padding: 12px; border-radius: 16px; }
+  .stats-m { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px !important; }
+  .stats-m .card { padding: 8px 10px !important; border-radius: 12px !important; gap: 2px !important; }
+  .stats-m .card span:first-child { font-size: 10px !important; }
+  .stats-m .card span:last-child { font-size: 13px !important; }
+  .ticker { padding: 6px 12px; }
+  .hot-mc { font-size: 26px !important; }
+  .coin-h1 { font-size: 22px !important; }
+  .coin-av .av, .coin-av img { width: 46px !important; height: 46px !important; border-radius: 14px !important; font-size: 16px !important; }
+}
+.hot-spark { display: block; height: 90px; }
+@media (max-width: 760px) { .hot-spark { height: 60px; } }

@@ -25,7 +25,7 @@ export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
         </span>
         <Chg n={c.chg} />
       </Link>
-      <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span className="mono" style={{ fontWeight: 700, fontSize: 34, letterSpacing: -1 }}>{c.mc}</span><span className="dim" style={{ fontSize: 13 }}>market cap</span></span>
+      <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span className="mono hot-mc" style={{ fontWeight: 700, fontSize: 34, letterSpacing: -1 }}>{c.mc}</span><span className="dim" style={{ fontSize: 13 }}>market cap</span></span>
       {grad ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
@@ -38,7 +38,7 @@ export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
           <div className="bar" style={{ height: 12, borderRadius: 6 }}><span style={{ width: `${Math.max(2, p)}%` }} /></div>
           <span className="dim" style={{ fontSize: 12 }}>At 100% it moves to a locked pool forever.</span>
         </div>
-      ) : <Spark vals={c.spark} up={c.chg >= 0} w={300} h={90} height={90} />}
+      ) : <span className="hot-spark"><Spark vals={c.spark} up={c.chg >= 0} w={300} h={90} height="100%" /></span>}
       <span className="grid3" style={{ gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8, fontSize: 12, color: "var(--dim)" }}>
         <span>Vol 24h<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.vol}</b></span>
         <span>Liquidity<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.liq}</b></span>

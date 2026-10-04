@@ -16,9 +16,19 @@ const isPhone = () => typeof navigator !== "undefined" && /Android|iPhone|iPad|i
 
 /** Opens X with the text. Phones: same-tab navigation, which hands over to the X app. */
 export function openX(text: string, url?: string) {
-  const link = `https://x.com/intent/post?text=${encodeURIComponent(text)}${url ? `&url=${encodeURIComponent(url)}` : ""}`;
-  if (isPhone()) window.location.href = link;
-  else window.open(link, "_blank", "noopener,noreferrer");
+  const full = url ? `${text}\n${url}` : text;
+  const web = `https://x.com/intent/post?text=${encodeURIComponent(full)}`;
+  if (!isPhone()) { window.open(web, "_blank", "noopener,noreferrer"); return; }
+  // Phones: the X app's own link opens the app directly. If it isn't installed the page
+  // stays visible, so after a moment we open X in the browser instead.
+  let left = false;
+  const onHide = () => { left = true; };
+  document.addEventListener("visibilitychange", onHide, { once: true });
+  window.location.href = `twitter://post?message=${encodeURIComponent(full)}`;
+  setTimeout(() => {
+    document.removeEventListener("visibilitychange", onHide);
+    if (!left && document.visibilityState === "visible") window.location.href = web;
+  }, 1500);
 }
 
 function loadImage(src: string): Promise<HTMLImageElement | null> {

@@ -64,10 +64,10 @@ export default function Discover() {
   return (
     <div className="wrap page">
       <section style={{ padding: "8px 0 2px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12 }}>
-        <h1 style={{ margin: 0, fontSize: "clamp(28px, 4.2vw, 48px)", lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.035em", maxWidth: 900 }}>
+        <h1 className="hero-h1" style={{ margin: 0, fontSize: "clamp(28px, 4.2vw, 48px)", lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.035em", maxWidth: 900 }}>
           Create and trade with <span className="grad-text" style={{ background: "linear-gradient(90deg, var(--volt), var(--mint))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>intelligence.</span>
         </h1>
-        <p className="h-sub" style={{ maxWidth: 560, fontSize: 15 }}>Type an idea, get a ready coin. Trade thousands of coins with USDC.</p>
+        <p className="h-sub hide-m" style={{ maxWidth: 560, fontSize: 15 }}>Type an idea, get a ready coin. Trade thousands of coins with USDC.</p>
         {total.data ? (
           <span className="pill mono" style={{ border: "1px solid var(--line2)", color: "var(--text2)", fontSize: 13, padding: "6px 12px" }}>
             <span className="dot" style={{ background: "var(--up)", boxShadow: "0 0 0 3px rgba(61,220,151,0.18)" }} />
@@ -80,7 +80,7 @@ export default function Discover() {
           <input id="idea" value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Describe your coin… a frog astronaut who only buys the dip" style={{ flex: "1 1 220px", minWidth: 0, height: 42, background: "transparent", border: 0, outline: "none", fontSize: 16 }} />
           <button type="submit" className="btn volt" style={{ height: 44, padding: "0 20px", fontSize: 14, borderRadius: 12 }}>Generate coin</button>
         </form>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+        <div className="hide-m" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
           {IDEAS.map((t) => <button key={t} type="button" className="chip sm" onClick={() => router.push(`/create/?idea=${encodeURIComponent(t)}`)}>{t}</button>)}
         </div>
       </section>

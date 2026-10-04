@@ -25,7 +25,7 @@ function fmt(v: number, mc: boolean): string {
 }
 
 /** `supply` turns prices into market cap (price × supply) for the MC view. */
-export default function TvChart({ candles, supply, height = 380, empty = "No trades yet for a chart." }: { candles: Candle[] | null; supply: number | null; height?: number; empty?: string }) {
+export default function TvChart({ candles, supply, height = 380, empty = "No trades yet for a chart.", seriesKey = "" }: { candles: Candle[] | null; supply: number | null; height?: number; empty?: string; seriesKey?: string }) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const candle = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -42,13 +42,16 @@ export default function TvChart({ candles, supply, height = 380, empty = "No tra
     const c = createChart(box.current, {
       autoSize: true,
       localization: { locale: "en-US" },
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: p.text, fontFamily: "var(--mono), ui-monospace, monospace", fontSize: 11, attributionLogo: false },
-      grid: { vertLines: { color: "var(--line)" }, horzLines: { color: "var(--line)" } },
-      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "#3A3F4B", labelBackgroundColor: "var(--raise2)" }, horzLine: { color: "#3A3F4B", labelBackgroundColor: "var(--raise2)" } },
-      rightPriceScale: { borderColor: "var(--line)", scaleMargins: { top: 0.08, bottom: 0.24 } },
-      timeScale: { borderColor: "var(--line)", timeVisible: true, secondsVisible: false, rightOffset: 4, barSpacing: 8 },
-      handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
-      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: p.text, fontFamily: '"Geist Mono", ui-monospace, Menlo, monospace', fontSize: 11, attributionLogo: false },
+      grid: { vertLines: { visible: false }, horzLines: { visible: false } }, // clean chart, no grid lines
+      // no cross lines over the chart; the price and time labels still show on hover/tap
+      crosshair: { mode: CrosshairMode.Magnet, vertLine: { visible: false, labelBackgroundColor: p.label }, horzLine: { visible: false, labelBackgroundColor: p.label } },
+      rightPriceScale: { borderColor: p.line, scaleMargins: { top: 0.08, bottom: 0.24 }, autoScale: true },
+      timeScale: { borderColor: p.line, timeVisible: true, secondsVisible: false, rightOffset: 4, barSpacing: 8 },
+      // pinch to zoom, drag the price or time scale to stretch it, double tap a scale to reset
+      handleScale: { axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: true, price: true }, mouseWheel: true, pinch: true },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+      kineticScroll: { touch: true, mouse: false },
     });
     candle.current = c.addSeries(CandlestickSeries, { upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down, priceLineVisible: false, lastValueVisible: true });
     volume.current = c.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
@@ -67,20 +70,30 @@ export default function TvChart({ candles, supply, height = 380, empty = "No tra
   // data + price / market-cap view
   useEffect(() => {
     const c = chart.current, s = candle.current, v = volume.current;
-    if (!c || !s || !v || !candles) return;
+    if (!c || !s || !v) return;
+    if (!candles) { lastKey.current = ""; return; }
     const k = useMc ? supply! : 1;
     // minMove 1e-20 keeps tiny meme prices exact (the library treats bases above 1e18 as decimal).
     s.applyOptions({ priceFormat: { type: "custom", formatter: (p: number) => fmt(p, useMc), minMove: useMc ? 0.01 : 1e-20 } });
     const rows = candles.map((x) => ({ time: Math.floor(x.t / 1000) as UTCTimestamp, open: x.o * k, high: x.h * k, low: x.l * k, close: x.c * k }));
     const vols = candles.map((x) => ({ time: Math.floor(x.t / 1000) as UTCTimestamp, value: x.v, color: x.c >= x.o ? "rgba(61,220,151,0.35)" : "rgba(255,107,107,0.35)" }));
     // Same series, one new or changed candle at the end: update in place (smooth, keeps the zoom).
-    const key = `${useMc}|${rows.length > 1 ? rows[rows.length - 2].time : 0}|${rows.length}`;
+    const base = `${seriesKey}|${useMc}`;
+    const key = `${base}|${rows.length ? rows[0].time : 0}|${rows.length > 1 ? rows[rows.length - 2].time : 0}|${rows.length}`;
+    let done = false;
     if (lastKey.current && key === lastKey.current && rows.length) {
-      s.update(rows[rows.length - 1]); v.update(vols[vols.length - 1]);
-    } else {
-      const fresh = !lastKey.current || !lastKey.current.startsWith(`${useMc}|`);
-      s.setData(rows); v.setData(vols);
-      if (fresh) c.timeScale().fitContent();
+      try { s.update(rows[rows.length - 1]); v.update(vols[vols.length - 1]); done = true; } catch { /* fall back to a full redraw */ }
+    }
+    if (!done) {
+      const fresh = !lastKey.current.startsWith(`${base}|`);
+      try {
+        s.setData(rows); v.setData(vols);
+        if (fresh) {
+          // few candles: keep them a normal width on the right instead of stretching one across the chart
+          if (rows.length > 40) c.timeScale().fitContent();
+          else { c.timeScale().applyOptions({ barSpacing: 12 }); c.timeScale().scrollToRealTime(); }
+        }
+      } catch { /* bad data from a source: keep the old chart instead of crashing the page */ }
     }
     lastKey.current = key;
   }, [candles, useMc, supply]);

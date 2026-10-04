@@ -65,10 +65,10 @@ function CoinView() {
     <div className="wrap page" style={{ paddingBottom: 140 }}>
       <Link href="/" className="dim hide-m" style={{ fontSize: 13 }}>← Discover</Link>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <Avatar name={c.name} c1={c.c1} c2={c.c2} size={60} img={c.image} />
+        <span className="coin-av"><Avatar name={c.name} c1={c.c1} c2={c.c2} size={60} img={c.image} /></span>
         <div style={{ flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: -0.8, overflowWrap: "anywhere" }}>{c.name}</h1>
+            <h1 className="coin-h1" style={{ margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: -0.8, overflowWrap: "anywhere" }}>{c.name}</h1>
             <span className="mono dim" style={{ fontWeight: 600 }}>{c.tick}</span>
             <span className="pill" style={{ background: "var(--raise)", color: "var(--text2)" }}><ChainTag chain={c.chain} /></span>
             {c.own ? <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt-ink)" }}>Testnet</span> : <span className="pill" style={{ background: "var(--raise)", color: "var(--muted)" }}>{c.dex ? c.dex.replace(/[-_]/g, " ") : "Other DEX"}</span>}
@@ -82,7 +82,7 @@ function CoinView() {
         <button type="button" className="btn ghost sm" aria-label="Share on X" onClick={() => shareCoin(c)}><IShare size={15} />Share</button>
       </div>
 
-      <div className="grid6">
+      <div className="grid6 hide-m">
         <Stat k="Price" v={c.price} /><Stat k="Market cap" v={c.mc} /><Stat k="24h" v={`${up ? "+" : ""}${c.chg.toFixed(1)}%`} cls={up ? "up" : "down"} />
         <Stat k="Volume 24h" v={c.vol} /><Stat k={c.own ? "In curve" : "Liquidity"} v={c.liq} /><Stat k={c.own ? "Buyers" : "Trades 24h"} v={c.own ? c.holders : c.trades} />
       </div>
@@ -94,7 +94,11 @@ function CoinView() {
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}><span className="mono" style={{ fontWeight: 800, fontSize: 28, letterSpacing: -0.8 }}>{c.price}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 700 }}>{up ? "+" : ""}{c.chg.toFixed(1)}%</span></div>
               {c.own && <Intervals value={iv} onChange={setIv} />}
             </div>
-            {c.own ? <TvChart candles={candles} supply={1e9} empty="No trades yet for a chart." /> : <ExtChart network={c.network} pool={c.pool} />}
+            {c.own ? <TvChart candles={candles} supply={1e9} empty="No trades yet for a chart." seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} />}
+          </div>
+          <div className="grid6 show-m stats-m">
+            <Stat k="Price" v={c.price} /><Stat k="Market cap" v={c.mc} /><Stat k="24h" v={`${up ? "+" : ""}${c.chg.toFixed(1)}%`} cls={up ? "up" : "down"} />
+            <Stat k="Volume 24h" v={c.vol} /><Stat k={c.own ? "In curve" : "Liquidity"} v={c.liq} /><Stat k={c.own ? "Buyers" : "Trades 24h"} v={c.own ? c.holders : c.trades} />
           </div>
           <div className="panel">
             <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""}</span>
