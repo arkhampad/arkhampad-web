@@ -6,7 +6,7 @@ import { useApp } from "@/components/shell";
 
 type N = { cat: string; icon: React.ReactNode; bg: string; title: string; body: string; t: string; action?: React.ReactNode; unread?: boolean };
 export default function Alerts() {
-  const { openLogin } = useApp();
+  const { openSoon: openLogin } = useApp();
   const [tab, setTab] = useState("All");
   const today: N[] = [
     { cat: "Traders", bg: "linear-gradient(135deg, #7C5CFF, #3A2BFF)", icon: <span style={{ fontWeight: 900, fontSize: 14, color: "#fff" }}>MI</span>, title: "mira.eth bought $100 of MFROG", body: "A trader you follow just bought.", t: "12s ago", action: <button type="button" className="btn volt sm" onClick={openLogin}>Copy $25</button>, unread: true },

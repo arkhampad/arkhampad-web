@@ -52,45 +52,6 @@ export function WhyMoving({ text }: { text: string }) {
   return <div className="ai-note"><ISpark size={16} color="var(--volt-ink)" /><span><b>Why it&apos;s moving:</b> {text}</span></div>;
 }
 
-function Amt({ v, on, set }: { v: number; on: boolean; set: (n: number) => void }) {
-  return <button type="button" className="seg mono" style={{ height: 38, minWidth: 0 }} aria-pressed={on} onClick={() => set(v)} data-on={on}><span style={{ color: on ? "var(--volt)" : undefined }}>${v}</span></button>;
-}
-
-export function TradePanel({ tick, price = 0.00412, withLimit = false, onShare }: { tick: string; price?: number; withLimit?: boolean; onShare?: () => void }) {
-  const { openLogin } = useApp();
-  const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [mode, setMode] = useState("Market");
-  const [amt, setAmt] = useState("25");
-  const n = Number(amt) || 0;
-  const tokens = price > 0 ? n / price : 0;
-  const fmt = (t: number) => (!Number.isFinite(t) || t <= 0 ? "—" : t >= 1e9 ? (t / 1e9).toFixed(2) + "B" : t >= 1e6 ? (t / 1e6).toFixed(2) + "M" : t >= 1e3 ? (t / 1e3).toFixed(1) + "K" : t.toFixed(t < 1 ? 4 : 0));
-  const modes = withLimit ? ["Market", "Limit", "Auto"] : ["Market", "Auto"];
-  return (
-    <div className="card" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 4, borderRadius: 14, background: "var(--bg)" }}>
-        <button type="button" onClick={() => setSide("buy")} style={{ height: 42, borderRadius: 11, border: 0, fontWeight: 800, fontSize: 15, background: side === "buy" ? "var(--up)" : "transparent", color: side === "buy" ? "#04130C" : "var(--muted)" }}>Buy</button>
-        <button type="button" onClick={() => setSide("sell")} style={{ height: 42, borderRadius: 11, border: 0, fontWeight: 800, fontSize: 15, background: side === "sell" ? "var(--down)" : "transparent", color: side === "sell" ? "#1A0505" : "var(--muted)" }}>Sell</button>
-      </div>
-      <div style={{ display: "flex", gap: 16, fontSize: 13, fontWeight: 600 }}>
-        {modes.map((m) => <button key={m} type="button" onClick={() => setMode(m)} style={{ background: "none", border: 0, padding: "0 0 6px", color: mode === m ? "var(--text)" : "var(--dim)", borderBottom: mode === m ? "2px solid var(--volt)" : "2px solid transparent" }}>{m}</button>)}
-      </div>
-      <label htmlFor={`amt-${tick}`} style={{ fontSize: 13, display: "flex", justifyContent: "space-between" }} className="dim"><span>{side === "buy" ? "Amount" : "Sell amount"}</span><span>Cash <b className="mono" style={{ color: "var(--text)" }}>$0.00</b></span></label>
-      <div style={{ display: "flex", alignItems: "center", height: 60, padding: "0 16px", borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line3)" }}>
-        <span className="mono dim" style={{ fontWeight: 700, fontSize: 26 }}>$</span>
-        <input id={`amt-${tick}`} inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} style={{ flex: 1, minWidth: 0, background: "transparent", border: 0, outline: "none", font: "700 26px var(--mono)", paddingLeft: 4 }} />
-        <span className="mono dim" style={{ fontWeight: 600, fontSize: 13 }}>USDC</span>
-      </div>
-      <div style={{ display: "flex", gap: 6 }}>{[10, 25, 50, 100].map((v) => <Amt key={v} v={v} on={n === v} set={(x) => setAmt(String(x))} />)}</div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">You get</span><span className="mono">≈ {side === "buy" ? `${fmt(tokens)} ${tick}` : `$${n.toFixed(2)}`}</span></div>
-      <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={openLogin} style={{ fontSize: 17 }}>{side === "buy" ? "Buy" : "Sell"} {tick}</button>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={openLogin}><IBell size={15} />Price alert</button>
-        <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={onShare}><IShare size={15} />Share</button>
-      </div>
-    </div>
-  );
-}
-
 export function AutoOrders({ available = true }: { available?: boolean }) {
   const [tp, setTp] = useState("+50%"); const [sl, setSl] = useState("-20%");
   const Chip = ({ t, on, set }: { t: string; on: boolean; set: (s: string) => void }) => <button type="button" className={`seg mono${on ? " on" : ""}`} style={{ height: 34, minWidth: 0, fontSize: 12 }} onClick={() => set(t)}>{t}</button>;

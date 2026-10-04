@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { listCoins, recentTrades, useLive, useTradeFeed, type LiveCoin, type LiveTrade } from "@/lib/live";
 import { IBell, IChart, IHome, IPlus, ISearch, IUser } from "./icons";
-import { LoginModal, FundsModal, WelcomeModal } from "./modals";
+import { SoonModal, FundsModal, WelcomeModal } from "./modals";
+import { WalletProvider, useWallet } from "./wallet";
 import { Celebrate } from "./celebrate";
 import { useRouter } from "next/navigation";
 import { findByAddress } from "@/lib/live";
 
-type Ctx = { openLogin: () => void; openFunds: (t: "deposit" | "withdraw") => void; toast: (m: string) => void; loggedIn: boolean };
-const AppCtx = createContext<Ctx>({ openLogin: () => {}, openFunds: () => {}, toast: () => {}, loggedIn: false });
+type Ctx = { openLogin: () => void; openSoon: () => void; openFunds: (t: "deposit" | "withdraw") => void; toast: (m: string) => void; loggedIn: boolean };
+const AppCtx = createContext<Ctx>({ openLogin: () => {}, openSoon: () => {}, openFunds: () => {}, toast: () => {}, loggedIn: false });
 export const useApp = () => useContext(AppCtx);
 
 export function Logo() {
@@ -101,8 +102,35 @@ function isOn(path: string, href: string) {
 }
 
 export function Shell({ children }: { children: React.ReactNode }) {
+  return <WalletProvider><ShellInner>{children}</ShellInner></WalletProvider>;
+}
+
+function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void }) {
+  const w = useWallet();
+  const [open, setOpen] = useState(false);
+  if (!w.ready) return <span className="skel" style={{ width: 96, height: 44, borderRadius: 12 }} />;
+  if (!w.signedIn) return <button type="button" className="btn white" onClick={w.login}>Log in</button>;
+  return (
+    <span style={{ position: "relative", display: "flex", gap: 8 }}>
+      <button type="button" className="bal" onClick={() => openFunds("deposit")} aria-label="Balance and deposit">${w.totalUsdc.toFixed(2)}<span className="hide-m" style={{ color: "var(--volt-ink)", fontFamily: "var(--sans)", fontSize: 13 }}>+ Deposit</span></button>
+      <button type="button" className="icon-btn" aria-label="Account" aria-expanded={open} onClick={() => setOpen(!open)}><IUser size={18} color="var(--text2)" /></button>
+      {open && (
+        <span className="card" role="menu" style={{ position: "absolute", right: 0, top: 52, zIndex: 40, width: 230, padding: 8, gap: 2 }} onMouseLeave={() => setOpen(false)}>
+          <span className="mono dim" style={{ fontSize: 11, padding: "6px 10px" }}>{w.address?.slice(0, 6)}…{w.address?.slice(-4)}</span>
+          <Link href="/profile/" className="tab" style={{ display: "flex", alignItems: "center" }} onClick={() => setOpen(false)}>Profile</Link>
+          <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("deposit"); }}>Deposit</button>
+          <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("withdraw"); }}>Withdraw</button>
+          <button type="button" className="tab" style={{ textAlign: "left", color: "var(--down)" }} onClick={() => { setOpen(false); w.logout(); }}>Log out</button>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ShellInner({ children }: { children: React.ReactNode }) {
   const path = usePathname() || "/";
-  const [login, setLogin] = useState(false);
+  const w = useWallet();
+  const [soon, setSoon] = useState(false);
   const [funds, setFunds] = useState<null | "deposit" | "withdraw">(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [welcome, setWelcome] = useState(false);
@@ -114,11 +142,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const closeWelcome = () => { setWelcome(false); try { localStorage.setItem("ap_welcome_seen", "1"); } catch { /* storage off */ } };
   const toast = useCallback((m: string) => { setMsg(m); }, []);
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(null), 2200); return () => clearTimeout(t); }, [msg]);
-  const ctx: Ctx = { openLogin: () => setLogin(true), openFunds: (t) => setFunds(t), toast, loggedIn: false };
+  const ctx: Ctx = { openLogin: w.login, openSoon: () => setSoon(true), openFunds: (t) => (w.signedIn ? setFunds(t) : w.login()), toast, loggedIn: w.signedIn };
 
   return (
     <AppCtx.Provider value={ctx}>
-      <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--on-volt)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}>Testnet live · Mainnet soon · Follow @Arkhampad on X for the latest updates →</a>
+      <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--on-volt)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}>Testnet is open: trade with free test USDC · Mainnet soon · Follow @Arkhampad →</a>
       <Ticker />
       <header className="hdr">
         <div className="wrap hdr-in">
@@ -131,7 +159,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <ThemeButton />
           <Link href="/alerts/" className="icon-btn" aria-label="Alerts"><IBell size={18} color="var(--text2)" /></Link>
           <Link href="/create/" className="btn volt hide-m">Create coin</Link>
-          <button type="button" className="btn white" onClick={() => setLogin(true)}>Log in</button>
+          <Account openFunds={(t) => setFunds(t)} />
         </div>
       </header>
       <main id="main">{children}</main>
@@ -143,7 +171,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <Link href="/profile/" className={isOn(path, "/profile/") ? "on" : ""}><IUser size={22} />Profile</Link>
       </nav>
       {welcome && <WelcomeModal onClose={closeWelcome} />}
-      {login && <LoginModal onClose={() => setLogin(false)} />}
+      {soon && <SoonModal onClose={() => setSoon(false)} />}
       {funds && <FundsModal tab={funds} setTab={setFunds} onClose={() => setFunds(null)} />}
       <Celebrate toast={toast} />
       {msg && <div className="toast" role="status">{msg}</div>}

@@ -8,7 +8,7 @@ import { useApp } from "@/components/shell";
 const FEED = [["mira.eth", "#7C5CFF", "#3A2BFF", "$100", "MFROG", "12s"], ["kaan", "#FF8A3D", "#FF3D7F", "$50", "ORBD", "1m"], ["alphawolf", "#F5C542", "#FF7A00", "$25", "BCAT", "4m"]];
 
 export default function Traders() {
-  const { openLogin } = useApp();
+  const { openSoon: openLogin } = useApp();
   const [range, setRange] = useState("7d");
   const [sort, setSort] = useState("Profit");
   const [copyAmt, setCopyAmt] = useState(25);

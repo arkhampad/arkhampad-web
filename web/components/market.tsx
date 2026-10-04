@@ -10,7 +10,7 @@ import { useApp } from "./shell";
 const href = (c: Coin) => `/coin/?c=${c.id}`;
 
 export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
-  const { openLogin } = useApp();
+  const { openSoon } = useApp();
   const router = useRouter();
   const p = Math.max(0, Math.min(100, c.progress));
   // heartbeat speeds up as the coin nears graduation
@@ -45,8 +45,8 @@ export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
         <span>Trades 24h<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.trades}</b></span>
       </span>
       <span style={{ display: "flex", gap: 8 }}>
-        <button type="button" className="btn volt" style={{ flex: 1, height: 46, fontSize: 15 }} onClick={openLogin}>Buy</button>
-        <button type="button" className="icon-btn" aria-label={`Alert for ${c.name}`} style={{ width: 46, height: 46 }}><IBell size={18} color="var(--text2)" /></button>
+        <button type="button" className="btn volt" style={{ flex: 1, height: 46, fontSize: 15 }} onClick={() => router.push(href(c))}>{c.own ? "Buy" : "View"}</button>
+        <button type="button" className="icon-btn" aria-label={`Alert for ${c.name}`} style={{ width: 46, height: 46 }} onClick={openSoon}><IBell size={18} color="var(--text2)" /></button>
       </span>
     </div>
   );
@@ -77,7 +77,6 @@ function usePriceFlash(list: Coin[]) {
 
 export function CoinTable({ list, start = 0 }: { list: Coin[]; start?: number }) {
   const router = useRouter();
-  const { openLogin } = useApp();
   const flash = usePriceFlash(list);
   return (
     <div className="tbl-box">
@@ -102,7 +101,7 @@ export function CoinTable({ list, start = 0 }: { list: Coin[]; start?: number })
               <td style={{ color: "var(--text2)" }}>{c.vol}</td>
               <td style={{ color: "var(--text2)" }}>{c.liq}</td>
               <td style={{ width: 120 }}><Spark vals={c.spark} up={c.chg >= 0} height={34} /></td>
-              <td><button type="button" className="btn volt sm" onClick={(e) => { e.stopPropagation(); openLogin(); }}>Buy</button></td>
+              <td><button type="button" className="btn volt sm" onClick={(e) => { e.stopPropagation(); router.push(href(c)); }}>{c.own ? "Buy" : "View"}</button></td>
             </tr>
           ))}
         </tbody>

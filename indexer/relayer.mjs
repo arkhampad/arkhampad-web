@@ -138,10 +138,30 @@ export function makeRelayer() {
     return { hash };
   }
 
+  // Graduation keeper: anyone may call graduate() on a full curve; we do it at once.
+  const GRAD_ABI = [{ type: "function", name: "graduate", stateMutability: "nonpayable", inputs: [], outputs: [] }];
+  const graduating = new Set();
+  async function graduate(chainId, curve) {
+    const n = nets.get(Number(chainId));
+    if (!n) return null;
+    const key = `${chainId}:${curve.toLowerCase()}`;
+    if (graduating.has(key)) return null;
+    graduating.add(key);
+    try {
+      const hash = await send(n, getAddress(curve), encodeFunctionData({ abi: GRAD_ABI, functionName: "graduate" }));
+      await n.pub.waitForTransactionReceipt({ hash });
+      log(`${n.c.name} graduated ${curve} ${hash}`);
+      return hash;
+    } catch (e) {
+      graduating.delete(key);
+      throw e;
+    }
+  }
+
   function config() {
     return { relayer: account.address, minFee: String(MIN_FEE), chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, faucet: !!n.faucet })) };
   }
-  return { handle, config };
+  return { handle, config, graduate };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)

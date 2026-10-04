@@ -4,7 +4,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getCoin, useCoinMarket, shareCoin, usd, short, ago, listCoins, type LiveCoin } from "@/lib/live";
 import { Avatar, Bar, ChainTag } from "@/components/bits";
-import { Intervals, TradePanel } from "@/components/trade";
+import { Intervals } from "@/components/trade";
+import { TradePanel } from "@/components/tradepanel";
 import dynamic from "next/dynamic";
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
@@ -19,9 +20,10 @@ function Stat({ k, v, cls }: { k: string; v: string; cls?: string }) {
 function CoinView() {
   const q = useSearchParams();
   const id = q.get("c") || "";
-  const { toast, openLogin } = useApp();
+  const { toast } = useApp();
   const [c, setC] = useState<LiveCoin | null | undefined>(undefined);
   const [iv, setIv] = useState("15m");
+  const [sheet, setSheet] = useState<null | "buy" | "sell">(null);
   const m = useCoinMarket(c, iv, setC);
   const candles = m.candles, own = m.own, ext = m.ext;
 
@@ -115,13 +117,21 @@ function CoinView() {
               <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>This coin trades on another DEX. You will be able to buy and sell it here with USDC when ArkhamPad opens.</span>
             </div>
           )}
-          <div className="hide-m"><TradePanel tick={c.tick} price={c.priceNum ?? 0} onShare={() => shareCoin(c)} /></div>
+          <div className="hide-m"><TradePanel coin={c} onShare={() => shareCoin(c)} /></div>
         </aside>
       </div>
       <div className="show-m" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(74px + var(--safe-bottom))", zIndex: 25, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "10px 16px", background: "var(--bar-bg)", borderTop: "1px solid var(--line)" }}>
-        <button type="button" className="btn buy lg" onClick={openLogin}>Buy</button>
-        <button type="button" className="btn sell lg" onClick={openLogin}>Sell</button>
+        <button type="button" className="btn buy lg" onClick={() => setSheet("buy")}>Buy</button>
+        <button type="button" className="btn sell lg" onClick={() => setSheet("sell")}>Sell</button>
       </div>
+      {sheet && (
+        <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setSheet(null); }}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label={`Trade ${c.tick}`} style={{ padding: 12 }}>
+            <TradePanel coin={c} initialSide={sheet} onShare={() => shareCoin(c)} />
+            <button type="button" className="btn ghost" onClick={() => setSheet(null)}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import pg from "pg";
 import { createPublicClient, http as viemHttp, parseAbiItem, getAddress } from "viem";
 import { startMarkets } from "./markets.mjs";
 import { makeRelayer, httpHandler } from "./relayer.mjs";
+const relayer = process.env.ONCE ? null : makeRelayer();
 
 const POLL_DEFAULT = process.env.POLL_SECONDS ? Number(process.env.POLL_SECONDS) * 1000 : null;
 const RANGE_DEFAULT = process.env.BLOCK_RANGE ? BigInt(process.env.BLOCK_RANGE) : null;
@@ -150,7 +151,9 @@ async function syncChain(c, client) {
             );
           }
         } else if (kind === "f") {
+          // A full curve graduates right away: the relayer sends graduate() (gas paid by ArkhamPad).
           await db.query("update coins set phase = greatest(phase, 1) where chain_id=$1 and address=$2", [c.chainId, coin]);
+          if (relayer) relayer.graduate(c.chainId, e.address).catch((err) => console.log(new Date().toISOString(), `${c.name}: graduate ${e.address} failed: ${err.message}`));
         } else {
           const a = e.args;
           await db.query("update coins set phase=2, usdc_reserve=0, graduated_at=$3, pool_usdc=$4, pool_coins=$5 where chain_id=$1 and address=$2",
@@ -205,7 +208,18 @@ async function loop(c) {
 }
 
 if (!process.env.DATABASE_URL) { console.error("DATABASE_URL is required"); process.exit(1); }
-if (process.env.PORT) http.createServer(httpHandler(makeRelayer(), status)).listen(process.env.PORT);
+if (process.env.PORT) http.createServer(httpHandler(relayer, status)).listen(process.env.PORT);
 if (!process.env.ONCE) startMarkets(pool);
+// Curves that filled while we were down: graduate them now (and re-check every few minutes).
+if (relayer) {
+  const sweep = async () => {
+    try {
+      const { rows } = await pool.query("select chain_id, curve from coins where phase = 1");
+      for (const r of rows) await relayer.graduate(r.chain_id, r.curve).catch((e) => console.log(new Date().toISOString(), `graduate ${r.curve} failed: ${e.message}`));
+    } catch (e) { console.log(new Date().toISOString(), `graduate sweep error: ${e.message}`); }
+  };
+  setTimeout(sweep, 5_000);
+  setInterval(sweep, 300_000);
+}
 await Promise.all(CHAINS.map(loop));
 if (process.env.ONCE) await pool.end();

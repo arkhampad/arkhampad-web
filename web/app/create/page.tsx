@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { FrogArt } from "@/components/bits";
 import { ICopy, IFire, IGlobe, IRocket, ISpark, IX } from "@/components/icons";
 import { useApp } from "@/components/shell";
+import { useWallet } from "@/components/wallet";
+import { FEE, TradeError, fromUsdc, launch, promote, toUsdc } from "@/lib/chain";
 
 const OPTS = [
   { name: "Moonfrog", tick: "MFROG", desc: "An astronaut frog who only buys the dip. Floating in orbit, waiting for red candles.", c1: "#1B1F6B", c2: "#7C5CFF" },
@@ -18,7 +20,7 @@ const Label = ({ t, sub }: { t: string; sub?: string }) => <div style={{ display
 
 function CreateView() {
   const q = useSearchParams();
-  const { openLogin, toast } = useApp();
+  const { toast, openFunds } = useApp();
   const [idea, setIdea] = useState(q.get("idea") || "A frog astronaut who only buys the dip");
   const [pick, setPick] = useState(0);
   const [name, setName] = useState(OPTS[0].name);
@@ -30,11 +32,48 @@ function CreateView() {
   const [boost, setBoost] = useState("none");
   const [first, setFirst] = useState(0);
   const [links, setLinks] = useState(false);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<null | { coin: string; chainId: number }>(null);
+  const [xUrl, setXUrl] = useState("");
+  const [tgUrl, setTgUrl] = useState("");
+  const [webUrl, setWebUrl] = useState("");
+  const [busy, setBusy] = useState("");
+  const w = useWallet();
+  const chainId = chain === "Base" ? 84532 : 46630;
+  const cash = fromUsdc(w.usdc[chainId] ?? 0n);
+  const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(FEE) * (boost === "none" ? 1 : 2);
   const o = OPTS[pick];
   const choose = (i: number) => { setPick(i); setName(OPTS[i].name); setTick(OPTS[i].tick); setDesc(OPTS[i].desc); };
-  const ca = "0x7a3f9b21c4e8d07a5f61b2c93e40d1a8f2b6c91e";
-  const post = `Just launched $${tick} on @ArkhamPad\n${desc}\n\nCA: ${ca}\narkhampad.com/coin/?c=${tick.toLowerCase()}`;
+  const ca = done?.coin ?? "";
+  const coinUrl = done ? `https://arkhampad.com/coin/?c=${done.chainId}-${done.coin}` : "";
+  const post = `Just launched $${tick} on @Arkhampad\n${desc}\n\nCA: ${ca}\n${coinUrl}`;
+
+  const launchNow = async () => {
+    if (!w.signedIn || !w.signer) { w.login(); return; }
+    const nm = name.trim(), tk = tick.trim();
+    if (!nm || nm.length > 32) return toast("Name must be 1 to 32 characters.");
+    if (!/^[A-Z0-9]{1,10}$/.test(tk)) return toast("Ticker must be 1 to 10 letters or numbers.");
+    if (desc.length > 280) return toast("Keep the description under 280 characters.");
+    if (cash < need) { toast(`You need $${need.toFixed(2)} USDC on ${chain}. Add test USDC first.`); openFunds("deposit"); return; }
+    const meta = JSON.stringify({ description: desc.trim().slice(0, 280), x: xUrl.trim().slice(0, 100) || undefined, telegram: tgUrl.trim().slice(0, 100) || undefined, website: webUrl.trim().slice(0, 100) || undefined, art: { c1: o.c1, c2: o.c2 } });
+    const metadataURI = `data:application/json;base64,${btoa(unescape(encodeURIComponent(meta)))}`;
+    try {
+      setBusy("Launching…");
+      const lockSeconds = lock === "Lock 24h" ? 86400 : lock === "Lock 1h" ? 3600 : 0;
+      const r = await launch(chainId, { name: nm, symbol: tk, metadataURI, lockSeconds, feeMode: fee === "burn" ? 1 : 0, launchUsdc: toUsdc(first) }, w.signer);
+      if (boost !== "none") {
+        setBusy("Promoting…");
+        try { await promote(chainId, r.coin, boost === "10" ? 1 : 2, w.signer); }
+        catch (e) { toast(`Coin is live, but the boost failed: ${(e as Error).message}`); }
+      }
+      await w.refresh();
+      setDone({ coin: r.coin, chainId });
+      window.scrollTo({ top: 0 });
+    } catch (e) {
+      toast(e instanceof TradeError ? e.message : "Launch failed. Please try again.");
+    } finally {
+      setBusy("");
+    }
+  };
   const copy = async (s: string, m: string) => { try { await navigator.clipboard.writeText(s); toast(m); } catch { /* blocked */ } };
 
   if (done) return (
@@ -58,7 +97,7 @@ function CreateView() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" className="btn ghost" style={{ flex: 1 }} onClick={() => copy(post, "Post and CA copied")}><ICopy size={15} />Copy post + CA</button>
-          <Link href={`/coin/?c=mfrog`} className="btn ghost" style={{ flex: 1 }}>Open coin page</Link>
+          <Link href={`/coin/?c=${done.chainId}-${done.coin}`} className="btn ghost" style={{ flex: 1 }}>Open coin page</Link>
         </div>
       </div>
     </div>
@@ -106,9 +145,9 @@ function CreateView() {
           </div>
           {links && (
             <div className="grid3" style={{ gap: 8 }}>
-              <div className="field"><label htmlFor="cx">X</label><input id="cx" className="inp" placeholder="x.com/yourcoin" /></div>
-              <div className="field"><label htmlFor="ctg">Telegram</label><input id="ctg" className="inp" placeholder="t.me/yourcoin" /></div>
-              <div className="field"><label htmlFor="cw">Website</label><input id="cw" className="inp" placeholder="yourcoin.com" /></div>
+              <div className="field"><label htmlFor="cx">X</label><input id="cx" className="inp" placeholder="x.com/yourcoin" value={xUrl} onChange={(e) => setXUrl(e.target.value)} /></div>
+              <div className="field"><label htmlFor="ctg">Telegram</label><input id="ctg" className="inp" placeholder="t.me/yourcoin" value={tgUrl} onChange={(e) => setTgUrl(e.target.value)} /></div>
+              <div className="field"><label htmlFor="cw">Website</label><input id="cw" className="inp" placeholder="yourcoin.com" value={webUrl} onChange={(e) => setWebUrl(e.target.value)} /></div>
             </div>
           )}
           <div style={{ height: 1, background: "var(--line)" }} />
@@ -151,19 +190,18 @@ function CreateView() {
               {lock !== "No lock" && <span className="pill volt" style={{ background: "rgba(212,255,58,0.10)" }}>Dev locked {lock.replace("Lock ", "")}</span>}
               <span className="pill" style={{ background: fee === "burn" ? "rgba(255,138,61,0.12)" : "rgba(61,220,151,0.12)", color: fee === "burn" ? "var(--burn)" : "var(--up)" }}>{fee === "burn" ? "Buyback & burn" : "Fees to creator"}</span>
             </div>
-            {[["Starts at", "$4.5K market cap"], ["Graduates at", "$7.5K"]].map(([a, b]) => <div key={a} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">{a}</span><span className="mono">{b}</span></div>)}
+            {[["Starts at", "$15 market cap (testnet)"], ["Graduates at", "$25 (testnet)"], ["Your USDC on " + chain, w.signedIn ? `$${cash.toFixed(2)}` : "—"]].map(([a, b]) => <div key={a} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">{a}</span><span className="mono">{b}</span></div>)}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Launch cost</span><span className="mono up">{boost === "none" ? "Free" : `$${boost} boost`}</span></div>
             <span className="dim" style={{ fontSize: 13 }}>Be the first buyer (optional)</span>
             <div style={{ display: "flex", gap: 6 }}>{[0, 10, 25, 50].map((v) => <button key={v} type="button" className={`seg mono${first === v ? " on" : ""}`} style={{ height: 38, minWidth: 0 }} onClick={() => setFirst(v)}>${v}</button>)}</div>
-            <button type="button" className="btn volt lg hide-m" style={{ fontSize: 17, fontWeight: 900 }} onClick={openLogin}><IRocket size={18} color="#0A0B10" w={2.4} />Launch {name || "coin"}</button>
+            <button type="button" className="btn volt lg hide-m" style={{ fontSize: 17, fontWeight: 900 }} onClick={launchNow} disabled={!!busy}><IRocket size={18} color="#0A0B10" w={2.4} />{busy || (w.signedIn ? `Launch ${name || "coin"}` : "Log in to launch")}</button>
             <span className="hide-m" style={{ fontSize: 12, color: "var(--faint)", textAlign: "center" }}>You review everything before it goes live.</span>
           </div>
         </aside>
       </div>
       <div className="show-m" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(74px + var(--safe-bottom))", zIndex: 25, padding: "10px 16px", background: "var(--bar-bg)", borderTop: "1px solid var(--line)" }}>
-        <button type="button" className="btn volt lg" style={{ width: "100%", fontWeight: 900 }} onClick={openLogin}>Launch {name || "coin"} · {boost === "none" ? "Free" : `$${boost}`}</button>
+        <button type="button" className="btn volt lg" style={{ width: "100%", fontWeight: 900 }} onClick={launchNow} disabled={!!busy}>{busy || (w.signedIn ? `Launch ${name || "coin"} · ${boost === "none" ? "Free" : `$${boost}`}` : "Log in to launch")}</button>
       </div>
-      <button type="button" className="sr" onClick={openLogin}>Log in</button>
     </div>
   );
 }

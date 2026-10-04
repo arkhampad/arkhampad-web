@@ -148,7 +148,11 @@ export async function getCoin(id: string): Promise<LiveCoin | null> {
   const chainId = Number(m[1]), address = m[2].toLowerCase();
   if (isOwnChain(chainId)) {
     const { data } = await db().from("coin_list").select("*").eq("chain_id", chainId).eq("address", address).maybeSingle();
-    return data ? fromOwn(data as OwnRow) : null;
+    if (data) return fromOwn(data as OwnRow);
+    // launched seconds ago: not indexed yet, read it from the chain
+    const { coinFromChain } = await import("./chain");
+    const row = await coinFromChain(chainId, address as `0x${string}`).catch(() => null);
+    return row ? fromOwn(row as unknown as OwnRow) : null;
   }
   const { data } = await db().from("ext_tokens").select("*").eq("chain_id", chainId).eq("address", address).maybeSingle();
   return data ? fromExt(data as ExtRow) : null;
@@ -251,16 +255,25 @@ export function useCoinMarket(c: LiveCoin | null | undefined, iv: string, onFres
   fresh.current = onFresh;
   const key = c ? `${c.id}|${iv}` : "";
   const run = useRef<() => void>(() => {});
+  const holdUntil = useRef(0);
+  const local = useRef<LiveTrade[]>([]);
   useEffect(() => {
     if (!c) return;
     let alive = true;
     setCandles(null); setOwn(null); setExt(null);
+    local.current = []; holdUntil.current = 0;
     const load = async () => {
       if (c.own) {
         const [f, ks, ts] = await Promise.all([getCoin(c.id), ownCandles(c.chainId, c.address, IV_SECONDS[iv] ?? 900), recentTrades(25, { chainId: c.chainId, address: c.address })]);
         if (!alive) return;
-        if (f) fresh.current?.(f);
-        setCandles(ks); setOwn(ts);
+        // Right after a trade made here, the database can lag a few seconds: keep the
+        // fresher local numbers until it catches up, and never drop a local trade.
+        const holding = Date.now() < holdUntil.current;
+        if (f && !holding) fresh.current?.(f);
+        if (!holding) setCandles(ks);
+        const seen = new Set(ts.map((x) => x.id.split("-").slice(0, 2).join("-")));
+        local.current = local.current.filter((x) => !seen.has(x.id));
+        setOwn([...local.current, ...ts]);
       } else {
         // The chart for other-DEX coins is an embedded DexScreener/GeckoTerminal chart; only trades here.
         const ts = await extTrades(c);
@@ -275,6 +288,37 @@ export function useCoinMarket(c: LiveCoin | null | undefined, iv: string, onFres
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   useTradeFeed(() => { if (c?.own) run.current(); }, c?.own ? { chainId: c.chainId, address: c.address } : undefined);
+
+  // A trade made here shows up at once (price, chart, list), before the indexer sees it.
+  const cur = useRef(c);
+  cur.current = c;
+  useEffect(() => {
+    let off = () => {};
+    import("./chain").then(({ onLocalTrade }) => {
+      off = onLocalTrade((t) => {
+        const coin = cur.current;
+        if (!coin || !coin.own || t.coin.toLowerCase() !== coin.address.toLowerCase() || t.chainId !== coin.chainId) return;
+        const target = (coin.startMc ?? 0) * (7500 / 4500);
+        const progress = target > (coin.startMc ?? 0) ? Math.max(0, Math.min(100, ((t.mc - (coin.startMc ?? 0)) / (target - (coin.startMc ?? 0))) * 100)) : coin.progress;
+        const start = coin.startMc ?? 0;
+        fresh.current?.({ ...coin, priceNum: t.price, price: price(t.price), mcNum: t.mc, mc: usd(t.mc), progress, chg: start ? ((t.mc - start) / start) * 100 : coin.chg });
+        holdUntil.current = Date.now() + 30_000;
+        const row: LiveTrade = { id: `${t.chainId}-${t.hash}`, who: short(t.trader), act: t.isBuy ? "bought" : "sold", amt: usd(t.usdc), tick: coin.tick, up: t.isBuy, ts: new Date(t.at).toISOString(), coin: t.coin.toLowerCase(), chainId: t.chainId, usdcNum: t.usdc, coins: t.coins };
+        local.current = [row, ...local.current];
+        setOwn((list) => [row, ...(list ?? []).filter((x) => x.id !== row.id)]);
+        setCandles((ks) => {
+          const sec = IV_SECONDS[iv] ?? 900;
+          const bucket = Math.floor(t.at / 1000 / sec) * sec * 1000;
+          const list = [...(ks ?? [])];
+          const last = list[list.length - 1];
+          if (last && last.t === bucket) list[list.length - 1] = { ...last, h: Math.max(last.h, t.price), l: Math.min(last.l, t.price), c: t.price, v: last.v + t.usdc };
+          else list.push({ t: bucket, o: last ? last.c : t.price, h: Math.max(t.price, last ? last.c : t.price), l: Math.min(t.price, last ? last.c : t.price), c: t.price, v: t.usdc });
+          return list;
+        });
+      });
+    });
+    return () => off();
+  }, [iv]);
   return { candles, own, ext };
 }
 

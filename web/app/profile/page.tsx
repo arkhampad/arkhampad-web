@@ -1,78 +1,99 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
-import { coins } from "@/lib/mock";
-import { Avatar, FrogArt, Spark } from "@/components/bits";
-import { IShare, ISpark } from "@/components/icons";
+import { useCallback, useEffect, useState } from "react";
+import type { Address } from "viem";
+import { Avatar } from "@/components/bits";
 import { useApp } from "@/components/shell";
+import { useWallet } from "@/components/wallet";
+import { NETS, fromCoin, onLocalTrade, tokenBalance } from "@/lib/chain";
+import { db, fromOwn, usd, short, type LiveCoin } from "@/lib/live";
 
-const HOLD = [[0, "15.0M", "$61.80", "+$36.80", "+147%"], [2, "1.13K", "$24.10", "+$4.10", "+20.5%"], [4, "980", "$14.80", "+$2.30", "+18.4%"], [8, "165", "$7.90", "-$2.10", "-21.0%"]] as const;
+type Holding = { coin: LiveCoin; amount: number; value: number };
 
-function Stat({ k, v, cls }: { k: string; v: string; cls?: string }) {
-  return <div className="card" style={{ padding: "12px 14px", gap: 4, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>{k}</span><span className={`mono ${cls || ""}`} style={{ fontWeight: 700, fontSize: 17 }}>{v}</span></div>;
+async function loadHoldings(address: string): Promise<{ holdings: Holding[]; created: LiveCoin[] }> {
+  const me = address.toLowerCase();
+  const [traded, mine] = await Promise.all([
+    db().from("trades").select("chain_id,coin").eq("trader", me).limit(500),
+    db().from("coin_list").select("*").eq("creator", me).order("created_at", { ascending: false }).limit(50),
+  ]);
+  const keys = new Map<string, { chain_id: number; coin: string }>();
+  for (const t of (traded.data ?? []) as { chain_id: number; coin: string }[]) keys.set(`${t.chain_id}-${t.coin}`, t);
+  for (const c of (mine.data ?? []) as { chain_id: number; address: string }[]) keys.set(`${c.chain_id}-${c.address}`, { chain_id: c.chain_id, coin: c.address });
+  const addrs = [...new Set([...keys.values()].map((k) => k.coin))];
+  const { data: rows } = addrs.length ? await db().from("coin_list").select("*").in("address", addrs) : { data: [] };
+  const coins = new Map(((rows ?? []) as Parameters<typeof fromOwn>[0][]).map((r) => [`${r.chain_id}-${r.address}`, fromOwn(r)]));
+  const holdings = (await Promise.all([...keys.values()].map(async (k) => {
+    const coin = coins.get(`${k.chain_id}-${k.coin}`);
+    if (!coin || !NETS.some((n) => n.id === k.chain_id)) return null;
+    const bal = await tokenBalance(k.chain_id, k.coin as Address, address as Address).catch(() => 0n);
+    const amount = fromCoin(bal);
+    return amount > 0 ? { coin, amount, value: amount * (coin.priceNum ?? 0) } : null;
+  }))).filter(Boolean) as Holding[];
+  holdings.sort((a, b) => b.value - a.value);
+  return { holdings, created: ((mine.data ?? []) as Parameters<typeof fromOwn>[0][]).map(fromOwn) };
 }
 
+const fmt = (t: number) => (t >= 1e9 ? (t / 1e9).toFixed(2) + "B" : t >= 1e6 ? (t / 1e6).toFixed(2) + "M" : t >= 1e3 ? (t / 1e3).toFixed(1) + "K" : t.toFixed(2));
+
 export default function Profile() {
+  const w = useWallet();
   const { openFunds, toast } = useApp();
-  const [tab, setTab] = useState("Holdings");
-  const [alerts, setAlerts] = useState({ push: true, traders: true, price: true, mine: false });
-  const link = "arkhampad.com/?ref=you";
+  const [data, setData] = useState<{ holdings: Holding[]; created: LiveCoin[] } | null>(null);
+  const [tab, setTab] = useState<"Holdings" | "Created">("Holdings");
+  const load = useCallback(() => { if (w.address) loadHoldings(w.address).then(setData).catch(() => setData({ holdings: [], created: [] })); }, [w.address]);
+  useEffect(() => { setData(null); load(); const off = onLocalTrade(() => setTimeout(load, 300)); const iv = setInterval(load, 30_000); return () => { off(); clearInterval(iv); }; }, [load]);
+
+  if (!w.ready) return <div className="wrap page"><div className="skel" style={{ height: 160, borderRadius: 22 }} /></div>;
+  if (!w.signedIn || !w.address) return (
+    <div className="wrap page" style={{ alignItems: "center", textAlign: "center", gap: 14, paddingTop: 60 }}>
+      <h1 className="h-title" style={{ fontSize: 32 }}>Your profile</h1>
+      <p className="h-sub">Sign in to see your balance, coins and launches.</p>
+      <button type="button" className="btn volt lg" onClick={w.login}>Sign in</button>
+    </div>
+  );
+
+  const coinsValue = (data?.holdings ?? []).reduce((a, h) => a + h.value, 0);
+  const copy = async () => { try { await navigator.clipboard.writeText(w.address as string); toast("Address copied"); } catch { /* blocked */ } };
   return (
-    <div className="wrap page" style={{ maxWidth: 1300 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <span className="av" style={{ width: 68, height: 68, borderRadius: 22, background: "linear-gradient(135deg, var(--volt), var(--mint))", color: "var(--on-volt)", fontSize: 24, fontWeight: 900 }}>YO</span>
-        <div style={{ flex: "1 1 220px", display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontWeight: 900, fontSize: 26, letterSpacing: -0.6 }}>you</span><span className="mono dim" style={{ fontSize: 13 }}>Joined Oct 2026 · <b style={{ color: "var(--text)" }}>12</b> following · <b style={{ color: "var(--text)" }}>48</b> followers</span></div>
-        <div style={{ display: "flex", gap: 8 }}><button type="button" className="btn ghost sm" style={{ height: 40 }}>Edit profile</button><button type="button" className="icon-btn" aria-label="Share profile"><IShare size={16} /></button></div>
+    <div className="wrap page" style={{ maxWidth: 1100 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <span className="av" style={{ width: 60, height: 60, borderRadius: 20, background: "linear-gradient(135deg, var(--volt), var(--mint))", color: "var(--on-volt)", fontSize: 22, fontWeight: 900 }}>{w.address.slice(2, 4).toUpperCase()}</span>
+        <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <b style={{ fontSize: 22 }}>{short(w.address)}</b>
+          <button type="button" className="mono dim" onClick={copy} style={{ background: "none", border: 0, padding: 0, textAlign: "left", fontSize: 12 }}>Copy address</button>
+        </span>
       </div>
-      <div className="row">
-        <div className="main-col">
-          <div style={{ borderRadius: 26, padding: 1, background: "linear-gradient(140deg, var(--volt), var(--line2) 40%, var(--line2) 70%, var(--mint))" }}>
-            <div style={{ borderRadius: 25, background: "var(--card)", padding: 22, display: "flex", flexDirection: "column", gap: 18 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span className="dim" style={{ fontSize: 13 }}>Total balance</span><span className="mono" style={{ fontWeight: 800, fontSize: "clamp(34px, 5vw, 46px)", letterSpacing: -1.6 }}>$356.10</span><span className="mono up" style={{ fontWeight: 700, fontSize: 14 }}>+$41.10 today · +13.0%</span></div>
-                <div style={{ display: "flex", gap: 10 }}><button type="button" className="btn buy" style={{ height: 52, padding: "0 24px", borderRadius: 15 }} onClick={() => openFunds("deposit")}>Deposit</button><button type="button" className="btn" style={{ height: 52, padding: "0 24px", borderRadius: 15 }} onClick={() => openFunds("withdraw")}>Withdraw</button></div>
-              </div>
-              <div className="grid3" style={{ gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}><Stat k="Cash (USDC)" v="$248.50" /><Stat k="Coins" v="$107.60" /><Stat k="All-time profit" v="+$88.40" cls="up" /></div>
-            </div>
-          </div>
-          <div className="ai-note"><ISpark size={16} color="var(--volt-ink)" /><span><b>Your week:</b> Best trade was MFROG (+147%). You made most of your profit on Base. One coin is down more than 20%.</span></div>
-          <div className="panel">
-            <div className="hscroll" style={{ gap: 4 }}>{["Holdings", "Activity", "Orders", "Following"].map((t) => <button key={t} type="button" className={`tab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
-            {tab === "Holdings" ? HOLD.map(([i, amt, val, pnl, pc]) => { const c = coins[i]; const up = !pnl.startsWith("-"); return (
-              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderTop: "1px solid var(--row)" }}>
-                <Link href={`/coin/?c=${c.id}`}><Avatar name={c.name} c1={c.c1} c2={c.c2} size={40} /></Link>
-                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}><b style={{ fontSize: 15 }}>{c.name}</b><span className="mono dim" style={{ fontSize: 12 }}>{amt} {c.tick}</span></span>
-                <span className="hide-m" style={{ width: 70 }}><Spark vals={c.spark} up={up} height={26} fill={false} stroke={2.4} /></span>
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, minWidth: 86 }}><span className="mono" style={{ fontWeight: 700, fontSize: 15 }}>{val}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 600, fontSize: 12 }}>{pnl} · {pc}</span></span>
-                <button type="button" className="btn sm" style={{ color: "var(--down)", background: "transparent", borderColor: "var(--line2)" }}>Sell</button>
-              </div>); }) : <div className="dim" style={{ fontSize: 13, padding: "14px 4px" }}>Nothing here yet.</div>}
-          </div>
+      <div className="card" style={{ gap: 14, borderRadius: 22 }}>
+        <span className="dim" style={{ fontSize: 13 }}>Total balance (testnet)</span>
+        <span className="mono" style={{ fontSize: 38, fontWeight: 900, letterSpacing: -1 }}>${(w.totalUsdc + coinsValue).toFixed(2)}</span>
+        <div className="grid3" style={{ gap: 10 }}>
+          {NETS.map((n) => <div key={n.id} className="card" style={{ padding: 12, gap: 2, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>USDC on {n.short}</span><b className="mono">${(Number(w.usdc[n.id] ?? 0n) / 1e6).toFixed(2)}</b></div>)}
+          <div className="card" style={{ padding: 12, gap: 2, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>Coins</span><b className="mono">${coinsValue.toFixed(2)}</b></div>
         </div>
-        <aside className="side-col">
-          <div className="card" style={{ background: "var(--volt)", color: "var(--on-volt)", border: 0, gap: 10 }}>
-            <span style={{ fontWeight: 900, fontSize: 18 }}>Invite friends, earn on every trade</span>
-            <span style={{ fontSize: 13, lineHeight: 1.45 }}>You get a share of our fee on everything your friends trade. Paid to your cash balance.</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 6px 6px 12px", borderRadius: 12, background: "rgba(10,11,16,0.08)" }}>
-              <span className="mono" style={{ flex: 1, fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{link}</span>
-              <button type="button" className="btn sm" style={{ background: "var(--bg)", color: "var(--text)", border: 0 }} onClick={async () => { try { await navigator.clipboard.writeText("https://" + link); toast("Invite link copied"); } catch { /* blocked */ } }}>Copy link</button>
-            </div>
-            <div className="grid2 keep" style={{ gap: 8 }}>{[["Friends joined", "12"], ["You earned", "$18.20"]].map(([a, b]) => <div key={a} style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(10,11,16,0.08)" }}><span style={{ fontSize: 11 }}>{a}</span><div className="mono" style={{ fontWeight: 800, fontSize: 20 }}>{b}</div></div>)}</div>
-          </div>
-          <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 800, fontSize: 16 }}>My coins</span><span className="dim" style={{ fontSize: 12 }}>1 created</span></div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}><span style={{ width: 40, height: 40, borderRadius: 12, overflow: "hidden" }}><FrogArt /></span><span style={{ flex: 1, display: "flex", flexDirection: "column" }}><b>Moonfrog</b><span className="mono dim" style={{ fontSize: 12 }}>Creator fees earned</span></span><span className="mono up" style={{ fontWeight: 800, fontSize: 16 }}>$124.60</span></div>
-            <button type="button" className="btn buy" style={{ height: 46 }}>Claim $124.60 to cash</button>
-          </div>
-          <div className="card" style={{ gap: 14 }}>
-            <span style={{ fontWeight: 800, fontSize: 16 }}>Alerts</span>
-            {([["push", "Push notifications", "On this device, web and phone"], ["traders", "Traders I follow", "When they buy a coin"], ["price", "Price alerts", "When a coin hits your price"], ["mine", "My coins", "Big buys and graduation"]] as const).map(([k, t, d]) => (
-              <label key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 14, cursor: "pointer" }}>
-                <span style={{ display: "flex", flexDirection: "column", gap: 2 }}><span style={{ fontWeight: 600 }}>{t}</span><span className="dim" style={{ fontSize: 12 }}>{d}</span></span>
-                <input type="checkbox" checked={alerts[k]} onChange={(e) => setAlerts({ ...alerts, [k]: e.target.checked })} style={{ width: 22, height: 22, accentColor: "#D4FF3A" }} />
-              </label>
-            ))}
-          </div>
-        </aside>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="button" className="btn buy" style={{ flex: 1 }} onClick={() => openFunds("deposit")}>Deposit</button>
+          <button type="button" className="btn" style={{ flex: 1 }} onClick={() => openFunds("withdraw")}>Withdraw</button>
+        </div>
+      </div>
+      <div className="panel">
+        <div style={{ display: "flex", gap: 4 }}>{(["Holdings", "Created"] as const).map((t) => <button key={t} type="button" className={`tab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
+        {!data ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : tab === "Holdings" ? (
+          data.holdings.length === 0 ? <div className="dim" style={{ padding: 16, fontSize: 14 }}>No coins yet. <Link href="/" className="volt">Find one on Discover</Link> or <Link href="/create/" className="volt">launch your own</Link>.</div> :
+            data.holdings.map((h) => (
+              <Link key={h.coin.id} href={`/coin/?c=${h.coin.id}`} className="lrow" style={{ borderTop: "1px solid var(--row)" }}>
+                <Avatar name={h.coin.name} c1={h.coin.c1} c2={h.coin.c2} size={40} img={h.coin.image} />
+                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}><b>{h.coin.name}</b><span className="mono dim" style={{ fontSize: 12 }}>{fmt(h.amount)} {h.coin.tick} · {h.coin.chain}</span></span>
+                <span className="mono" style={{ fontWeight: 700 }}>{usd(h.value)}</span>
+              </Link>))
+        ) : (
+          data.created.length === 0 ? <div className="dim" style={{ padding: 16, fontSize: 14 }}>You haven&apos;t launched a coin yet. <Link href="/create/" className="volt">Launch one</Link>.</div> :
+            data.created.map((c) => (
+              <Link key={c.id} href={`/coin/?c=${c.id}`} className="lrow" style={{ borderTop: "1px solid var(--row)" }}>
+                <Avatar name={c.name} c1={c.c1} c2={c.c2} size={40} />
+                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}><b>{c.name}</b><span className="mono dim" style={{ fontSize: 12 }}>{c.tick} · {c.chain} · {c.age}</span></span>
+                <span className="mono" style={{ fontWeight: 700 }}>{c.mc}</span>
+              </Link>))
+        )}
       </div>
     </div>
   );
