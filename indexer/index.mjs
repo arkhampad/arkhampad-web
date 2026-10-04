@@ -32,6 +32,10 @@ const EV = {
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const usd = (x) => Number(x) / 1e6;
+const tok = (x) => Number(x) / 1e18;
+const lc = (a) => a.toLowerCase();
+const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,

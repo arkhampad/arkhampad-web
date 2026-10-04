@@ -19,7 +19,3 @@ export function poolTrade(args, usdcIs0) {
   const usdc = Number(abs(du)) / 1e6;
   return { isBuy: du < 0n, usdc, coins: Number(abs(dc)) / 1e18, fee: usdc * 0.01, price };
 }
-const usd = (x) => Number(x) / 1e6;
-const tok = (x) => Number(x) / 1e18;
-const lc = (a) => a.toLowerCase();
-const log = (...a) => console.log(new Date().toISOString(), ...a);
