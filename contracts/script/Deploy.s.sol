@@ -30,9 +30,12 @@ contract Deploy is Script {
     }
 
     function _chain() internal view returns (V4 memory v) {
-        if (block.chainid == 46630 || block.chainid == 4663) {
-            // Robinhood Chain testnet / mainnet (same Uniswap v4 addresses)
+        if (block.chainid == 46630) {
+            // Robinhood Chain testnet (our own TestUSDC)
             v = V4(0x8366a39CC670B4001A1121B8F6A443A643e40951, 0x58daec3116aae6D93017bAAea7749052E8a04fA7, address(0));
+        } else if (block.chainid == 4663) {
+            // Robinhood Chain mainnet: same Uniswap v4 addresses; the dollar is USDG (Global Dollar, 6 decimals)
+            v = V4(0x8366a39CC670B4001A1121B8F6A443A643e40951, 0x58daec3116aae6D93017bAAea7749052E8a04fA7, 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168);
         } else if (block.chainid == 84532) {
             v = V4(0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408, 0x4B2C77d209D3405F41a037Ec6c77F7F5b8e2ca80, 0x036CbD53842c5426634e7929541eC2318f3dCF7e);
         } else if (block.chainid == 8453) {

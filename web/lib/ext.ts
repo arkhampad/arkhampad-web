@@ -1,7 +1,7 @@
 "use client";
 // Trading coins listed on other DEXs (mainnet only): live quotes from the KyberSwap aggregator,
 // gasless execution through PadExtSwap (the user signs; ArkhamPad takes 1%).
-import { createPublicClient, http, parseAbi, type Address, type Hex } from "viem";
+import { createPublicClient, domainSeparator, http, parseAbi, type Address, type Hex } from "viem";
 import { TradeError, type Signer } from "./chain";
 
 type ExtNet = { id: number; slug: string; usdc: Address; usdcDecimals: number; rpc: string; swap: Address | null; permitUsdc: boolean };
@@ -63,7 +63,9 @@ async function ensurePermit(n: ExtNet, s: Signer, token: Address, need: bigint) 
   try { [nonce, name] = await Promise.all([c.readContract({ address: token, abi: ERC, functionName: "nonces", args: [s.address] }), c.readContract({ address: token, abi: ERC, functionName: "name" })]); }
   catch { throw new TradeError("This coin needs a one-time approval that isn't supported yet."); }
   const MAX = 2n ** 256n - 1n, deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
-  const signature = await s.signTypedData(n.id, { domain: { name, version: token.toLowerCase() === n.usdc.toLowerCase() ? "2" : "1", chainId: n.id, verifyingContract: token }, types: { Permit: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }, { name: "value", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, primaryType: "Permit", message: { owner: s.address, spender: n.swap!, value: MAX, nonce, deadline } });
+  const sep = await c.readContract({ address: token, abi: parseAbi(["function DOMAIN_SEPARATOR() view returns (bytes32)"]), functionName: "DOMAIN_SEPARATOR" }).catch(() => null);
+  const version = ["2", "1"].find((v) => sep && domainSeparator({ domain: { name, version: v, chainId: n.id, verifyingContract: token } }) === sep) ?? (token.toLowerCase() === n.usdc.toLowerCase() ? "2" : "1");
+  const signature = await s.signTypedData(n.id, { domain: { name, version, chainId: n.id, verifyingContract: token }, types: { Permit: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }, { name: "value", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, primaryType: "Permit", message: { owner: s.address, spender: n.swap!, value: MAX, nonce, deadline } });
   await relay({ chainId: n.id, kind: "permitExt", token, owner: s.address, value: MAX.toString(), deadline: deadline.toString(), signature });
 }
 

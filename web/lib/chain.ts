@@ -1,6 +1,6 @@
 "use client";
 // On-chain side of ArkhamPad: networks, contract calls, signed (gasless) requests.
-import { createPublicClient, defineChain, http, keccak256, parseAbi, parseEventLogs, type Address, type Hex, type PublicClient } from "viem";
+import { createPublicClient, defineChain, domainSeparator, http, keccak256, parseAbi, parseEventLogs, type Address, type Hex, type PublicClient } from "viem";
 import { baseSepolia } from "viem/chains";
 
 export const RELAYER = process.env.NEXT_PUBLIC_RELAYER_URL || "https://arkhampad-web-production.up.railway.app";
@@ -127,6 +127,28 @@ async function confirm(n: Net, res: Relayed): Promise<{ logs: Relayed["logs"]; t
 
 /** One-time approval by signature (no gas): lets the router move this token when the user signs a trade. */
 const permitted = new Set<string>();
+/**
+ * The EIP-712 "version" a token uses for permits differs between tokens (Circle USDC: "2",
+ * most others: "1"). Pick the one whose domain matches the token's own DOMAIN_SEPARATOR.
+ */
+const versions = new Map<string, string>();
+export async function permitVersion(chainId: number, token: Address): Promise<string> {
+  const key = `${chainId}:${token}`.toLowerCase();
+  const hit = versions.get(key);
+  if (hit) return hit;
+  const c = client(chainId);
+  const [name, onchain, declared] = await Promise.all([
+    c.readContract({ address: token, abi: ERC20, functionName: "name" }),
+    c.readContract({ address: token, abi: parseAbi(["function DOMAIN_SEPARATOR() view returns (bytes32)"]), functionName: "DOMAIN_SEPARATOR" }).catch(() => null),
+    c.readContract({ address: token, abi: ERC20, functionName: "version" }).catch(() => null),
+  ]);
+  const tries = [...new Set([declared, "1", "2"].filter(Boolean) as string[])];
+  const found = onchain ? tries.find((v) => domainSeparator({ domain: { name, version: v, chainId, verifyingContract: token } }) === onchain) : undefined;
+  const v = found ?? declared ?? "1";
+  versions.set(key, v);
+  return v;
+}
+
 async function ensureAllowance(n: Net, s: Signer, token: Address, need: bigint) {
   const key = `${n.id}:${token}:${s.address}`.toLowerCase();
   if (permitted.has(key)) return;
@@ -136,7 +158,7 @@ async function ensureAllowance(n: Net, s: Signer, token: Address, need: bigint) 
   const [name, nonce, version] = await Promise.all([
     c.readContract({ address: token, abi: ERC20, functionName: "name" }),
     c.readContract({ address: token, abi: ERC20, functionName: "nonces", args: [s.address] }),
-    c.readContract({ address: token, abi: ERC20, functionName: "version" }).catch(() => "1"),
+    permitVersion(n.id, token),
   ]);
   const dl = deadline();
   const signature = await s.signTypedData(n.id, { domain: { name, version, chainId: n.id, verifyingContract: token }, types: { Permit: TYPES.Permit }, primaryType: "Permit", message: { owner: s.address, spender: n.router, value: MAX, nonce, deadline: dl } });

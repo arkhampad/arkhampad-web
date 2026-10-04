@@ -68,3 +68,10 @@ contract RobinhoodTestnetForkTest is ForkBase {
         _setup("ROBINHOOD_TESTNET_RPC", 0x8366a39CC670B4001A1121B8F6A443A643e40951, 0x58daec3116aae6D93017bAAea7749052E8a04fA7, address(0));
     }
 }
+
+/// Robinhood Chain mainnet with its real dollar (USDG): gasless permit, trading, graduation into the real Uniswap v4.
+contract RobinhoodMainnetForkTest is ForkBase {
+    function setUp() public {
+        _setup("ROBINHOOD_RPC", 0x8366a39CC670B4001A1121B8F6A443A643e40951, 0x58daec3116aae6D93017bAAea7749052E8a04fA7, 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168);
+    }
+}
