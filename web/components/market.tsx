@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import type { Coin } from "@/lib/mock";
 import { Avatar, ChainTag, Chg, Spark } from "./bits";
 import { IBell } from "./icons";
@@ -51,9 +52,33 @@ export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
   );
 }
 
+/** Remembers each coin's last price and returns "up"/"down" for a brief flash when it changes. */
+function usePriceFlash(list: Coin[]) {
+  const last = useRef(new Map<string, string>());
+  const [flash, setFlash] = useState<Record<string, "up" | "down">>({});
+  useEffect(() => {
+    const next: Record<string, "up" | "down"> = {};
+    for (const c of list) {
+      const prev = last.current.get(c.id);
+      if (prev !== undefined && prev !== c.price) {
+        const a = Number(prev.replace(/[^0-9.]/g, "")), b = Number(c.price.replace(/[^0-9.]/g, ""));
+        next[c.id] = b >= a ? "up" : "down";
+      }
+      last.current.set(c.id, c.price);
+    }
+    if (Object.keys(next).length) {
+      setFlash(next);
+      const t = setTimeout(() => setFlash({}), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [list]);
+  return flash;
+}
+
 export function CoinTable({ list, start = 0 }: { list: Coin[]; start?: number }) {
   const router = useRouter();
   const { openLogin } = useApp();
+  const flash = usePriceFlash(list);
   return (
     <div className="tbl-box">
       <table className="tbl" style={{ minWidth: 900 }}>
@@ -71,7 +96,7 @@ export function CoinTable({ list, start = 0 }: { list: Coin[]; start?: number })
                   </span>
                 </Link>
               </td>
-              <td>{c.price}</td>
+              <td className={flash[c.id] ? `flash-${flash[c.id]}` : ""}>{c.price}</td>
               <td><Chg n={c.chg} /></td>
               <td style={{ fontWeight: 700, fontSize: 15 }}>{c.mc}</td>
               <td style={{ color: "var(--text2)" }}>{c.vol}</td>
@@ -94,7 +119,7 @@ export function CoinRows({ list }: { list: Coin[] }) {
           <Avatar name={c.name} c1={c.c1} c2={c.c2} size={42} img={c.image} />
           <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
             <span style={{ fontWeight: 700, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
-            <span className="mono dim" style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}><span className="dot" style={{ width: 6, height: 6, background: c.chain === "Base" ? "var(--base)" : "var(--rh)" }} />{c.tick} · {c.age}</span>
+            <span className="mono dim" style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}><span className="dot" style={{ width: 6, height: 6, background: c.chain === "Base" ? "var(--base)" : c.chain === "BNB" ? "var(--bnb)" : "var(--rh)" }} />{c.tick} · {c.age}</span>
           </span>
           <span style={{ width: 58 }}><Spark vals={c.spark} up={c.chg >= 0} height={26} fill={false} stroke={2.4} /></span>
           <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, minWidth: 80 }}>

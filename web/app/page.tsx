@@ -10,7 +10,7 @@ import { ScrollTabs } from "@/components/scrolltabs";
 import { useRouter } from "next/navigation";
 
 const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
-const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Robinhood", "Base"];
+const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB"];
 const IDEAS = ["Funny animal", "Internet meme", "Robot / AI", "Sports", "Surprise me"];
 const PAGE = 50;
 
@@ -28,7 +28,7 @@ export default function Discover() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const chain = cat === "Base" || cat === "Robinhood" ? cat : null;
+  const chain = cat === "Base" || cat === "Robinhood" || cat === "BNB" ? cat : null;
   const topic = chain || cat === "All" ? null : cat;
 
   const load = useCallback(async (offset: number) => {
@@ -46,9 +46,9 @@ export default function Discover() {
 
   useEffect(() => { setList(null); load(0); }, [load]);
   // keep the first page fresh
-  useEffect(() => { const iv = setInterval(() => { if ((list?.length ?? 0) <= PAGE) load(0); }, 60_000); return () => clearInterval(iv); }, [load, list?.length]);
+  useEffect(() => { const iv = setInterval(() => { if ((list?.length ?? 0) <= PAGE) load(0); }, 20_000); return () => clearInterval(iv); }, [load, list?.length]);
 
-  const hot = useLive(() => listCoins("Trending", { limit: 3 }), [], 60_000);
+  const hot = useLive(() => listCoins("Trending", { limit: 3 }), [], 30_000);
   const almost = useLive(async () => (await listCoins("Bonding", { limit: 30 })).filter((c) => c.progress >= 50).sort((a, b) => b.progress - a.progress).slice(0, 3), [], 60_000);
   const total = useLive(totalCoins, [], 120_000);
   const [feat, setFeat] = useState<"hot" | "grad">("hot");

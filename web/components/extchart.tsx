@@ -15,8 +15,9 @@ export default function ExtChart({ network, pool, height = 420 }: { network: str
     return <div className="tv-box" style={{ ["--tv-h" as string]: `${height}px`, display: "flex", alignItems: "center", justifyContent: "center" }}><span className="dim" style={{ fontSize: 14 }}>Chart is not available for this coin yet.</span></div>;
   }
   const theme = light ? "light" : "dark";
-  const src = network === "base"
-    ? `https://dexscreener.com/base/${pool}?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0&chartLeftToolbar=0&chartDefaultOnMobile=1&chartTheme=${theme}&theme=${theme}&chartStyle=1&chartType=marketCap&interval=15`
+  const ds = network === "base" ? "base" : network === "bsc" ? "bsc" : null;
+  const src = ds
+    ? `https://dexscreener.com/${ds}/${pool}?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0&chartLeftToolbar=0&chartDefaultOnMobile=1&chartTheme=${theme}&theme=${theme}&chartStyle=1&chartType=marketCap&interval=15`
     : `https://www.geckoterminal.com/${network}/pools/${pool}?embed=1&info=0&swaps=0&grayscale=0&light_chart=${light ? 1 : 0}&chart_type=market_cap&resolution=15m`;
   return (
     <div className="tv-box" style={{ ["--tv-h" as string]: `${height}px`, borderRadius: 12, overflow: "hidden", background: "var(--bg2)" }}>

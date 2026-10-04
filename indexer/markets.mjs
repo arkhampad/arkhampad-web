@@ -8,8 +8,7 @@
 // Env: MARKETS ("0" turns it off), MARKETS_GAP_MS (GeckoTerminal pause, default 6500).
 const GT = process.env.GT_URL || "https://api.geckoterminal.com/api/v2";
 const DS = process.env.DS_URL || "https://api.dexscreener.com";
-const GAP = Number(process.env.MARKETS_GAP_MS ?? 6500);
-const REFRESH_EVERY_MS = Number(process.env.MARKETS_REFRESH_MS ?? 120_000);
+const GAP = Number(process.env.MARKETS_GAP_MS ?? 4000);
 const SPARK_POINTS = 48;
 const MIN_LIQ_USD = 500;
 
@@ -21,7 +20,7 @@ const MAX_USD = 1e12;
 const sane = (v) => { const n = num(v); return n !== null && n > 0 && n < MAX_USD ? n : null; };
 
 // Plumbing tokens (gas coins, stablecoins, staked ETH, majors) are not what people come for.
-const SKIP = new Set(["WETH", "ETH", "USDC", "USDT", "DAI", "USDE", "USDS", "USDG", "WBTC", "CBBTC", "TBTC", "CBETH", "WSTETH", "STETH", "RETH", "EURC", "USD1", "PYUSD", "FRAX", "LUSD", "GHO", "USDBC", "XAUT", "PAXG", "EZETH", "WEETH", "SUPEROETHB", "MSETH"]);
+const SKIP = new Set(["WETH", "ETH", "USDC", "USDT", "DAI", "USDE", "USDS", "USDG", "WBTC", "CBBTC", "TBTC", "CBETH", "WSTETH", "STETH", "RETH", "EURC", "USD1", "PYUSD", "FRAX", "LUSD", "GHO", "USDBC", "XAUT", "PAXG", "EZETH", "WEETH", "SUPEROETHB", "MSETH", "WBNB", "BNB", "BTCB", "FDUSD", "ETHB"]);
 export function plumbing(symbol, name) {
   const s = String(symbol ?? "").toUpperCase();
   const n = String(name ?? "");
@@ -30,6 +29,7 @@ export function plumbing(symbol, name) {
 
 export const NETWORKS = [
   { id: "base", chainId: 8453, ds: "base" },
+  { id: "bsc", chainId: 56, ds: "bsc" },
   // Robinhood Chain is looked up by name at start (see findNetworks).
 ];
 
@@ -84,7 +84,8 @@ export function rowsFromPools(json, net, rankFrom = null) {
       image: typeof t.image_url === "string" && t.image_url.startsWith("https://") ? t.image_url : null,
       price_usd: num(a.base_token_price_usd), mcap_usd: sane(a.market_cap_usd), fdv_usd: sane(a.fdv_usd),
       liq_usd: liq, vol_24h: num(a.volume_usd?.h24),
-      change_1h: num(a.price_change_percentage?.h1), change_24h: num(a.price_change_percentage?.h24),
+      change_5m: num(a.price_change_percentage?.m5), change_1h: num(a.price_change_percentage?.h1), change_24h: num(a.price_change_percentage?.h24),
+      vol_1h: num(a.volume_usd?.h1), txns_5m: int((a.transactions?.m5?.buys ?? 0) + (a.transactions?.m5?.sells ?? 0)),
       buys_24h: int(tx.buys), sells_24h: int(tx.sells),
       pool_created: a.pool_created_at && !isNaN(Date.parse(a.pool_created_at)) ? new Date(a.pool_created_at).toISOString() : null,
       trending_rank: rankFrom === null ? null : rankFrom + i + 1,
@@ -116,6 +117,7 @@ export function updatesFromPairs(pairs) {
       price_usd: num(p?.priceUsd), liq_usd: liq, vol_24h: num(p?.volume?.h24),
       change_1h: num(p?.priceChange?.h1), change_24h: num(p?.priceChange?.h24),
       mcap_usd: sane(p?.marketCap), fdv_usd: sane(p?.fdv),
+      change_5m: num(p?.priceChange?.m5), vol_1h: num(p?.volume?.h1), txns_5m: int((p?.txns?.m5?.buys ?? 0) + (p?.txns?.m5?.sells ?? 0)),
       buys_24h: int(p?.txns?.h24?.buys), sells_24h: int(p?.txns?.h24?.sells),
       image: typeof p?.info?.imageUrl === "string" && p.info.imageUrl.startsWith("https://") ? p.info.imageUrl : null,
     });
@@ -123,7 +125,7 @@ export function updatesFromPairs(pairs) {
   return [...best.values()];
 }
 
-const COLS = ["chain_id", "address", "network", "pool", "dex", "name", "symbol", "image", "price_usd", "mcap_usd", "fdv_usd", "liq_usd", "vol_24h", "change_1h", "change_24h", "buys_24h", "sells_24h", "pool_created", "trending_rank"];
+const COLS = ["chain_id", "address", "network", "pool", "dex", "name", "symbol", "image", "price_usd", "mcap_usd", "fdv_usd", "liq_usd", "vol_24h", "change_5m", "change_1h", "change_24h", "vol_1h", "txns_5m", "buys_24h", "sells_24h", "pool_created", "trending_rank"];
 
 export async function upsertTokens(pool, rows) {
   if (!rows.length) return 0;
@@ -140,6 +142,7 @@ export async function upsertTokens(pool, rows) {
        price_usd = coalesce(excluded.price_usd, ext_tokens.price_usd), mcap_usd = coalesce(excluded.mcap_usd, ext_tokens.mcap_usd),
        fdv_usd = coalesce(excluded.fdv_usd, ext_tokens.fdv_usd), liq_usd = coalesce(excluded.liq_usd, ext_tokens.liq_usd),
        vol_24h = coalesce(excluded.vol_24h, ext_tokens.vol_24h), change_1h = coalesce(excluded.change_1h, ext_tokens.change_1h),
+       change_5m = coalesce(excluded.change_5m, ext_tokens.change_5m), vol_1h = coalesce(excluded.vol_1h, ext_tokens.vol_1h), txns_5m = coalesce(excluded.txns_5m, ext_tokens.txns_5m),
        change_24h = coalesce(excluded.change_24h, ext_tokens.change_24h), buys_24h = coalesce(excluded.buys_24h, ext_tokens.buys_24h),
        sells_24h = coalesce(excluded.sells_24h, ext_tokens.sells_24h), pool_created = coalesce(ext_tokens.pool_created, excluded.pool_created),
        trending_rank = coalesce(excluded.trending_rank, ext_tokens.trending_rank), updated_at = now()`,
@@ -157,10 +160,11 @@ export async function applyUpdates(pool, chainId, ups) {
          mcap_usd = coalesce($8, mcap_usd), fdv_usd = coalesce($9, fdv_usd),
          buys_24h = coalesce($10, buys_24h), sells_24h = coalesce($11, sells_24h),
          image = coalesce(image, $12),
+         change_5m = coalesce($13, change_5m), vol_1h = coalesce($14, vol_1h), txns_5m = coalesce($15, txns_5m),
          spark = case when $3::numeric is null then spark else (spark || $3::numeric)[greatest(1, cardinality(spark) + 2 - ${SPARK_POINTS}):] end,
          updated_at = now()
        where chain_id = $1 and address = $2`,
-      [chainId, u.address, u.price_usd, u.liq_usd, u.vol_24h, u.change_1h, u.change_24h, u.mcap_usd, u.fdv_usd, u.buys_24h, u.sells_24h, u.image],
+      [chainId, u.address, u.price_usd, u.liq_usd, u.vol_24h, u.change_1h, u.change_24h, u.mcap_usd, u.fdv_usd, u.buys_24h, u.sells_24h, u.image, u.change_5m ?? null, u.vol_1h ?? null, u.txns_5m ?? null],
     );
   }
 }
@@ -190,21 +194,13 @@ async function dexesOf(net) {
   return ids;
 }
 
+let netsPromise = null;
+const networks = () => (netsPromise ??= findNetworks().then((n) => { log(`networks: ${n.map((x) => x.id).join(", ")}`); return n; }));
+
 async function discoverLoop(pool) {
-  const nets = await findNetworks();
-  log(`networks: ${nets.map((n) => n.id).join(", ")}`);
+  const nets = await networks();
   for (;;) {
     for (const net of nets) {
-      // trending and new first, they matter most for the front page
-      await pool.query("update ext_tokens set trending_rank = null where chain_id = $1", [net.chainId]);
-      for (let page = 1; page <= 5; page++) {
-        const j = await gt(`/networks/${net.id}/trending_pools?include=base_token&page=${page}`).catch(() => null);
-        await upsertTokens(pool, rowsFromPools(j, net, (page - 1) * 20));
-      }
-      for (let page = 1; page <= 5; page++) {
-        const j = await gt(`/networks/${net.id}/new_pools?include=base_token&page=${page}`).catch(() => null);
-        await upsertTokens(pool, rowsFromPools(j, net));
-      }
       const dexes = await dexesOf(net);
       for (const dex of dexes) {
         for (const sort of ["h24_volume_usd_desc", "h24_tx_count_desc"]) {
@@ -222,25 +218,68 @@ async function discoverLoop(pool) {
   }
 }
 
+/** What's moving right now: trending (last 5 minutes) and brand-new pools, every minute. */
+async function hotLoop(pool, nets) {
+  for (;;) {
+    const started = Date.now();
+    for (const net of nets) {
+      const rows = [];
+      for (let page = 1; page <= 3; page++) {
+        const j = await gt(`/networks/${net.id}/trending_pools?include=base_token&duration=5m&page=${page}`).catch(() => null);
+        rows.push(...rowsFromPools(j, net, (page - 1) * 20));
+      }
+      if (rows.length) {
+        // replace the ranking in one step so the front page never shows an empty list
+        const db = await pool.connect();
+        try {
+          await db.query("begin");
+          await db.query("update ext_tokens set trending_rank = null where chain_id = $1 and trending_rank is not null", [net.chainId]);
+          await upsertTokens(db, rows);
+          await db.query("commit");
+        } catch (e) { await db.query("rollback"); throw e; } finally { db.release(); }
+      }
+      const j = await gt(`/networks/${net.id}/new_pools?include=base_token&page=1`).catch(() => null);
+      await upsertTokens(pool, rowsFromPools(j, net));
+    }
+    await sleep(Math.max(5_000, 60_000 - (Date.now() - started)));
+  }
+}
+
+async function refreshBatch(pool, net, addrs) {
+  for (let i = 0; i < addrs.length; i += 30) {
+    const batch = addrs.slice(i, i + 30);
+    const pairs = await ds(`/tokens/v1/${net.ds}/${batch.join(",")}`).catch(() => null);
+    if (pairs) await applyUpdates(pool, net.chainId, updatesFromPairs(pairs));
+    await sleep(250); // ~240 calls a minute, under DexScreener's 300
+  }
+}
+
+/** Hot coins (trending, busiest, newest) every ~30 seconds; the rest in rotation. */
 async function refreshLoop(pool) {
+  let tailFrom = 0;
   for (;;) {
     const started = Date.now();
     for (const net of NETWORKS.filter((n) => n.ds)) {
-      const { rows } = await pool.query("select address from ext_tokens where chain_id = $1 order by vol_24h desc nulls last", [net.chainId]);
-      for (let i = 0; i < rows.length; i += 30) {
-        const batch = rows.slice(i, i + 30).map((r) => r.address);
-        const pairs = await ds(`/tokens/v1/${net.ds}/${batch.join(",")}`).catch(() => null);
-        if (pairs) await applyUpdates(pool, net.chainId, updatesFromPairs(pairs));
-        await sleep(250); // ~240 calls a minute, under DexScreener's 300
-      }
+      const hot = await pool.query(
+        `(select address from ext_tokens where chain_id = $1 and trending_rank is not null)
+         union (select address from ext_tokens where chain_id = $1 order by vol_24h desc nulls last limit 150)
+         union (select address from ext_tokens where chain_id = $1 order by pool_created desc nulls last limit 60)`,
+        [net.chainId],
+      );
+      await refreshBatch(pool, net, hot.rows.map((r) => r.address));
+      // a slice of everything else, so every coin is refreshed every few minutes
+      const tail = await pool.query("select address from ext_tokens where chain_id = $1 order by address offset $2 limit 600", [net.chainId, tailFrom]);
+      await refreshBatch(pool, net, tail.rows.map((r) => r.address));
+      if (net === NETWORKS[0]) tailFrom = tail.rows.length < 600 ? 0 : tailFrom + 600;
     }
-    await sleep(Math.max(5_000, REFRESH_EVERY_MS - (Date.now() - started)));
+    await sleep(Math.max(2_000, Number(process.env.MARKETS_REFRESH_MS ?? 30_000) - (Date.now() - started)));
   }
 }
 
 export function startMarkets(pool) {
   if (process.env.MARKETS === "0") return;
   const guard = (name, fn) => (async () => { for (;;) { try { await fn(pool); } catch (e) { log(`${name} error: ${e.message}`); await sleep(30_000); } } })();
+  guard("hot", async (p) => hotLoop(p, await networks()));
   guard("discover", discoverLoop);
   guard("refresh", refreshLoop);
 }

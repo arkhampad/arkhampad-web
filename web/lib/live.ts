@@ -15,7 +15,7 @@ export function db() {
 
 // Our launchpad runs on testnets for now; other DEX coins come from mainnets.
 export const OWN_CHAINS = [84532, 46630];
-export const chainName = (id: number): Chain => (id === 8453 || id === 84532 ? "Base" : "Robinhood");
+export const chainName = (id: number): Chain => (id === 8453 || id === 84532 ? "Base" : id === 56 || id === 97 ? "BNB" : "Robinhood");
 export const isOwnChain = (id: number) => OWN_CHAINS.includes(id);
 
 // ---------------------------------------------------------------- formatting
@@ -64,7 +64,7 @@ export type LiveCoin = Coin & {
   phase?: number; startMc?: number; creator?: string; curve?: string; createdAt?: string | null;
 };
 
-type ExtRow = { chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null };
+type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null };
 type OwnRow = { chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
 
 export function fromExt(r: ExtRow): LiveCoin {
@@ -111,7 +111,7 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
   const limit = opts.limit ?? 50, from = opts.offset ?? 0;
   const ownTab = tab === "Launched here" || tab === "Bonding" || tab === "Graduated";
   const ownIds = opts.chain ? OWN_CHAINS.filter((c) => chainName(c) === opts.chain) : OWN_CHAINS;
-  const extIds = opts.chain === "Base" ? [8453] : opts.chain === "Robinhood" ? [4663] : [8453, 4663];
+  const extIds = opts.chain === "Base" ? [8453] : opts.chain === "Robinhood" ? [4663] : opts.chain === "BNB" ? [56] : [8453, 4663, 56];
   const words = opts.cat ? CAT_WORDS[opts.cat] : null;
   const like = (col: string) => (words ? words.map((w) => `${col}.ilike.*${w}*`).join(",") : null);
 
@@ -126,7 +126,7 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
     return (data as OwnRow[]).map(fromOwn);
   }
 
-  let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,buys_24h,sells_24h,pool_created,spark").in("chain_id", extIds);
+  let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,spark").in("chain_id", extIds);
   if (opts.q) q = q.or(`name.ilike.*${opts.q}*,symbol.ilike.*${opts.q}*,address.eq.${opts.q.toLowerCase()}`);
   const w = like("name"); if (w) q = q.or(w);
   if (tab === "Trending") q = q.not("trending_rank", "is", null).order("trending_rank", { ascending: true });
