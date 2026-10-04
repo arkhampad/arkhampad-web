@@ -162,3 +162,62 @@ export async function downloadCard(c: ShareCoin) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
+
+// ---------------------------------------------------------------- profit card
+
+export type Pnl = { name: string; tick: string; chain: string; id: string; image?: string | null; c1: string; c2: string; bought: number; back: number; pnl: number; pct: number; entryMc: number; nowMc: number; closed: boolean };
+
+/** Branded 1200x675 "my result" card (PNG). */
+export async function pnlCard(p: Pnl): Promise<Blob | null> {
+  const W = 1200, H = 675;
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  if (!ctx) return null;
+  const sans = '"Geist Sans","Helvetica Neue",Arial,sans-serif', mono = '"Geist Mono",ui-monospace,Menlo,monospace';
+  const up = p.pnl >= 0;
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, "#0A0B10"); bg.addColorStop(1, up ? "#0C1A13" : "#1A0F12");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W - 200, 160, 10, W - 200, 160, 560);
+  glow.addColorStop(0, up ? "rgba(61,220,151,0.22)" : "rgba(255,107,107,0.2)"); glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = "middle";
+  const logo = await loadImage("/icon-192.png");
+  if (logo) { ctx.save(); rounded(ctx, 64, 56, 56, 56, 14); ctx.clip(); ctx.drawImage(logo, 64, 56, 56, 56); ctx.restore(); }
+  ctx.fillStyle = "#F2F3F5"; ctx.font = `800 34px ${sans}`; ctx.fillText("ArkhamPad", 136, 85);
+  // coin
+  const pic = p.image ? await loadImage(p.image) : null;
+  ctx.save(); rounded(ctx, 64, 170, 96, 96, 24); ctx.clip();
+  if (pic) ctx.drawImage(pic, 64, 170, 96, 96);
+  else { const g = ctx.createLinearGradient(64, 170, 160, 266); g.addColorStop(0, p.c1); g.addColorStop(1, p.c2); ctx.fillStyle = g; ctx.fillRect(64, 170, 96, 96); ctx.fillStyle = "#fff"; ctx.font = `900 36px ${sans}`; ctx.textAlign = "center"; ctx.fillText(p.tick.slice(0, 2).toUpperCase(), 112, 220); ctx.textAlign = "left"; }
+  ctx.restore();
+  ctx.fillStyle = "#F2F3F5"; ctx.font = `900 48px ${sans}`; ctx.fillText(p.name.length > 22 ? p.name.slice(0, 21) + "…" : p.name, 186, 202);
+  ctx.fillStyle = "#8A909C"; ctx.font = `700 26px ${mono}`; ctx.fillText(`$${p.tick} · ${p.chain}`, 188, 248);
+  // result
+  ctx.fillStyle = up ? "#3DDC97" : "#FF6B6B"; ctx.font = `800 132px ${mono}`;
+  ctx.fillText(`${up ? "+" : ""}${p.pct.toFixed(1)}%`, 60, 380);
+  ctx.font = `800 44px ${mono}`;
+  ctx.fillText(`${up ? "+" : "-"}$${Math.abs(p.pnl).toFixed(2)}`, 66, 470);
+  ctx.fillStyle = "#8A909C"; ctx.font = `600 24px ${sans}`;
+  const fmt = (v: number) => (v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`);
+  ctx.fillText(`Bought at ${fmt(p.entryMc)} MC  →  ${p.closed ? "sold" : "now"} at ${fmt(p.nowMc)} MC`, 66, 540);
+  rounded(ctx, 64, 588, W - 128, 50, 14); ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fill();
+  ctx.fillStyle = "#D4FF3A"; ctx.font = `800 22px ${sans}`; ctx.fillText("Trade with one tap on arkhampad.com", 90, 614);
+  return await new Promise((res) => cv.toBlob((b) => res(b), "image/png"));
+}
+
+export async function sharePnl(p: Pnl) {
+  const up = p.pnl >= 0;
+  const text = `${up ? "+" : ""}${p.pct.toFixed(1)}% on $${p.tick} ${up ? "📈" : "📉"}\n\n${up ? "Up" : "Down"} $${Math.abs(p.pnl).toFixed(2)} trading on @Arkhampad`;
+  const url = `${SITE}/coin/?c=${p.id}`;
+  const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+  if (isPhone() && nav.share) {
+    try {
+      const blob = await pnlCard(p);
+      const file = blob ? new File([blob], `${p.tick.toLowerCase()}-result.png`, { type: "image/png" }) : null;
+      if (file && nav.canShare?.({ files: [file] })) { await nav.share({ files: [file], text: `${text}\n${url}` }); return; }
+    } catch (e) { if ((e as Error)?.name === "AbortError") return; }
+  }
+  openX(text, url);
+}

@@ -6,6 +6,9 @@ import { Avatar } from "@/components/bits";
 import { useApp } from "@/components/shell";
 import { useWallet } from "@/components/wallet";
 import { OrdersList } from "@/components/orders";
+import { ProfitSheet } from "@/components/profit";
+import { positionPnl } from "@/lib/pnl";
+import type { Pnl } from "@/lib/share";
 import { NETS, fromCoin, onLocalTrade, tokenBalance } from "@/lib/chain";
 import { db, fromOwn, usd, short, type LiveCoin } from "@/lib/live";
 
@@ -40,6 +43,7 @@ export default function Profile() {
   const w = useWallet();
   const { openFunds, toast } = useApp();
   const [data, setData] = useState<{ holdings: Holding[]; created: LiveCoin[] } | null>(null);
+  const [result, setResult] = useState<Pnl | null>(null);
   const [tab, setTab] = useState<"Holdings" | "Created" | "Orders">("Holdings");
   const load = useCallback(() => { if (w.address) loadHoldings(w.address).then(setData).catch(() => setData({ holdings: [], created: [] })); }, [w.address]);
   useEffect(() => { setData(null); load(); const off = onLocalTrade(() => setTimeout(load, 300)); const iv = setInterval(load, 30_000); return () => { off(); clearInterval(iv); }; }, [load]);
@@ -91,7 +95,7 @@ export default function Profile() {
                 <Avatar name={h.coin.name} c1={h.coin.c1} c2={h.coin.c2} size={40} img={h.coin.image} />
                 <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}><b>{h.coin.name}</b><span className="mono dim" style={{ fontSize: 12 }}>{fmt(h.amount)} {h.coin.tick} · {h.coin.chain}</span></span>
                 <span className="mono" style={{ fontWeight: 700 }}>{usd(h.value)}</span>
-              </Link>))
+              <button type="button" className="btn ghost sm" style={{ marginLeft: 6 }} onClick={async (e) => { e.preventDefault(); e.stopPropagation(); if (!w.address) return; const r = await positionPnl(h.coin.chainId, h.coin.address, w.address, { name: h.coin.name, tick: h.coin.tick, chain: h.coin.chain, image: h.coin.image, c1: h.coin.c1, c2: h.coin.c2, mcNow: h.coin.mcNum ?? 0, heldValue: h.value }); if (r) setResult(r); }}>Result</button></Link>))
         ) : (
           data.created.length === 0 ? <div className="dim" style={{ padding: 16, fontSize: 14 }}>You haven&apos;t launched a coin yet. <Link href="/create/" className="volt">Launch one</Link>.</div> :
             data.created.map((c) => (
@@ -102,6 +106,7 @@ export default function Profile() {
               </Link>))
         )}
       </div>
+      {result && <ProfitSheet p={result} onClose={() => setResult(null)} />}
     </div>
   );
 }

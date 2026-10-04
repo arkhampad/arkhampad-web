@@ -122,6 +122,7 @@ export function makeRelayer() {
   const faucetLast = new Map();
   let db = null;
   let notifier = null;
+  let og = null;
   const upkeepLast = new Map();
   log(`relayer ${account.address} on ${[...nets.values()].map((n) => n.c.name).join(", ")}`);
 
@@ -586,7 +587,7 @@ export function makeRelayer() {
   function config() {
     return { relayer: account.address, minFee: String(MIN_FEE), vapidPublicKey: notifier?.publicKey ?? null, chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, faucet: !!n.faucet })) };
   }
-  return { handle, config, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, setNotifier: (x) => { notifier = x; }, vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
+  return { handle, config, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -622,6 +623,15 @@ export function httpHandler(relayer, status) {
       res.setHeader("access-control-allow-origin", "*");
       res.setHeader("cache-control", "public, max-age=31536000, immutable"); // the URL changes with every new image
       return res.end(img.data);
+    }
+    if (url.startsWith("/og/coin/") && req.method === "GET") {
+      // link preview image for a coin page
+      const png = await relayer.ogCard(url.slice(9).replace(/\.png$/, "")).catch(() => null);
+      if (!png) { res.statusCode = 404; return res.end(JSON.stringify({ error: "not found" })); }
+      res.setHeader("content-type", "image/png");
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("cache-control", "public, max-age=300");
+      return res.end(png);
     }
     if (url === "/inbox" && req.method === "GET") {
       const q = new URL(req.url, "http://x").searchParams;

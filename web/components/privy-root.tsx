@@ -61,7 +61,8 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
 }
 
 const CONFIG = {
-  loginMethods: ["google", "twitter", "email", "wallet"] as ("google" | "twitter" | "email" | "wallet")[],
+  // Telegram appears once its bot is set up in Privy (Cloudflare env NEXT_PUBLIC_TELEGRAM_LOGIN=1)
+  loginMethods: (process.env.NEXT_PUBLIC_TELEGRAM_LOGIN === "1" ? ["google", "twitter", "telegram", "email", "wallet"] : ["google", "twitter", "email", "wallet"]) as ("google" | "twitter" | "telegram" | "email" | "wallet")[],
   appearance: { theme: "dark" as const, accentColor: "#D4FF3A" as `#${string}`, logo: "/icon-192.png", landingHeader: "Sign in to ArkhamPad", showWalletLoginFirst: false },
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" as const }, showWalletUIs: false },
   supportedChains: [baseSepolia, robinhoodTestnet],

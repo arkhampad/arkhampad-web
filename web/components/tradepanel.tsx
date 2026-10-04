@@ -7,6 +7,9 @@ import { useApp } from "./shell";
 import { useWallet } from "./wallet";
 import { FEE, buy, fromCoin, fromUsdc, onLocalTrade, placeOrder, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError, type OrderKind } from "@/lib/chain";
 import { refreshOrders } from "./orders";
+import { ProfitSheet } from "./profit";
+import { positionPnl } from "@/lib/pnl";
+import type { Pnl } from "@/lib/share";
 import { extBalance, extNet, extQuote, extTrade, extTradable } from "@/lib/ext";
 import { PriceAlertButton } from "./alerts";
 import { usd as fmtUsd } from "@/lib/live";
@@ -35,6 +38,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const extLive = ext && extTradable(coin.chainId); // ...and trade (mainnet)
   const tradable = ext ? extLive : coin.own && (phase === 0 ? !!coin.curve : phase === 2);
   const [extDec, setExtDec] = useState(18);
+  const [result, setResult] = useState<Pnl | null>(null);
   const curve = coin.curve as Address | undefined;
   const cash = fromUsdc(w.usdc[coin.chainId] ?? 0n);
   const usd = Number(amt) || 0;
@@ -142,6 +146,12 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
         if (sellAmount <= 0n) throw new TradeError("You don't hold this coin yet.");
         setStep("Selling…");
         const t = inPool ? await poolSell(coin.chainId, coin.address as Address, sellAmount, w.signer) : await sell(coin.chainId, curve as Address, coin.address as Address, sellAmount, w.signer);
+        const who = w.address;
+        setTimeout(async () => {
+          if (!who) return;
+          const r = await positionPnl(coin.chainId, coin.address, who, { name: coin.name, tick: coin.tick, chain: coin.chain, image: coin.image, c1: coin.c1, c2: coin.c2, mcNow: coin.mcNum ?? 0 }).catch(() => null);
+          if (r && r.pct >= 5) setResult(r);
+        }, 3000);
         toast(`Sold for $${((t?.usdc ?? 0) - fromUsdc(FEE)).toFixed(2)}`);
       }
       await w.refresh();
@@ -211,6 +221,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
         <span style={{ flex: 1, display: "flex" }}><PriceAlertButton c={coin} className="btn ghost sm grow" /></span>
         <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={onShare}><IShare size={15} />Share</button>
       </div>
+      {result && <ProfitSheet p={result} onClose={() => setResult(null)} />}
     </div>
   );
 }

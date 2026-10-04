@@ -10,6 +10,7 @@ import { startMarkets } from "./markets.mjs";
 import { makeRelayer, httpHandler } from "./relayer.mjs";
 import { poolIdOf, poolTrade } from "./poolmath.mjs";
 import { makeNotifier } from "./notify.mjs";
+import { makeOg } from "./og.mjs";
 const relayer = process.env.ONCE ? null : makeRelayer();
 
 const POLL_DEFAULT = process.env.POLL_SECONDS ? Number(process.env.POLL_SECONDS) * 1000 : null;
@@ -44,7 +45,7 @@ const pool = new pg.Pool({
   max: 4,
 });
 const notifier = makeNotifier(pool);
-if (relayer) { relayer.setDb(pool); relayer.setNotifier(notifier); }
+if (relayer) { relayer.setDb(pool); relayer.setNotifier(notifier); relayer.setOg(makeOg(pool)); }
 
 // After each indexed batch: tell followers about fresh buys and creators about graduations.
 async function announce(c, fresh) {
