@@ -58,6 +58,9 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     /// @notice Builds and holds the locked pools of graduated coins (zero: pool trading off).
     PadPoolBuilder public immutable builder;
     IPoolManager public immutable poolManager;
+    /// @dev Set only while this router itself is inside PoolManager.unlock, so nobody else can
+    /// make the PoolManager call our callback.
+    bool private _unlocking;
 
     /// @notice user => nonce => used (any order of use, so many open orders can coexist)
     mapping(address => mapping(uint256 => bool)) public nonceUsed;
@@ -68,6 +71,7 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     event Withdrawn(address indexed user, address indexed to, uint256 amount, uint256 fee, uint256 nonce);
     event Promoted(address indexed user, address indexed coin, uint8 plan, uint256 fee, uint256 nonce);
     event NonceCancelled(address indexed user, uint256 nonce);
+    event Swept(address indexed token, address indexed to, uint256 amount);
     event PoolTraded(address indexed user, address indexed coin, bool isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 fee, uint256 nonce);
 
     error Expired();
@@ -80,6 +84,8 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     error NotGraduated();
     error OnlyPoolManager();
     error Quote(uint256 amountOut);
+    error NotUnlocking();
+    error NotAdmin();
 
     struct Sig {
         uint256 deadline;
@@ -242,15 +248,28 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     /// The swap is simulated inside the pool and undone (it always reverts internally).
     function quotePool(address coin, bool isBuy, uint256 amountIn) external returns (uint256 amountOut) {
         _requireGraduated(coin);
+        _unlocking = true;
         try poolManager.unlock(abi.encode(coin, isBuy, amountIn, true)) {
+            _unlocking = false;
             return 0; // unreachable: a quote always reverts with the result
         } catch (bytes memory err) {
+            _unlocking = false;
             if (err.length == 36 && bytes4(err) == Quote.selector) {
                 assembly { amountOut := mload(add(err, 36)) }
                 return amountOut;
             }
             assembly { revert(add(err, 32), mload(err)) }
         }
+    }
+
+    /// @notice Returns tokens someone sent to the router by mistake. The router holds nothing
+    /// between transactions, so this can never touch a user's trade. Hub admin only.
+    function sweep(address token, address to) external nonReentrant {
+        if (msg.sender != hub.admin()) revert NotAdmin();
+        if (to == address(0)) revert ZeroAddress();
+        uint256 bal = IERC20(token).balanceOf(address(this));
+        IERC20(token).safeTransfer(to, bal);
+        emit Swept(token, to, bal);
     }
 
     function _requireGraduated(address coin) private view {
@@ -260,12 +279,15 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     }
 
     function _poolSwap(address coin, bool usdcIn, uint256 amountIn) private returns (uint256 out, uint256 paid) {
-        return abi.decode(poolManager.unlock(abi.encode(coin, usdcIn, amountIn, false)), (uint256, uint256));
+        _unlocking = true;
+        (out, paid) = abi.decode(poolManager.unlock(abi.encode(coin, usdcIn, amountIn, false)), (uint256, uint256));
+        _unlocking = false;
     }
 
     /// @dev Exact-input swap; the router pays in and receives the output itself.
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert OnlyPoolManager();
+        if (!_unlocking) revert NotUnlocking();
         (address coin, bool usdcIn, uint256 amountIn, bool quote) = abi.decode(data, (address, bool, uint256, bool));
         PoolKey memory key = builder.poolKeyFor(coin);
         bool usdcIs0 = Currency.unwrap(key.currency0) == address(usdc);

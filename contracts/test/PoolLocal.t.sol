@@ -37,6 +37,9 @@ abstract contract PoolLocalBase is PoolFlow, DeployPermit2 {
     function test_gasless() public { _flow_gasless(); }
     function test_gaslessPool() public { _flow_gaslessPool(); }
     function test_poolNeedsGraduation() public { _flow_poolNeedsGraduation(); }
+    function test_callbacksLocked() public { _flow_callbacksLocked(); }
+    function test_routerSweep() public { _flow_routerSweep(); }
+    function test_builderStrayUsdc() public { _flow_builderStrayUsdc(); }
 }
 
 /// USDC sorts first (currency0) in every pool.

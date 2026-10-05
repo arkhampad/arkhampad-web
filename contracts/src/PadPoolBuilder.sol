@@ -45,6 +45,8 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
     /// @notice Most USDC one buyback call spends in the pool.
     /// @notice Most USDC one buyback call spends ($100, in the dollar token's own decimals).
     uint256 public immutable MAX_BUYBACK_STEP;
+    /// @dev Set only while this builder itself is inside PoolManager.unlock.
+    bool private _unlocking;
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;
 
     IPoolManager public immutable poolManager;
@@ -86,6 +88,7 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
     error NotDelivered();
     error BadGuardAddress(address guard);
     error NotPoolManager();
+    error NotUnlocking();
 
     constructor(
         IPoolManager poolManager_,
@@ -250,13 +253,16 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
         if (spent == 0) revert NothingToDo();
         buybackFunds[coin] -= spent;
         usdcHeld -= spent;
+        _unlocking = true;
         burned = abi.decode(poolManager.unlock(abi.encode(coin, spent)), (uint256));
+        _unlocking = false;
         emit BuybackDone(coin, spent, burned);
     }
 
     /// @dev Swap USDC -> coin inside the pool manager's lock; coins go to the burn address.
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert NotPoolManager();
+        if (!_unlocking) revert NotUnlocking(); // only our own buyback may run a swap here
         (address coin, uint256 amountIn) = abi.decode(data, (address, uint256));
         PoolKey memory key = poolKeyFor(coin);
         bool zeroForOne = usdcIsCurrency0(coin);

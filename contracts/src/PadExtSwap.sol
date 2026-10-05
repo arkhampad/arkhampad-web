@@ -162,6 +162,12 @@ contract PadExtSwap is EIP712, ReentrancyGuard {
         tokenIn.forceApprove(target, 0);
     }
 
+    /// @notice Returns tokens sent here by mistake (the contract holds nothing between swaps).
+    function sweep(address token, address to) external onlyAdmin nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        IERC20(token).safeTransfer(to, IERC20(token).balanceOf(address(this)));
+    }
+
     function cancel(uint256 nonce) external {
         nonceUsed[msg.sender][nonce] = true;
     }

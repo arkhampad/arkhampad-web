@@ -214,6 +214,8 @@ abstract contract PoolFlow is Test {
         vm.prank(relayer);
         router.sell(u, curve, total, 1, (D / 100), s3);
         assertGt(usdc.balanceOf(u), before, "got USDC back");
+        assertEq(usdc.balanceOf(address(router)), 0, "router keeps no USDC");
+        assertEq(IERC20(coin).balanceOf(address(router)), 0, "router keeps no coins");
         assertEq(IERC20(coin).balanceOf(u), 0);
         assertEq(usdc.balanceOf(relayer), (3 * D / 100), "relayer repaid in USDC");
         assertEq(usdc.balanceOf(address(router)), 0);
@@ -278,6 +280,46 @@ abstract contract PoolFlow is Test {
         router.poolBuy(u, c, (10 * D), 0, 0, s);
         vm.expectRevert(PadRouter.NotGraduated.selector);
         router.quotePool(c, true, (10 * D));
+    }
+
+    /// Audit hardening: only the PoolManager, and only while the router itself started the unlock,
+    /// can run the router's or the builder's swap callback.
+    function _flow_callbacksLocked() internal {
+        (PadCoin coin,) = _launchAndGraduate(PadCurve.FeeMode.ToCreator);
+        bytes memory data = abi.encode(address(coin), true, uint256(1 * D), false);
+        vm.expectRevert(PadRouter.OnlyPoolManager.selector);
+        router.unlockCallback(data);
+        vm.prank(address(pm));
+        vm.expectRevert(PadRouter.NotUnlocking.selector);
+        router.unlockCallback(data);
+        vm.prank(address(pm));
+        vm.expectRevert(PadPoolBuilder.NotUnlocking.selector);
+        builder.unlockCallback(abi.encode(address(coin), uint256(1 * D)));
+    }
+
+    /// Tokens sent to the router by mistake can be returned by the admin only, and normal trades
+    /// never use them.
+    function _flow_routerSweep() internal {
+        _fund(bob, 100 * D);
+        uint256 b0 = usdc.balanceOf(bob);
+        vm.prank(bob);
+        usdc.transfer(address(router), 100 * D);
+        vm.prank(bob);
+        vm.expectRevert(PadRouter.NotAdmin.selector);
+        router.sweep(address(usdc), bob);
+        vm.prank(admin);
+        router.sweep(address(usdc), bob);
+        assertEq(usdc.balanceOf(address(router)), 0);
+        assertEq(usdc.balanceOf(bob), b0, "bob got his mistaken transfer back");
+    }
+
+    /// USDC sent to the builder by mistake is not swept into a new pool.
+    function _flow_builderStrayUsdc() internal {
+        _fund(bob, 100 * D);
+        vm.prank(bob);
+        usdc.transfer(address(builder), 100 * D);
+        _launchAndGraduate(PadCurve.FeeMode.ToCreator);
+        assertEq(usdc.balanceOf(address(builder)) - builder.usdcHeld(), 100 * D, "stray USDC untouched");
     }
 
     function _signR(uint256 pk, bytes32 structHash) internal view returns (bytes memory) {

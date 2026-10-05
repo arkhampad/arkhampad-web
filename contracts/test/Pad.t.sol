@@ -365,3 +365,25 @@ contract PadTest is Test {
         assertEq(price, 12e6);
     }
 }
+
+/// Audit fix: a launch that fills the curve refunds only its own leftover, never USDC that
+/// was already sitting in the hub (sent there by mistake).
+contract HubRefundTest is PadTest {
+    function test_launchRefundOnlyOwnLeftover() public {
+        address stranger = address(0xD00D);
+        usdc.mint(stranger, 100e6);
+        vm.prank(stranger);
+        usdc.transfer(address(hub), 100e6); // USDC stuck in the hub
+
+        uint256 a0 = usdc.balanceOf(alice);
+        vm.startPrank(alice);
+        usdc.approve(address(hub), type(uint256).max);
+        // far more than the curve needs to sell out: most of it must come back
+        (, address curve) = hub.createCoin("Big", "BIG", "", 0, PadCurve.FeeMode.ToCreator, 50_000e6, 0);
+        vm.stopPrank();
+        uint256 spent = a0 - usdc.balanceOf(alice);
+        assertLt(spent, 50_000e6, "leftover was refunded");
+        assertEq(usdc.balanceOf(address(hub)), 100e6, "the stuck USDC stays in the hub");
+        assertEq(spent, usdc.balanceOf(curve) + usdc.balanceOf(address(builder)) - 0, "alice paid exactly what the curve used");
+    }
+}

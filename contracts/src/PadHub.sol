@@ -152,12 +152,14 @@ contract PadHub is ReentrancyGuard {
 
         if (launchUsdc > 0) {
             if (buysPaused) revert NotAllowed();
+            // Only this launch's own leftover is refunded (never USDC that was already here).
+            uint256 before = usdc.balanceOf(address(this));
             usdc.safeTransferFrom(msg.sender, address(this), launchUsdc);
             usdc.forceApprove(curve, launchUsdc);
             c.launchBuy(launchUsdc, minCoinsOut, creator);
             usdc.forceApprove(curve, 0);
             // A launch buy that fills the curve spends less than launchUsdc: refund the payer.
-            uint256 left = usdc.balanceOf(address(this));
+            uint256 left = usdc.balanceOf(address(this)) - before;
             if (left > 0) usdc.safeTransfer(msg.sender, left);
         }
     }
