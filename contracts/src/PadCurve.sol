@@ -238,7 +238,7 @@ contract PadCurve is ReentrancyGuard {
         return (gross * BPS) / (BPS + TRADE_FEE_BPS);
     }
 
-    /// @notice Market cap in USDC (6 decimals) at the current curve price.
+    /// @notice Market cap at the current curve price, in the dollar token's own units (6 or 18 decimals).
     function marketCap() external view returns (uint256) {
         return (vUsdc * coin.totalSupply()) / vCoin;
     }

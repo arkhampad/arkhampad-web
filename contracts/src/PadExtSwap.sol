@@ -123,12 +123,15 @@ contract PadExtSwap is EIP712, ReentrancyGuard {
         uint256 before = coin.balanceOf(address(this));
         uint256 usdcBefore = usdc.balanceOf(address(this));
         _call(usdc, spend, s.target, s.data);
-        coinsOut = coin.balanceOf(address(this)) - before;
-        if (coinsOut < s.minOut) revert Slippage(coinsOut, s.minOut);
+        uint256 bought = coin.balanceOf(address(this)) - before;
         // any USDC the aggregator didn't use goes back to the user
         uint256 usdcAfter = usdc.balanceOf(address(this));
         uint256 unused = usdcAfter + spend > usdcBefore ? usdcAfter + spend - usdcBefore : 0;
-        coin.safeTransfer(s.user, coinsOut);
+        // minOut is what the USER receives: fee-on-transfer coins can lose some on this last hop
+        uint256 userBefore = coin.balanceOf(s.user);
+        coin.safeTransfer(s.user, bought);
+        coinsOut = coin.balanceOf(s.user) - userBefore;
+        if (coinsOut < s.minOut) revert Slippage(coinsOut, s.minOut);
         if (unused > 0) usdc.safeTransfer(s.user, unused);
         emit ExtSwapped(s.user, s.coin, true, s.amountIn, coinsOut, tradeFee, s.fee, s.nonce);
     }

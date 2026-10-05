@@ -12,6 +12,18 @@ contract Coin is ERC20 {
     function mint(address to, uint256 a) external { _mint(to, a); }
 }
 
+/// Coin that burns 10% on every transfer except mints.
+contract FeeCoin is ERC20 {
+    constructor() ERC20("Fee", "FEE") {}
+    function mint(address to, uint256 a) external { _mint(to, a); }
+    function _update(address from, address to, uint256 v) internal override {
+        if (from == address(0) || to == address(0)) return super._update(from, to, v);
+        uint256 burn = v / 10;
+        super._update(from, address(0), burn);
+        super._update(from, to, v - burn);
+    }
+}
+
 /// Fake aggregator: takes `amountIn` of tokenIn (or less, to test refunds) and sends `out` of tokenOut to `to`.
 contract MockAgg {
     function swap(IERC20 tokenIn, uint256 amountIn, IERC20 tokenOut, uint256 out, address to) external {
@@ -145,5 +157,23 @@ contract ExtSwapTest is Test {
         s = _sign(s);
         vm.expectRevert(PadExtSwap.BadCoin.selector);
         sw.swap(s);
+    }
+
+    /// minOut protects what the user actually receives, also for fee-on-transfer coins
+    function test_buy_feeOnTransfer_minOutIsUserReceived() public {
+        FeeCoin fc = new FeeCoin();
+        fc.mint(address(agg), 1_000_000e18);
+        // aggregator sends 1,000 -> swap gets 900 -> user gets 810
+        bytes memory data = abi.encodeCall(MockAgg.swap, (IERC20(address(usdc)), 99e6, IERC20(address(fc)), 1_000e18, address(sw)));
+        PadExtSwap.Swap memory bad = _sign(PadExtSwap.Swap(user, true, address(fc), 100e6, 900e18, address(agg), data, 0.01e6, 41, block.timestamp + 60, ""));
+        vm.prank(relayer);
+        vm.expectRevert(abi.encodeWithSelector(PadExtSwap.Slippage.selector, 810e18, 900e18));
+        sw.swap(bad);
+        PadExtSwap.Swap memory ok = _sign(PadExtSwap.Swap(user, true, address(fc), 100e6, 810e18, address(agg), data, 0.01e6, 42, block.timestamp + 60, ""));
+        vm.prank(relayer);
+        uint256 out = sw.swap(ok);
+        assertEq(out, 810e18, "returns what the user received");
+        assertEq(fc.balanceOf(user), 810e18);
+        assertEq(fc.balanceOf(address(sw)), 0);
     }
 }
