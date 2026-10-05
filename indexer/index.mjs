@@ -64,19 +64,38 @@ async function announce(c, fresh) {
   }
 }
 
-async function lastBlock(chainId, start) {
-  const r = await pool.query("select last_block from sync_state where chain_id = $1", [chainId]);
-  if (r.rows.length) return BigInt(r.rows[0].last_block);
-  await pool.query("insert into sync_state (chain_id, last_block) values ($1, $2) on conflict do nothing", [chainId, String(start - 1)]);
-  return BigInt(start - 1);
+// Coins belong to one hub. When chains.json points at a new hub (a redeploy), the old
+// deployment's coins, trades and everything tied to them are removed once, and indexing
+// restarts from the new hub's first block.
+const TIED = ["trades", "promotions", "orders", "price_alerts", "comments", "coin_images", "coins"];
+async function lastBlock(c) {
+  const hub = c.hub.toLowerCase();
+  const r = await pool.query("select last_block, hub from sync_state where chain_id = $1", [c.chainId]);
+  const row = r.rows[0];
+  if (row && row.hub && row.hub.toLowerCase() === hub) return BigInt(row.last_block);
+  const db = await pool.connect();
+  try {
+    await db.query("begin");
+    if (row) {
+      for (const t of TIED) {
+        const d = await db.query(`delete from ${t} where chain_id=$1`, [c.chainId]);
+        if (d.rowCount) log(`${c.name}: new hub, removed ${d.rowCount} old rows from ${t}`);
+      }
+    }
+    await db.query("insert into sync_state (chain_id, last_block, hub) values ($1,$2,$3) on conflict (chain_id) do update set last_block=excluded.last_block, hub=excluded.hub, updated_at=now()", [c.chainId, String(c.startBlock - 1), hub]);
+    await db.query("commit");
+  } catch (e) { await db.query("rollback"); throw e; } finally { db.release(); }
+  log(`${c.name}: indexing hub ${c.hub} from block ${c.startBlock}`);
+  return BigInt(c.startBlock - 1);
 }
-
 
 async function syncChain(c, client) {
   const usd = usdOf(c);
   const RANGE = RANGE_DEFAULT ?? BigInt(c.blockRange || 500);
   const head = await client.getBlockNumber().catch((err) => { throw new Error(`getBlockNumber: ${err.shortMessage || err.message}${err.details ? " | " + err.details : ""}`); });
-  let from = (await lastBlock(c.chainId, c.startBlock)) + 1n;
+  // the cursor is read once and then kept in memory, so a stale process can't move it
+  if (c.cursor === undefined) c.cursor = await lastBlock(c);
+  let from = c.cursor + 1n;
   while (from <= head) {
     const to = from + RANGE - 1n > head ? head : from + RANGE - 1n;
     // One labelled call at a time, so an RPC error says exactly which request failed.
@@ -232,7 +251,7 @@ async function syncChain(c, client) {
           }
         }
       }
-      await db.query("update sync_state set last_block=$2, updated_at=now() where chain_id=$1", [c.chainId, String(to)]);
+      await db.query("update sync_state set last_block=$2, updated_at=now() where chain_id=$1 and hub=$3", [c.chainId, String(to), c.hub.toLowerCase()]);
       await db.query("commit");
       if (fresh.length) announce(c, fresh).catch((e) => log(`${c.name}: announce error ${e.message}`));
       if (created.length || trades.length || grads.length || promos.length || poolTrades)
@@ -243,6 +262,7 @@ async function syncChain(c, client) {
     } finally {
       db.release();
     }
+    c.cursor = to;
     from = to + 1n;
     if (c.rangeDelayMs) await sleep(c.rangeDelayMs); // stay under the RPC's requests-per-second limit
   }

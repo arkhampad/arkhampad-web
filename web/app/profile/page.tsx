@@ -6,6 +6,7 @@ import { Avatar } from "@/components/bits";
 import { useApp } from "@/components/shell";
 import { useWallet } from "@/components/wallet";
 import { OrdersList } from "@/components/orders";
+import { PortfolioCard } from "@/components/portfolio";
 import { ProfitSheet } from "@/components/profit";
 import { positionPnl } from "@/lib/pnl";
 import type { Pnl } from "@/lib/share";
@@ -86,6 +87,7 @@ export default function Profile() {
           <button type="button" className="btn" style={{ flex: 1 }} onClick={() => openFunds("withdraw")}>Withdraw</button>
         </div>
       </div>
+      {data && data.holdings.length > 0 && <PortfolioCard holdings={data.holdings} me={w.address} />}
       <div className="panel">
         <div style={{ display: "flex", gap: 4 }}>{(["Holdings", "Created", "Orders"] as const).map((t) => <button key={t} type="button" className={`tab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
         {tab === "Orders" ? <OrdersList title="All your orders" /> : !data ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : tab === "Holdings" ? (

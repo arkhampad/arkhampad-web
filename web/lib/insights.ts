@@ -33,8 +33,22 @@ export async function friendsCount(me: string): Promise<number> {
   return count ?? 0;
 }
 
-export type Comment = { id: string; user: string; body: string; holder_pct: number | null; created_at: string };
+export type Comment = { id: string; user: string; body: string; holder_pct: number | null; created_at: string; hidden: boolean; hidden_reason: string | null };
 export async function commentsOf(chainId: number, coin: string): Promise<Comment[]> {
-  const { data } = await db().from("comments").select("id,user,body,holder_pct,created_at").eq("chain_id", chainId).eq("coin", coin.toLowerCase()).order("created_at", { ascending: false }).limit(60);
-  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({ id: String(r.id), user: String(r.user), body: String(r.body), holder_pct: r.holder_pct == null ? null : Number(r.holder_pct), created_at: String(r.created_at) }));
+  const { data } = await db().from("comments").select("id,user,body,holder_pct,created_at,hidden,hidden_reason").eq("chain_id", chainId).eq("coin", coin.toLowerCase()).order("created_at", { ascending: false }).limit(60);
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({ id: String(r.id), user: String(r.user), body: String(r.body), holder_pct: r.holder_pct == null ? null : Number(r.holder_pct), created_at: String(r.created_at), hidden: r.hidden === true, hidden_reason: r.hidden_reason == null ? null : String(r.hidden_reason) }));
+}
+
+const translations = new Map<string, Promise<{ text: string; from: string } | null>>();
+/** Translates a comment into the visitor's language (cached here and at the edge). */
+export function translate(text: string, to: string): Promise<{ text: string; from: string } | null> {
+  const key = `${to}|${text}`;
+  let p = translations.get(key);
+  if (!p) {
+    p = fetch("/api/translate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, to }) })
+      .then((r) => (r.ok ? r.json() : null)).then((j) => (j && typeof j.text === "string" ? { text: j.text, from: String(j.from || "") } : null)).catch(() => null);
+    translations.set(key, p);
+    p.then((v) => { if (!v) translations.delete(key); });
+  }
+  return p;
 }

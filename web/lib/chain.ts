@@ -17,8 +17,8 @@ export type Net = { id: number; name: string; short: string; rpc: string; hub: A
 
 // Contract addresses come from contracts/deployments/<chainId>.json.
 const DEFAULT_NETS: Net[] = [
-  { id: 84532, name: "Base Sepolia", short: "Base", rpc: "https://sepolia.base.org", hub: "0x27e9ba5b6C405c01b1D1714Fd72e99Be1ED0D125", router: "0xB5d157e046fa4363330B38E767b82eeB8b8460c1", usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", faucet: false, faucetUrl: "https://faucet.circle.com" },
-  { id: 46630, name: "Robinhood Testnet", short: "Robinhood", rpc: "https://rpc.testnet.chain.robinhood.com", hub: "0x742f9EF29655202138CA48b8Ad3645653E95276F", router: "0x1Cf054C53A5e263881aC4b4DD235576dD36a7F42", usdc: "0x47AfD49069EAbEcfb153926f1f652249fFb61b57", faucet: true },
+  { id: 84532, name: "Base Sepolia", short: "Base", rpc: "https://sepolia.base.org", hub: "0x9987E66B818ED246cB1687D651e975E952101E4a", router: "0xcB2dC6690bb3556a718Cbe2281017DC66F5A1A7E", usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", faucet: false, faucetUrl: "https://faucet.circle.com" },
+  { id: 46630, name: "Robinhood Testnet", short: "Robinhood", rpc: "https://rpc.testnet.chain.robinhood.com", hub: "0xA8c03CFB5aE340fdCE22F94CE83100daef33DEF0", router: "0xEFbd358D0120AEbAA77De2805294FAE31d9D7D2D", usdc: "0x47AfD49069EAbEcfb153926f1f652249fFb61b57", faucet: true },
 ];
 // Local test builds can point everything at a local chain.
 export const NETS: Net[] = process.env.NEXT_PUBLIC_NETS ? JSON.parse(process.env.NEXT_PUBLIC_NETS) : DEFAULT_NETS;

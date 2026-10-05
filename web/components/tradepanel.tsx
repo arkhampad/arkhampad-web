@@ -12,6 +12,7 @@ import { positionPnl } from "@/lib/pnl";
 import type { Pnl } from "@/lib/share";
 import { extBalance, extNet, extQuote, extTrade, extTradable } from "@/lib/ext";
 import { PriceAlertButton } from "./alerts";
+import { BuyWarning, useBuyWarning } from "./safety";
 import { usd as fmtUsd } from "@/lib/live";
 import type { LiveCoin } from "@/lib/live";
 
@@ -19,6 +20,7 @@ const fmtCoins = (t: number) => (!Number.isFinite(t) || t <= 0 ? "0" : t >= 1e9 
 
 export function TradePanel({ coin, withLimit = false, onShare, initialSide = "buy" }: { coin: LiveCoin; withLimit?: boolean; onShare?: () => void; initialSide?: "buy" | "sell" }) {
   const { toast, openFunds } = useApp(); void withLimit;
+  const caution = useBuyWarning(coin);
   const w = useWallet();
   const [side, setSide] = useState<"buy" | "sell">(initialSide);
   const [mode, setMode] = useState("Market");
@@ -213,7 +215,8 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">You get</span><span className="mono">≈ {quote === null ? "—" : `$${quote.toFixed(2)}`}</span></div>
         </>
       )}
-      <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={go} disabled={busy || !tradable} aria-busy={busy} style={{ fontSize: 17, opacity: !tradable ? 0.55 : 1 }}>{label}</button>
+      {coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable && <BuyWarning text={caution.text} onAck={caution.ack} />}
+      {!(coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable) && <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={go} disabled={busy || !tradable} aria-busy={busy} style={{ fontSize: 17, opacity: !tradable ? 0.55 : 1 }}>{label}</button>}
       {!coin.own && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>{extLive ? "Trades through other DEXs at the best price · 1% fee" : ext ? "Live price from other DEXs. Trading these coins here opens on mainnet." : "This coin trades on another DEX. Trading it here opens on mainnet."}</span>}
       {coin.own && phase === 1 && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>Moving to its locked pool. Trading reopens in a few seconds.</span>}
       {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{inPool ? "Graduated · trades in its locked pool · " : ""}Testnet · test USDC has no value</span>}

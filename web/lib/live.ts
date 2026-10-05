@@ -64,7 +64,7 @@ export type LiveCoin = Coin & {
   chainId: number; address: string; own: boolean; image: string | null;
   pool?: string | null; network?: string | null; dex?: string | null;
   priceNum: number | null; mcNum: number | null; volNum: number | null;
-  phase?: number; startMc?: number; creator?: string; curve?: string; createdAt?: string | null;
+  phase?: number; startMc?: number; creator?: string; curve?: string; createdAt?: string | null; lockSeconds?: number;
   about?: { description?: string; x?: string; telegram?: string; website?: string }; feeMode?: number;
 };
 
@@ -108,7 +108,7 @@ export function fromOwn(r: OwnRow): LiveCoin {
     spark: sparkOf([start, mc]), progress: r.phase >= 1 ? 100 : target > start ? Math.max(0, Math.min(100, ((mc - start) / (target - start)) * 100)) : 0,
     chainId: r.chain_id, address: r.address, own: true, image: r.image_url ?? null, priceNum: Number(r.price_usd), mcNum: mc, volNum: Number(r.volume_24h),
     phase: r.phase, startMc: start, creator: r.creator, curve: r.curve, createdAt: r.created_at,
-    about: parseMeta(r.metadata_uri), feeMode: r.fee_mode,
+    about: parseMeta(r.metadata_uri), feeMode: r.fee_mode, lockSeconds: Number(r.lock_seconds ?? 0),
   };
 }
 
@@ -155,6 +155,79 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
   // When nothing is trending yet, fall back to volume.
   if (tab === "Trending" && rows.length === 0 && from === 0) return listCoins("Top volume", opts);
   return rows;
+}
+
+/** Ask-AI search on Discover: applies Finder filters to coins launched here and coins from other DEXs. */
+export async function findCoins(f: import("./finder").Finder, limit = 60): Promise<LiveCoin[]> {
+  const sinceIso = (min?: number) => (min ? new Date(Date.now() - min * 60_000).toISOString() : null);
+  const words = f.topic ? CAT_WORDS[f.topic] : null;
+  const text = f.text?.replace(/[^A-Za-z0-9 ._-]/g, "").trim();
+  const wantOwn = f.source !== "other";
+  const wantExt = f.source !== "here" && !f.nearGrad && !f.graduated && !f.locked;
+  const jobs: Promise<LiveCoin[]>[] = [];
+
+  if (wantOwn) {
+    const ids = f.chain ? OWN_CHAINS.filter((c) => chainName(c) === f.chain) : OWN_CHAINS;
+    jobs.push((async () => {
+      if (!ids.length) return [];
+      let q = db().from("coin_list").select("*").in("chain_id", ids);
+      const young = sinceIso(f.maxAgeMin), old = sinceIso(f.minAgeMin);
+      if (young) q = q.gte("created_at", young);
+      if (old) q = q.lte("created_at", old);
+      if (f.minMc) q = q.gte("mc_usd", f.minMc);
+      if (f.maxMc) q = q.lte("mc_usd", f.maxMc);
+      if (f.minVol) q = q.gte("volume_24h", f.minVol);
+      if (f.graduated) q = q.eq("phase", 2);
+      if (f.nearGrad) q = q.lt("phase", 2);
+      if (text) q = q.or(`name.ilike.*${text}*,symbol.ilike.*${text}*`);
+      if (words) q = q.or(words.map((w) => `name.ilike.*${w}*`).join(","));
+      const { data, error } = await q.order("created_at", { ascending: false }).limit(300);
+      if (error) throw error;
+      const now = Date.now();
+      return (data as OwnRow[]).map(fromOwn).filter((c) =>
+        (f.minChange === undefined || c.chg >= f.minChange) && (f.maxChange === undefined || c.chg <= f.maxChange) &&
+        (!f.nearGrad || c.progress >= 70) &&
+        (!f.locked || (!!c.lockSeconds && !!c.createdAt && Date.parse(c.createdAt) + c.lockSeconds * 1000 > now)));
+    })());
+  }
+  if (wantExt) {
+    const ids = f.chain === "Base" ? [8453] : f.chain === "Robinhood" ? [4663] : f.chain === "BNB" ? [56] : f.chain === "Arc" ? [5042] : [8453, 4663, 56, 5042];
+    jobs.push((async () => {
+      let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,spark,trending_rank").in("chain_id", ids);
+      const young = sinceIso(f.maxAgeMin), old = sinceIso(f.minAgeMin);
+      if (young) q = q.gte("pool_created", young);
+      if (old) q = q.lte("pool_created", old);
+      if (f.minMc) q = q.gte("mcap_usd", f.minMc);
+      if (f.maxMc) q = q.lte("mcap_usd", f.maxMc);
+      if (f.minChange !== undefined) q = q.gte("change_24h", f.minChange);
+      if (f.maxChange !== undefined) q = q.lte("change_24h", f.maxChange);
+      if (f.minVol) q = q.gte("vol_24h", f.minVol);
+      if (text) q = q.or(`name.ilike.*${text}*,symbol.ilike.*${text}*`);
+      if (words) q = q.or(words.map((w) => `name.ilike.*${w}*`).join(","));
+      const sort = f.sort ?? (f.maxAgeMin ? "new" : "trending");
+      if (sort === "new") q = q.not("pool_created", "is", null).order("pool_created", { ascending: false });
+      else if (sort === "gainers") q = q.not("change_24h", "is", null).order("change_24h", { ascending: false });
+      else if (sort === "losers") q = q.not("change_24h", "is", null).order("change_24h", { ascending: true });
+      else if (sort === "mc") q = q.not("mcap_usd", "is", null).order("mcap_usd", { ascending: false });
+      else if (sort === "trending") q = q.order("trending_rank", { ascending: true, nullsFirst: false }).order("vol_24h", { ascending: false, nullsFirst: false });
+      else q = q.not("vol_24h", "is", null).order("vol_24h", { ascending: false });
+      const { data, error } = await q.limit(limit);
+      if (error) throw error;
+      return (data as ExtRow[]).map(fromExt);
+    })());
+  }
+  const parts = await Promise.allSettled(jobs);
+  if (parts.every((p) => p.status === "rejected")) throw (parts[0] as PromiseRejectedResult).reason;
+  const all = parts.flatMap((p) => (p.status === "fulfilled" ? p.value : []));
+  const sort = f.sort ?? (f.nearGrad ? "graduation" : f.maxAgeMin ? "new" : "trending");
+  const age = (c: LiveCoin) => (c.createdAt ? Date.parse(c.createdAt) : 0);
+  const key: Record<string, (c: LiveCoin) => number> = {
+    new: age, gainers: (c) => c.chg, losers: (c) => -c.chg, volume: (c) => c.volNum ?? 0, mc: (c) => c.mcNum ?? 0,
+    graduation: (c) => (c.own ? c.progress : -1), trending: (c) => (c.volNum ?? 0),
+  };
+  // trending keeps each source's own order (other DEXs come ranked); others sort the merged list
+  const merged = sort === "trending" ? all : [...all].sort((a, b) => key[sort](b) - key[sort](a));
+  return merged.slice(0, limit);
 }
 
 export async function getCoin(id: string): Promise<LiveCoin | null> {

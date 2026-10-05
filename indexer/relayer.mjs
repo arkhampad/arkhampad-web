@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, decodeFunctionResult, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress, verifyTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { moderate } from "./moderation.mjs";
 
 const CHAINS = JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./chains.json", import.meta.url), "utf8"));
 const log = (...a) => console.log(new Date().toISOString(), "relayer:", ...a);
@@ -566,8 +567,11 @@ export function makeRelayer() {
         const isCreator = coinRow.creator === user;
         if (bal === 0n && !isCreator) throw err("Only holders can comment. Buy any amount to join the chat.", 403);
         const pct = Number(bal) / 1e18 / 1e9 * 100;
-        const r = await db.query(`insert into comments (chain_id, coin, "user", body, holder_pct) values ($1,$2,$3,$4,$5) returning id`, [n.c.chainId, coin, user, body, pct]);
-        return { id: String(r.rows[0].id) };
+        // scams and spam are kept but hidden behind a notice (the writer still sees theirs)
+        const mod = await moderate(body);
+        const r = await db.query(`insert into comments (chain_id, coin, "user", body, holder_pct, hidden, hidden_reason) values ($1,$2,$3,$4,$5,$6,$7) returning id`, [n.c.chainId, coin, user, body, pct, mod.spam, mod.reason]);
+        if (mod.spam) log(`comment ${r.rows[0].id} hidden: ${mod.reason}`);
+        return { id: String(r.rows[0].id), hidden: mod.spam, reason: mod.reason };
       }
       case "comment.delete":
         await db.query(`update comments set deleted=true where id=$1 and "user"=$2`, [String(p.id ?? "0").replace(/\D/g, "") || "0", user]);

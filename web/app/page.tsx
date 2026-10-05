@@ -9,6 +9,7 @@ import { IFire, ISpark } from "@/components/icons";
 import { ScrollTabs } from "@/components/scrolltabs";
 import { board, traderColors } from "@/lib/traders";
 import { useRouter } from "next/navigation";
+import { FinderBar, FinderResults, useFinder } from "@/components/finder";
 
 const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
 const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB", "Arc"];
@@ -21,6 +22,7 @@ function Skeleton({ rows = 8 }: { rows?: number }) {
 
 export default function Discover() {
   const router = useRouter();
+  const fx = useFinder();
   const [tab, setTab] = useState<Tab>("Trending");
   const [cat, setCat] = useState("All");
   const [idea, setIdea] = useState("");
@@ -118,6 +120,8 @@ export default function Discover() {
 
       <section className="row">
         <div className="main-col">
+          <FinderBar fx={fx} />
+          {fx.active ? <FinderResults fx={fx} /> : <>
           <ScrollTabs>{TABS.map((t) => <button key={t} type="button" className={`chip${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</ScrollTabs>
           <ScrollTabs gap={6}>{CATS.map((t) => <button key={t} type="button" className={`chip sm${cat === t ? " on" : ""}`} onClick={() => setCat(t)}>{t}</button>)}</ScrollTabs>
           {(tab === "Launched here" || tab === "Bonding" || tab === "Graduated") && (
@@ -138,6 +142,7 @@ export default function Discover() {
             <span className="dim" style={{ fontSize: 13 }}>Coins from other DEXs are shown for discovery. Trading them here opens on mainnet.</span>
             {more && list && list.length > 0 && <button type="button" className="btn" disabled={busy} onClick={() => load(list.length)}>{busy ? "Loading…" : "Load more"}</button>}
           </div>
+          </>}
         </div>
         <aside className="side-col">
           <div className="card">

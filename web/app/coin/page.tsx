@@ -9,6 +9,7 @@ import { TradePanel } from "@/components/tradepanel";
 import { AboutCard, CreatorCard, HoldersCard, PromoteButton } from "@/components/cointools";
 import { OrdersList } from "@/components/orders";
 import { Comments } from "@/components/community";
+import { LockCard, SafetyCard } from "@/components/safety";
 import dynamic from "next/dynamic";
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
@@ -103,6 +104,8 @@ function CoinView() {
             <Stat k="Price" v={c.price} /><Stat k="Market cap" v={c.mc} /><Stat k="24h" v={`${up ? "+" : ""}${c.chg.toFixed(1)}%`} cls={up ? "up" : "down"} />
             <Stat k="Volume 24h" v={c.vol} /><Stat k={c.own ? "In curve" : "Liquidity"} v={c.liq} /><Stat k={c.own ? "Buyers" : "Trades 24h"} v={c.own ? c.holders : c.trades} />
           </div>
+          {c.own && <SafetyCard c={c} />}
+          {c.own && <LockCard c={c} />}
           {c.own && <Comments c={c} />}
           <div className="panel">
             <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""}</span>

@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { useApp } from "./shell";
+import { useSafety } from "@/lib/safety";
 import { useWallet } from "./wallet";
-import { NETS, TradeError, collectPoolFees, creatorFeesOf, fromUsdc, holdersOf, onLocalTrade, promote, runBuyback, settleFees, uploadCoinImage } from "@/lib/chain";
-import { db, short, usd, type LiveCoin } from "@/lib/live";
+import { NETS, TradeError, collectPoolFees, creatorFeesOf, fromUsdc, onLocalTrade, promote, runBuyback, settleFees, uploadCoinImage } from "@/lib/chain";
+import { short, usd, type LiveCoin } from "@/lib/live";
 
 /** Turns what a creator typed (handle, bare domain, full link) into a safe https link. */
 function link(kind: "x" | "telegram" | "website", v?: string) {
@@ -136,20 +137,9 @@ export function PromoteButton({ c }: { c: LiveCoin }) {
 }
 
 export function HoldersCard({ c }: { c: LiveCoin }) {
-  const [rows, setRows] = useState<{ wallet: string; amount: number }[] | null>(null);
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      const { data } = await db().from("trades").select("trader").eq("chain_id", c.chainId).eq("coin", c.address).limit(1000);
-      const wallets = [...new Set(((data ?? []) as { trader: string }[]).map((t) => t.trader))];
-      if (c.creator) wallets.push(c.creator);
-      const r = await holdersOf(c.chainId, c.address as Address, wallets);
-      if (alive) setRows(r);
-    };
-    load().catch(() => alive && setRows([]));
-    const off = onLocalTrade((t) => { if (t.coin.toLowerCase() === c.address.toLowerCase()) setTimeout(() => load().catch(() => {}), 800); });
-    return () => { alive = false; off(); };
-  }, [c.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // shares one load with the safety check (balances read on-chain, refreshed after trades)
+  const s = useSafety(c);
+  const rows = s ? s.holders : null;
   const supply = 1e9;
   return (
     <div className="card" style={{ gap: 8 }}>
