@@ -74,6 +74,11 @@ contract Deploy is Script {
         address deployer = vm.addr(key);
         address admin = vm.envOr("ADMIN", deployer);
         address treasury = vm.envOr("TREASURY", deployer);
+        // Mainnet: admin and treasury must be set on purpose (a Safe), never the hot deployer key.
+        if (block.chainid == 4663 || block.chainid == 8453 || block.chainid == 56) {
+            require(admin != deployer, "mainnet: set ADMIN to the Safe (not the deployer)");
+            require(treasury != deployer, "mainnet: set TREASURY to the Safe or a separate wallet (not the deployer)");
+        }
         address guardian = vm.envOr("GUARDIAN", address(0));
         bool testCurve = keccak256(bytes(vm.envOr("CURVE", string("main")))) == keccak256("test");
         V4 memory v = _chain();
