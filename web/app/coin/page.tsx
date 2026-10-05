@@ -6,11 +6,12 @@ import { getCoin, useCoinMarket, shareCoin, prepareCard, usd, short, ago, listCo
 import { Avatar, Bar, ChainTag, useIsMobile } from "@/components/bits";
 import { Intervals } from "@/components/trade";
 import { TradePanel } from "@/components/tradepanel";
-import { AboutCard, CreatorCard, HoldersCard, PromoteButton } from "@/components/cointools";
+import { AboutCard, CreatorCard, PromoteButton } from "@/components/cointools";
 import { OrdersList } from "@/components/orders";
 import { Comments } from "@/components/community";
 import { LockCard, SafetyCard } from "@/components/safety";
 import { PriceAlertButton } from "@/components/alerts";
+import { HolderMap } from "@/components/holdermap";
 import dynamic from "next/dynamic";
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
@@ -130,8 +131,9 @@ function CoinView() {
           <div className="hide-m col-stack">
             {c.own && <SafetyCard c={c} />}
             {c.own && <LockCard c={c} />}
-            {c.own && <Comments c={c} />}
             {tradesPanel}
+            {c.own && <div className="col-stack" style={{ gap: 8 }}><span style={{ fontWeight: 700, fontSize: 15 }}>Holder map</span><HolderMap c={c} stacked /></div>}
+            {c.own && <Comments c={c} />}
           </div>
           {/* phones: graduation up top, details in tabs */}
           <div className="show-m col-stack">
@@ -148,7 +150,7 @@ function CoinView() {
             </div>
             {c.own && mt === "safety" && <><SafetyCard c={c} /><LockCard c={c} /></>}
             {(mt === "trades" || !c.own) && tradesPanel}
-            {c.own && mt === "holders" && <HoldersCard c={c} />}
+            {c.own && mt === "holders" && <HolderMap c={c} stacked />}
             {c.own && mt === "chat" && <Comments c={c} />}
           </div>
         </div>
@@ -156,7 +158,7 @@ function CoinView() {
           {c.own && <OrdersList coin={c.address} chainId={c.chainId} title="Your open orders" />}
           <AboutCard c={c} />
           {c.own && <CreatorCard c={c} onImage={(url) => setC({ ...c, image: url })} />}
-          {c.own && <div className="hide-m"><HoldersCard c={c} /></div>}
+
           {c.own && (
             <div className="card hide-m" style={{ gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span style={{ fontWeight: 700 }}>Graduation</span><span className="mono volt" style={{ fontWeight: 600 }}>{c.phase === 2 ? "Graduated" : `${usd(c.mcNum)} / ${usd(target)}`}</span></div>

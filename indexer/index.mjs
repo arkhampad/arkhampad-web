@@ -30,6 +30,7 @@ const EV = {
   rpromoted: parseAbiItem("event Promoted(address indexed user, address indexed coin, uint8 plan, uint256 fee, uint256 nonce)"),
   ptraded: parseAbiItem("event PoolTraded(address indexed user, address indexed coin, bool isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 fee, uint256 nonce)"),
   // Uniswap v4 PoolManager: amounts are from the swapper's side (negative = paid in)
+  transfer: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
   swap: parseAbiItem("event Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)"),
 };
 
@@ -67,7 +68,7 @@ async function announce(c, fresh) {
 // Coins belong to one hub. When chains.json points at a new hub (a redeploy), the old
 // deployment's coins, trades and everything tied to them are removed once, and indexing
 // restarts from the new hub's first block.
-const TIED = ["trades", "promotions", "orders", "price_alerts", "comments", "coin_images", "coins"];
+const TIED = ["trades", "promotions", "orders", "price_alerts", "comments", "coin_images", "coin_transfers", "transfer_sync", "coins"];
 async function lastBlock(c) {
   const hub = c.hub.toLowerCase();
   const r = await pool.query("select last_block, hub from sync_state where chain_id = $1", [c.chainId]);
@@ -115,10 +116,13 @@ async function syncChain(c, client) {
     };
     // One getLogs call for everything we watch (hub + promote + our curves), which
     // keeps RPC usage low. Curves created inside this range get a second call.
-    const ALL = [EV.created, EV.trade, EV.full, EV.graduated, EV.promoted];
+    const ALL = [EV.created, EV.trade, EV.full, EV.graduated, EV.promoted, EV.transfer];
     const CURVE_EVENTS = [EV.trade, EV.full, EV.graduated];
-    const known = (await pool.query("select curve from coins where chain_id=$1", [c.chainId])).rows.map((r) => getAddress(r.curve));
-    const watched = [c.hub, ...(c.promote ? [c.promote] : []), ...known];
+    const knownRows = (await pool.query("select curve, address from coins where chain_id=$1", [c.chainId])).rows;
+    const known = knownRows.map((r) => getAddress(r.curve));
+    // token contracts too, for their Transfer events (the holder map)
+    const tokens = knownRows.map((r) => getAddress(r.address));
+    const watched = [c.hub, ...(c.promote ? [c.promote] : []), ...known, ...tokens];
     let logs = [];
     for (let i = 0; i < watched.length; i += 500) {
       const address = watched.slice(i, i + 500);
@@ -132,6 +136,10 @@ async function syncChain(c, client) {
     const created = logs.filter((e) => e.eventName === "CoinCreated" && isHub(e));
     const fresh = created.map((e) => getAddress(e.args.curve)).filter((a) => !known.includes(a));
     if (fresh.length) logs = logs.concat(await call("getLogs new curves", () => client.getLogs({ address: fresh, events: CURVE_EVENTS, fromBlock: from, toBlock: to })));
+    const freshTokens = created.map((e) => getAddress(e.args.coin)).filter((a) => !tokens.includes(a));
+    if (freshTokens.length) logs = logs.concat(await call("getLogs new tokens", () => client.getLogs({ address: freshTokens, event: EV.transfer, fromBlock: from, toBlock: to })));
+    const tokenSet = new Set([...tokens, ...freshTokens].map(lc));
+    const transfers = logs.filter((e) => e.eventName === "Transfer" && tokenSet.has(lc(e.address)));
     const trades = logs.filter((e) => e.eventName === "Trade");
     const fulls = logs.filter((e) => e.eventName === "CurveFull");
     const grads = logs.filter((e) => e.eventName === "Graduated");
@@ -251,6 +259,7 @@ async function syncChain(c, client) {
           }
         }
       }
+      for (const e of transfers) await saveTransfer(db, c, e);
       await db.query("update sync_state set last_block=$2, updated_at=now() where chain_id=$1 and hub=$3", [c.chainId, String(to), c.hub.toLowerCase()]);
       await db.query("commit");
       if (fresh.length) announce(c, fresh).catch((e) => log(`${c.name}: announce error ${e.message}`));
@@ -269,6 +278,49 @@ async function syncChain(c, client) {
 }
 
 const status = {};
+/** One token Transfer (coin moved between wallets). Mints from 0x0 count as the first transfer. */
+async function saveTransfer(db, c, e) {
+  await db.query(
+    `insert into coin_transfers (chain_id, coin, tx_hash, log_index, "from", "to", amount, block) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict do nothing`,
+    [c.chainId, lc(e.address), e.transactionHash, e.logIndex, lc(e.args.from), lc(e.args.to), tok(e.args.value), String(e.blockNumber)],
+  );
+}
+
+/**
+ * Transfers that happened before the holder map existed: read them in the background, a few
+ * block ranges per round, from the deployment's start block up to where live indexing began.
+ */
+async function backfillTransfers(c, client) {
+  if (c.cursor === undefined) return;
+  const hub = c.hub.toLowerCase();
+  let st = (await pool.query("select * from transfer_sync where chain_id=$1", [c.chainId])).rows[0];
+  if (!st || st.hub !== hub) {
+    await pool.query("delete from transfer_sync where chain_id=$1", [c.chainId]);
+    await pool.query("insert into transfer_sync (chain_id, hub, next_block, until_block) values ($1,$2,$3,$4)", [c.chainId, hub, c.startBlock, String(c.cursor)]);
+    st = { next_block: String(c.startBlock), until_block: String(c.cursor), done: false };
+  }
+  if (st.done) return;
+  const RANGE = BigInt(c.blockRange || 500);
+  let next = BigInt(st.next_block);
+  const until = BigInt(st.until_block);
+  const tokens = (await pool.query("select address from coins where chain_id=$1", [c.chainId])).rows.map((r) => getAddress(r.address));
+  for (let round = 0; round < 12 && next <= until; round++) {
+    const to = next + RANGE - 1n > until ? until : next + RANGE - 1n;
+    let logs = [];
+    for (let i = 0; i < tokens.length; i += 500) logs = logs.concat(await client.getLogs({ address: tokens.slice(i, i + 500), event: EV.transfer, fromBlock: next, toBlock: to }));
+    const db = await pool.connect();
+    try {
+      await db.query("begin");
+      for (const e of logs) await saveTransfer(db, c, e);
+      await db.query("update transfer_sync set next_block=$2, done=$3 where chain_id=$1", [c.chainId, String(to + 1n), to + 1n > until]);
+      await db.query("commit");
+    } catch (err) { await db.query("rollback").catch(() => {}); throw err; } finally { db.release(); }
+    if (logs.length) log(`${c.name}: holder map backfill ${next}-${to} transfers+${logs.length}`);
+    next = to + 1n;
+  }
+  if (next > until) log(`${c.name}: holder map backfill complete`);
+}
+
 async function loop(c) {
   const rpc = (process.env[c.rpcEnv] || "").trim();
   if (!rpc) { log(`${c.name}: ${c.rpcEnv} not set, skipped`); return; }
@@ -281,6 +333,7 @@ async function loop(c) {
   for (;;) {
     try {
       await syncChain(c, client);
+      await backfillTransfers(c, client).catch((err) => log(`${c.name}: holder map backfill paused: ${err.shortMessage || err.message}`));
       status[c.name] = { ok: true, at: new Date().toISOString() };
     } catch (err) {
       status[c.name] = { ok: false, at: new Date().toISOString(), error: String(err.shortMessage || err.message) };

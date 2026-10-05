@@ -588,3 +588,62 @@ body { font-size: 14px; letter-spacing: -0.1px; }
 @media (max-width: 760px) { .ttab { font-size: 15px; height: 40px; } }
 /* invite card: quiet, with a brand accent instead of a lime slab */
 .invite-card { border-left: 3px solid var(--volt) !important; }
+
+/* ================= holder map ================= */
+.hm { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
+.hm-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.hm-stats > span { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-left: 1px solid var(--line); min-width: 0; }
+.hm-stats > span:first-child { border-left: 0; }
+.hm-stats i { font-style: normal; font-size: 11px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-stats b { font-size: 15px; font-weight: 600; }
+.hm-alert { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text2); }
+.hm-alert i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.hm-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); min-height: 0; }
+.hm-map { position: relative; border-right: 1px solid var(--line); touch-action: pan-y; cursor: grab; background: radial-gradient(circle at 50% 50%, var(--raise) 0%, var(--card) 70%); }
+.hm-map svg { display: block; width: 100%; height: auto; user-select: none; }
+.hm-flow { stroke: var(--up); stroke-opacity: 0.12; stroke-width: 0.8; }
+.hm-link { stroke: var(--line3); stroke-opacity: 0.8; stroke-width: 1.2; }
+.hm-node { cursor: pointer; }
+.hm-solo { fill: var(--raise2); stroke: var(--line3); }
+.hm-ring { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.hm-pct { font: 600 9px var(--mono); fill: #fff; pointer-events: none; }
+.hm-pool-t { font: 700 11px var(--mono); fill: #fff; letter-spacing: 0.5px; pointer-events: none; }
+.hm-legend { position: absolute; left: 10px; top: 10px; display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--hdr); font-size: 11px; color: var(--text2); }
+.hm-legend span { display: flex; align-items: center; gap: 7px; }
+.hm-legend i, .hm-solo-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.hm-solo-dot { background: var(--raise2); border: 1px solid var(--line3); }
+.hm-tools { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.hm-tools button { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line2); background: var(--card); color: var(--text2); font-weight: 700; }
+.hm-tip { position: absolute; pointer-events: none; min-width: 180px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line2); background: var(--modal); box-shadow: 0 8px 24px var(--shadow); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.hm-tip span { display: flex; justify-content: space-between; gap: 12px; }
+.hm-tip i { font-style: normal; color: var(--faint); }
+.hm-table { max-height: 560px; overflow: auto; min-width: 0; }
+.hm-table .tbl { min-width: 0; }
+.hm-table .tbl td, .hm-table .tbl th { height: 38px; padding: 0 10px; }
+.hm-table tr.hl td { background: var(--row); }
+.hm-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 7px; border-radius: 5px; background: var(--raise); color: var(--text2); white-space: nowrap; }
+.hm-tag i { width: 7px; height: 7px; border-radius: 50%; }
+.hm-share { display: inline-flex; align-items: center; gap: 8px; }
+.hm-bar { width: 56px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.hm-bar span { display: block; height: 100%; background: var(--text2); }
+@media (max-width: 1100px) { .hm-grid { grid-template-columns: minmax(0, 1fr); } .hm-map { border-right: 0; border-bottom: 1px solid var(--line); } .hm-table { max-height: none; } }
+@media (max-width: 760px) {
+  .hm-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .hm-stats > span:nth-child(4), .hm-stats > span:nth-child(5) { display: none; }
+  .hm-stats > span { padding: 8px 10px; }
+  .hm-stats b { font-size: 14px; }
+  .hm-legend { font-size: 10px; padding: 6px 8px; gap: 4px; }
+  .hm-tools button { width: 30px; height: 30px; }
+  .hm-share .hm-bar { display: none; }
+}
+.hm-grid.stacked { grid-template-columns: minmax(0, 1fr); } .hm-grid.stacked .hm-map { border-right: 0; border-bottom: 1px solid var(--line); } .hm-grid.stacked .hm-table { max-height: 520px; }
+.hm-table .tbl { width: 100%; min-width: 0 !important; table-layout: auto; }
+.hm-table .tbl th:nth-child(2), .hm-table .tbl td:nth-child(2), .hm-table .tbl th:nth-child(3), .hm-table .tbl td:nth-child(3) { text-align: left; }
+.hm-table .tbl th:nth-child(4), .hm-table .tbl td:nth-child(4) { text-align: right; }
+@media (max-width: 760px) {
+  .hm-table .tbl td, .hm-table .tbl th { padding: 0 8px; font-size: 12px; }
+  .hm-tag { padding: 2px 4px; }
+  .hm-tag > span { display: none; }
+  .hm-legend { flex-direction: row; flex-wrap: wrap; top: auto; bottom: 8px; left: 8px; right: 8px; gap: 4px 10px; }
+}
+.hm-grid.stacked .hm-map svg { max-height: 540px; width: auto; max-width: 100%; margin: 0 auto; }
