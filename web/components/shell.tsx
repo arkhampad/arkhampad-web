@@ -2,7 +2,9 @@
 import { BrandMark } from "./bits";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useProfile } from "@/lib/profiles";
+import { traderColors } from "@/lib/traders";
 import { listCoins, recentTrades, useLive, useTradeFeed, type LiveCoin, type LiveTrade } from "@/lib/live";
 import { IBell, IChart, IHome, IPlus, ISearch, IUser } from "./icons";
 import { FundsModal, WelcomeModal } from "./modals";
@@ -80,7 +82,7 @@ function ThemeButton() {
     setLight(!light);
   };
   return (
-    <button type="button" className="icon-btn theme-btn hide-m" aria-label={light ? "Switch to dark mode" : "Switch to light mode"} title={light ? "Dark mode" : "Light mode"} onClick={flip}>
+    <button type="button" className="icon-btn theme-btn" aria-label={light ? "Switch to dark mode" : "Switch to light mode"} title={light ? "Dark mode" : "Light mode"} onClick={flip}>
       {light ? (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
       ) : (
@@ -152,17 +154,32 @@ export function Shell({ children }: { children: React.ReactNode }) {
 function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void }) {
   const w = useWallet();
   const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  // closes when you tap anywhere else, press Escape or move to another page
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", key); };
+  }, [open]);
+  const path = usePathname();
+  useEffect(() => { setOpen(false); }, [path]);
+  const me = useProfile(w.address);
   // "Log in" shows at once; sign-in opens as soon as it has loaded
   if (!w.signedIn) return <button type="button" className="btn white" onClick={w.login}>Log in</button>;
   return (
-    <span style={{ position: "relative", display: "flex", gap: 8 }}>
+    <span ref={box} style={{ position: "relative", display: "flex", gap: 8 }}>
       {w.totalUsdc < 1
         ? <button type="button" className="btn volt" onClick={() => openFunds("deposit")} style={{ height: 44, padding: "0 14px" }}>Get test USDC</button>
         : <button type="button" className="bal" onClick={() => openFunds("deposit")} aria-label="Balance and deposit">${w.totalUsdc.toFixed(2)}<span className="hide-m" style={{ color: "var(--volt-ink)", fontFamily: "var(--sans)", fontSize: 13 }}>+ Deposit</span></button>}
-      <button type="button" className="icon-btn" aria-label="Account" aria-expanded={open} onClick={() => setOpen(!open)}><IUser size={18} color="var(--text2)" /></button>
+      <button type="button" className="icon-btn acct-btn" aria-label="Account menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {me?.avatar ? <img src={me.avatar} alt="" /> : <span className="acct-av" style={{ background: `linear-gradient(135deg, ${traderColors(w.address ?? "0x00")[0]}, ${traderColors(w.address ?? "0x00")[1]})` }}>{(me?.name || w.address?.slice(2, 4) || "").slice(0, 2).toUpperCase()}</span>}
+      </button>
       {open && (
-        <span className="card" role="menu" style={{ position: "absolute", right: 0, top: 52, zIndex: 40, width: 230, padding: 8, gap: 2 }} onMouseLeave={() => setOpen(false)}>
-          <span className="mono dim" style={{ fontSize: 11, padding: "6px 10px" }}>{w.address?.slice(0, 6)}…{w.address?.slice(-4)}</span>
+        <span className="card" role="menu" style={{ position: "absolute", right: 0, top: 52, zIndex: 40, width: 230, padding: 8, gap: 2 }}>
+          <span style={{ display: "flex", flexDirection: "column", padding: "6px 10px" }}>{me?.name && <b style={{ fontSize: 14 }}>{me.name}</b>}<span className="mono dim" style={{ fontSize: 11 }}>{w.address?.slice(0, 6)}…{w.address?.slice(-4)}</span></span>
           <Link href="/profile/" className="tab" style={{ display: "flex", alignItems: "center" }} onClick={() => setOpen(false)}>Profile</Link>
           <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("deposit"); }}>Deposit</button>
           <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("withdraw"); }}>Withdraw</button>
@@ -215,7 +232,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       <nav className="bnav show-m" aria-label="Bottom">
         <Link href="/" className={path === "/" ? "on" : ""}><IHome size={22} />Discover</Link>
         <Link href="/terminal/" className={isOn(path, "/terminal/") ? "on" : ""}><IChart size={22} />Terminal</Link>
-        <Link href="/create/" aria-label="Create coin" style={{ flex: 1, display: "flex", justifyContent: "center" }}><span className="plus"><IPlus size={24} color="#0A0B10" w={2.6} /></span></Link>
+        <Link href="/create/" className={`bnav-create${isOn(path, "/create/") ? " on" : ""}`}><span className="plus"><IPlus size={22} color="#0A0B10" w={2.6} /></span>Create</Link>
         <Link href="/alerts/" className={isOn(path, "/alerts/") ? "on" : ""}><IBell size={22} />Alerts</Link>
         <Link href="/profile/" className={isOn(path, "/profile/") ? "on" : ""}><IUser size={22} />Profile</Link>
       </nav>

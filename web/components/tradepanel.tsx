@@ -44,7 +44,8 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const [extDec, setExtDec] = useState(18);
   const [result, setResult] = useState<Pnl | null>(null);
   const curve = coin.curve as Address | undefined;
-  const cash = fromUsdc(w.usdc[coin.chainId] ?? 0n);
+  // coins from other DEXs (mainnet) show your total cash; our own coins the cash on their chain
+  const cash = coin.own ? fromUsdc(w.usdc[coin.chainId] ?? 0n) : w.totalUsdc;
   const usd = Number(amt) || 0;
   const sellAmount = (held * BigInt(pct)) / 100n;
 

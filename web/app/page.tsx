@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { listCoins, listPromoted, recentTrades, totalCoins, useLive, useTradeFeed, ago, type LiveCoin, type LiveTrade, type Tab } from "@/lib/live";
 import { Avatar as Av } from "@/components/bits";
-import { Avatar } from "@/components/bits";
+import { Avatar, sparkUseful } from "@/components/bits";
 import { CoinRows, CoinTable, HotCard } from "@/components/market";
 import { IFire, ISpark } from "@/components/icons";
 import { ScrollTabs } from "@/components/scrolltabs";
@@ -51,7 +51,24 @@ export default function Discover() {
   // keep the first page fresh
   useEffect(() => { const iv = setInterval(() => { if ((list?.length ?? 0) <= PAGE) load(0); }, 20_000); return () => clearInterval(iv); }, [load, list?.length]);
 
-  const hot = useLive(() => listCoins("Trending", { limit: 3 }), [], 30_000);
+  // Hot right now: a mixed pool (trending, gainers, active coins launched here), shuffled per
+  // visit and rotated, so the same three coins don't sit there all day.
+  const pool = useLive(async () => {
+    const [tr, ga, own] = await Promise.all([
+      listCoins("Trending", { limit: 30 }).catch(() => [] as LiveCoin[]),
+      listCoins("Gainers", { limit: 12 }).catch(() => [] as LiveCoin[]),
+      listCoins("Launched here", { limit: 20 }).catch(() => [] as LiveCoin[]),
+    ]);
+    const seen = new Set<string>();
+    const all = [...own.filter((c) => (c.volNum ?? 0) > 0), ...tr, ...ga].filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
+    for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+    // coins with a picture and a real price line look best up top
+    return all.sort((a, b) => Number(!!b.image && sparkUseful(b.spark)) - Number(!!a.image && sparkUseful(a.spark)));
+  }, [], 300_000);
+  const [hotAt, setHotAt] = useState(0);
+  useEffect(() => { const t = setInterval(() => setHotAt((i) => i + 3), 45_000); return () => clearInterval(t); }, []);
+  const hotList = pool.data ?? null;
+  const hot = { data: hotList && hotList.length ? [0, 1, 2].map((k) => hotList[(hotAt + k) % hotList.length]).filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i) : hotList };
   const almost = useLive(async () => (await listCoins("Bonding", { limit: 30 })).filter((c) => c.progress >= 50).sort((a, b) => b.progress - a.progress).slice(0, 3), [], 60_000);
   const total = useLive(totalCoins, [], 120_000);
   const promoted = useLive(listPromoted, [], 60_000);

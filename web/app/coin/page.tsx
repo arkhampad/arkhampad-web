@@ -10,6 +10,7 @@ import { AboutCard, CreatorCard, HoldersCard, PromoteButton } from "@/components
 import { OrdersList } from "@/components/orders";
 import { Comments } from "@/components/community";
 import { LockCard, SafetyCard } from "@/components/safety";
+import { PriceAlertButton } from "@/components/alerts";
 import dynamic from "next/dynamic";
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
@@ -83,7 +84,7 @@ function CoinView() {
             {c.own && c.creator ? <>· by {short(c.creator)}</> : null} · {c.age} old
           </div>
         </div>
-        <span style={{ display: "flex", gap: 8 }}><button type="button" className="btn ghost sm" aria-label="Share on X" onClick={() => shareCoin(c)}><IShare size={15} />Share</button><PromoteButton c={c} /></span>
+        <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><PriceAlertButton c={c} className="btn ghost sm" label="🔔 Price alert" /><button type="button" className="btn ghost sm" aria-label="Share on X" onClick={() => shareCoin(c)}><IShare size={15} />Share</button><PromoteButton c={c} /></span>
       </div>
 
       <div className="grid6 hide-m">
@@ -108,16 +109,16 @@ function CoinView() {
           {c.own && <LockCard c={c} />}
           {c.own && <Comments c={c} />}
           <div className="panel">
-            <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""}</span>
+            <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""} <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· last 5</span></span>
             {c.own ? (
               own === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : own.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span> :
-                own.map((t) => (
+                own.slice(0, 5).map((t) => (
                   <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid var(--row)", fontSize: 13, color: "var(--text2)" }}>
                     <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.up ? "up" : "down"} style={{ fontWeight: 700 }}>{t.up ? "Buy" : "Sell"}</span><span>{t.amt}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.ts)}</span>
                   </div>))
             ) : (
               ext === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : ext.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>Trades will show here.</span> :
-                ext.map((t) => (
+                ext.slice(0, 5).map((t) => (
                   <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid var(--row)", fontSize: 13, color: "var(--text2)" }}>
                     <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.side === "Buy" ? "up" : "down"} style={{ fontWeight: 700 }}>{t.side}</span><span>{t.usd}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.at)}</span>
                   </div>))

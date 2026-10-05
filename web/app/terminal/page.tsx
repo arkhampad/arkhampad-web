@@ -102,17 +102,17 @@ function TerminalView() {
           {c && (c.own ? <TvChart candles={m.candles} supply={1e9} empty="No trades yet for a chart." height={420} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} height={460} />)}
         </div>
         {c && <div className="show-m" style={{ display: "flex", flexDirection: "column", gap: 12 }}><TradePanel coin={c} onShare={() => shareCoin(c)} /></div>}
-        <div className="panel" style={{ padding: 12, gap: 8 }}>
+        <div className="panel trades-few" style={{ padding: 12, gap: 8 }}>
           <span style={{ fontWeight: 700 }}>Latest trades{c?.own ? " · testnet" : ""}</span>
           {c?.own ? (
             m.own === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : m.own.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span> :
-              m.own.map((t) => (
+              m.own.slice(0, 12).map((t) => (
                 <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "9px 0", borderTop: "1px solid var(--line)", fontSize: 13, color: "var(--text2)" }}>
                   <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.up ? "up" : "down"} style={{ fontWeight: 700 }}>{t.up ? "Buy" : "Sell"}</span><span>{t.amt}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.ts)}</span>
                 </div>))
           ) : (
             m.ext === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : m.ext.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>Trades will show here.</span> :
-              m.ext.map((t) => (
+              m.ext.slice(0, 12).map((t) => (
                 <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "9px 0", borderTop: "1px solid var(--line)", fontSize: 13, color: "var(--text2)" }}>
                   <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.side === "Buy" ? "up" : "down"} style={{ fontWeight: 700 }}>{t.side}</span><span>{t.usd}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.at)}</span>
                 </div>))

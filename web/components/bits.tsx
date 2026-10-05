@@ -17,8 +17,17 @@ export function Avatar({ name, c1, c2, size = 40, round = false, img }: { name: 
   );
 }
 
-export function Spark({ vals, up, w = 120, h = 40, height, fill = true, stroke = 2 }: { vals: number[]; up: boolean; w?: number; h?: number; height?: number | string; fill?: boolean; stroke?: number }) {
+/** A sparkline is only worth drawing with a few real points that actually move. */
+export function sparkUseful(vals: number[] | null | undefined) {
+  const v = (vals ?? []).filter((x) => Number.isFinite(x));
+  if (v.length < 4) return false;
+  const lo = Math.min(...v), hi = Math.max(...v);
+  return hi > 0 && (hi - lo) / hi > 0.003;
+}
+
+export function Spark({ vals, up, w = 120, h = 40, height, fill = true, stroke = 2, empty = null }: { vals: number[]; up: boolean; w?: number; h?: number; height?: number | string; fill?: boolean; stroke?: number; empty?: React.ReactNode }) {
   const id = useId().replace(/:/g, "");
+  if (!sparkUseful(vals)) return <>{empty}</>;
   const { line, area } = sparkPath(vals, w, h);
   const col = up ? "var(--up)" : "var(--down)";
   return (

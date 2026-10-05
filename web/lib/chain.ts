@@ -480,7 +480,7 @@ export async function uploadCoinImage(chainId: number, coin: Address, file: File
   return j.url as string;
 }
 
-function squareImage(file: File, size: number): Promise<string> {
+export function squareImage(file: File, size: number): Promise<string> {
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(file);
     const img = new Image();

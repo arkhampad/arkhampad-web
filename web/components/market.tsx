@@ -36,7 +36,7 @@ export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
           <div className="bar" style={{ height: 12, borderRadius: 6 }}><span style={{ width: `${Math.max(2, p)}%` }} /></div>
           <span className="dim" style={{ fontSize: 12 }}>At 100% it moves to a locked pool forever.</span>
         </div>
-      ) : <span className="hot-spark"><Spark vals={c.spark} up={c.chg >= 0} w={300} h={90} height="100%" /></span>}
+      ) : <span className="hot-spark"><Spark vals={c.spark} up={c.chg >= 0} w={300} h={90} height="100%" empty={<span className="dim" style={{ fontSize: 12, display: "flex", height: "100%", alignItems: "center", justifyContent: "center" }}>Chart builds as it trades</span>} /></span>}
       <span className="grid3" style={{ gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8, fontSize: 12, color: "var(--dim)" }}>
         <span>Vol 24h<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.vol}</b></span>
         <span>Liquidity<br /><b className="mono" style={{ fontSize: 14, color: "var(--text)" }}>{c.liq}</b></span>
@@ -98,7 +98,7 @@ export function CoinTable({ list, start = 0 }: { list: Coin[]; start?: number })
               <td style={{ fontWeight: 700, fontSize: 15 }}>{c.mc}</td>
               <td style={{ color: "var(--text2)" }}>{c.vol}</td>
               <td style={{ color: "var(--text2)" }}>{c.liq}</td>
-              <td style={{ width: 120 }}><Spark vals={c.spark} up={c.chg >= 0} height={34} /></td>
+              <td style={{ width: 120 }}><Spark vals={c.spark} up={c.chg >= 0} height={34} empty={<span className="dim">—</span>} /></td>
               <td><button type="button" className="btn volt sm" onClick={(e) => { e.stopPropagation(); router.push(href(c)); }}>{c.own ? "Buy" : "View"}</button></td>
             </tr>
           ))}

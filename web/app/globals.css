@@ -283,3 +283,30 @@ textarea.inp { height: auto; padding: 12px 14px; line-height: 1.5; resize: none;
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
 .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
 @media (max-width: 380px) { .pstats b { font-size: 15px; } .pstats > div { padding: 10px; } }
+
+/* typed amount (create: first buy) */
+.amt-field { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--line2); background: var(--bg); }
+.amt-field:focus-within { border-color: var(--volt); }
+.amt-field input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--text); font: 700 16px var(--mono); }
+
+/* account button: your picture or initials, easy to spot */
+.acct-btn { padding: 0; overflow: hidden; }
+.acct-btn img, .acct-av { width: 100%; height: 100%; object-fit: cover; display: flex; align-items: center; justify-content: center; color: #fff; font: 800 13px var(--sans); letter-spacing: -0.2px; }
+@media (max-width: 760px) {
+  .hdr .icon-btn { width: 38px; height: 38px; border-radius: 11px; }
+  .hdr .bal { height: 38px; padding: 0 10px; font-size: 13px; }
+  .hdr .btn.white { height: 38px; padding: 0 12px; font-size: 13px; }
+  .hdr-in { gap: 8px; }
+}
+@media (max-width: 370px) { .logo-text { display: none; } }
+
+/* profile header */
+.phead { display: flex; align-items: center; gap: 14px; }
+.phead-av { position: relative; width: 64px; height: 64px; border-radius: 20px; overflow: hidden; border: 0; padding: 0; flex: none; cursor: pointer; background: var(--raise); }
+.phead-av img, .phead-av > span { width: 100%; height: 100%; object-fit: cover; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 900; font-size: 22px; }
+.phead-av i { position: absolute; left: 0; right: 0; bottom: 0; font: 700 10px var(--sans); font-style: normal; color: #fff; background: rgba(10,11,16,0.55); padding: 3px 0; text-align: center; }
+.phead-edit { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; max-width: 360px; }
+@media (max-width: 760px) { .trades-few > div:nth-of-type(n+6) { display: none; } }
+/* bottom bar: the create button says what it does */
+.bnav a.bnav-create { gap: 3px; color: var(--text); font-weight: 700; }
+.bnav a.bnav-create .plus { width: 46px; height: 34px; border-radius: 12px; }

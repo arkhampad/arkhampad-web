@@ -26,10 +26,10 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
-        {/* Applies the saved light/dark choice before the first paint (no flash). */}
-        <script dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('ap_theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}" }} />
+        {/* Light mode unless the visitor chose dark; pages open at the top (no flash). */}
+        <script dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('ap_theme');document.documentElement.dataset.theme=(t==='dark')?'dark':'light';if('scrollRestoration' in history)history.scrollRestoration='manual';}catch(e){document.documentElement.dataset.theme='light';}" }} />
       </head>
       <body><Shell>{children}</Shell></body>
     </html>

@@ -32,12 +32,15 @@ function CreateView() {
   const [tick, setTick] = useState(OPTS0[0].tick);
   const [desc, setDesc] = useState(OPTS0[0].desc);
   // networks come from the site config (testnet: Robinhood + Base; mainnet adds more)
-  const CHAINS = NETS.map((n) => ({ id: n.id, name: n.short, color: n.short === "Robinhood" ? "var(--rh)" : n.short === "Base" ? "var(--base)" : n.short === "BNB" ? "#F0B90B" : "var(--volt)" }));
-  const [chain, setChain] = useState(CHAINS.find((c) => c.name === "Base")?.name ?? CHAINS[0].name);
-  const [lock, setLock] = useState("Lock 24h");
-  const [fee, setFee] = useState("burn");
+  // Robinhood first: it's the default chain for new coins
+  const CHAINS = [...NETS].sort((a, b) => (a.short === "Robinhood" ? -1 : b.short === "Robinhood" ? 1 : 0)).map((n) => ({ id: n.id, name: n.short, color: n.short === "Robinhood" ? "var(--rh)" : n.short === "Base" ? "var(--base)" : n.short === "BNB" ? "#F0B90B" : "var(--volt)" }));
+  const [chain, setChain] = useState(CHAINS.find((c) => c.name === "Robinhood")?.name ?? CHAINS[0].name);
+  // safe, simple defaults: the creator opts in to a lock or to buyback & burn
+  const [lock, setLock] = useState("No lock");
+  const [fee, setFee] = useState("you");
   const [boost, setBoost] = useState("none");
   const [first, setFirst] = useState(0);
+  const [firstTxt, setFirstTxt] = useState(""); // typed amount (kept as text so "12." can be typed)
   const [links, setLinks] = useState(false);
   const [done, setDone] = useState<null | { coin: string; chainId: number }>(null);
   const [xUrl, setXUrl] = useState("");
@@ -75,7 +78,7 @@ function CreateView() {
     try {
       const r = await fetch("/api/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description: desc }) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.dataUrl) throw new Error(j.error || "Couldn't draw an image right now.");
+      if (!r.ok || !j.dataUrl) { if (j.detail) console.warn("AI image:", j.code, j.detail); throw new Error(j.error || "Couldn't draw an image right now."); }
       const blob = await (await fetch(j.dataUrl)).blob();
       setImgFile(new File([blob], "coin.png", { type: blob.type || "image/png" }));
       setImgPreview(j.dataUrl);
@@ -256,7 +259,13 @@ function CreateView() {
             {[["Starts at", "$450 market cap (testnet)"], ["Graduates at", "$750 (testnet)"], ["Your USDC on " + chain, w.signedIn ? `$${cash.toFixed(2)}` : "—"]].map(([a, b]) => <div key={a} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">{a}</span><span className="mono">{b}</span></div>)}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Launch cost</span><span className="mono up">{boost === "none" ? "Free" : `$${boost} boost`}</span></div>
             <span className="dim" style={{ fontSize: 13 }}>Be the first buyer (optional)</span>
-            <div style={{ display: "flex", gap: 6 }}>{[0, 10, 25, 50].map((v) => <button key={v} type="button" className={`seg mono${first === v ? " on" : ""}`} style={{ height: 38, minWidth: 0 }} onClick={() => setFirst(v)}>${v}</button>)}</div>
+            <div style={{ display: "flex", gap: 6 }}>{[0, 10, 25, 50, 100].map((v) => <button key={v} type="button" className={`seg mono${first === v ? " on" : ""}`} style={{ height: 38, minWidth: 0 }} onClick={() => { setFirst(v); setFirstTxt(""); }}>${v}</button>)}</div>
+            <label className="amt-field" htmlFor="first-amt">
+              <span className="mono dim">$</span>
+              <input id="first-amt" inputMode="decimal" placeholder="Other amount" value={firstTxt}
+                onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 8); setFirstTxt(v); setFirst(Math.min(500, Math.round((Number(v) || 0) * 100) / 100)); }} />
+              <span className="mono dim" style={{ fontSize: 12 }}>USDC</span>
+            </label>
             <button type="button" className="btn volt lg hide-m" style={{ fontSize: 17, fontWeight: 900 }} onClick={launchNow} disabled={!!busy}><IRocket size={18} color="#0A0B10" w={2.4} />{busy || (w.signedIn ? `Launch ${name || "coin"}` : "Log in to launch")}</button>
             <span className="hide-m" style={{ fontSize: 12, color: "var(--faint)", textAlign: "center" }}>You review everything before it goes live.</span>
           </div>

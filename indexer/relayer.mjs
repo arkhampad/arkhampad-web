@@ -334,6 +334,27 @@ export function makeRelayer() {
     return { url };
   }
 
+  /** Profile picture: signed by the wallet itself; stored like coin images (network 0 = profiles). */
+  async function saveAvatar(body, publicBase) {
+    if (!db) throw err("Not available right now.", 503);
+    if (body?.action !== "profile.avatar") throw err("bad request");
+    const user = await signedBy(body);
+    const m = String(body.dataUrl || "").match(/^data:(image\/(?:webp|png|jpeg));base64,([A-Za-z0-9+/=]+)$/);
+    if (!m) throw err("Use a PNG, JPG or WebP image.");
+    const bytes = Buffer.from(m[2], "base64");
+    if (bytes.length > IMG_MAX) throw err("Image is too large.", 413);
+    if (keccak256(bytes) !== String(body.payload?.imageHash ?? "")) throw err("Image check failed. Please try again.");
+    await db.query(
+      `insert into coin_images (chain_id, coin, mime, data, updated_at) values (0,$1,$2,$3,now())
+       on conflict (chain_id, coin) do update set mime=excluded.mime, data=excluded.data, updated_at=now()`,
+      [user, m[1], bytes],
+    );
+    const url = `${publicBase}/img/0-${user}?v=${Date.now().toString(36)}`;
+    await db.query("insert into profiles (wallet, avatar_url, updated_at) values ($1,$2,now()) on conflict (wallet) do update set avatar_url=excluded.avatar_url, updated_at=now()", [user, url]);
+    log(`avatar ${user} ${bytes.length}b`);
+    return { url };
+  }
+
   async function image(id) {
     if (!db) return null;
     const mm = String(id).match(/^(\d+)-(0x[0-9a-f]{40})$/);
@@ -592,6 +613,15 @@ export function makeRelayer() {
       case "comment.delete":
         await db.query(`update comments set deleted=true where id=$1 and "user"=$2`, [String(p.id ?? "0").replace(/\D/g, "") || "0", user]);
         return { ok: true };
+      case "profile.name": {
+        const name = String(p.name ?? "").trim();
+        if (!/^[A-Za-z0-9_.]{3,20}$/.test(name)) throw err("Use 3-20 letters, numbers, dots or underscores.");
+        if (/^(arkham|arkhampad|admin|support|team|official|mod|moderator|help|system)/i.test(name)) throw err("That name is reserved. Pick another one.");
+        const taken = (await db.query("select wallet from profiles where lower(name)=lower($1) and wallet<>$2", [name, user])).rows[0];
+        if (taken) throw err("That name is taken. Pick another one.", 409);
+        await db.query("insert into profiles (wallet, name, updated_at) values ($1,$2,now()) on conflict (wallet) do update set name=excluded.name, updated_at=now()", [user, name]);
+        return { name };
+      }
       case "notes.read":
         await db.query(`update notifications set read=true where "user"=$1 and read=false`, [user]);
         return { ok: true };
@@ -651,8 +681,11 @@ export function makeRelayer() {
       try {
         const sym = n.c.native ?? "ETH";
         const bal = Number(await n.pub.getBalance({ address: account.address })) / 1e18;
-        const low = bal < (LOW[sym] ?? LOW.ETH);
-        gasState[n.c.name] = { balance: +bal.toFixed(6), symbol: sym, low, at: new Date().toISOString() };
+        // testnet gas is almost free, so a much smaller balance lasts for thousands of trades
+        const TESTNET = new Set([84532, 46630, 97, 11155111, 421614]);
+        const min = TESTNET.has(n.c.chainId) ? Number(process.env.LOW_GAS_TESTNET ?? 0.0002) : (LOW[sym] ?? LOW.ETH);
+        const low = bal < min;
+        gasState[n.c.name] = { balance: +bal.toFixed(6), symbol: sym, low, alertBelow: min, at: new Date().toISOString() };
         if (!low) { warned.delete(n.c.chainId); continue; }
         const last = warned.get(n.c.chainId) ?? 0;
         if (Date.now() - last < 6 * 3_600_000) continue;
@@ -670,7 +703,7 @@ export function makeRelayer() {
   function config() {
     return { relayer: account.address, minFee: String(MIN_FEE), vapidPublicKey: notifier?.publicKey ?? null, chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, usdDecimals: DEC(n), minFee: String(minFeeOf(n)), approvals: n.c.approvals ?? "permit", faucet: !!n.faucet })) };
   }
-  return { handle, config, feeQuote, health, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
+  return { handle, config, feeQuote, health, graduate, saveImage, saveAvatar, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -740,6 +773,17 @@ export function httpHandler(relayer, status) {
       try { body = JSON.parse(raw); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad request" })); }
       try { return res.end(JSON.stringify(url === "/orders" ? await relayer.createOrder(body) : url === "/follow" ? await relayer.setFollow(body) : url === "/action" ? await relayer.action(body) : await relayer.cancelOrder(body))); }
       catch (e) { res.statusCode = e.status || 500; if (!e.status) log("order error", e.message); return res.end(JSON.stringify({ error: e.status ? e.message : "Something went wrong. Please try again." })); }
+    }
+    if (url === "/avatar" && req.method === "POST") {
+      const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+      if (limited(ip)) { res.statusCode = 429; return res.end(JSON.stringify({ error: "Too many requests, slow down." })); }
+      let raw = "";
+      for await (const ch of req) { raw += ch; if (raw.length > 400_000) { res.statusCode = 413; return res.end(JSON.stringify({ error: "Image is too large." })); } }
+      let body;
+      try { body = JSON.parse(raw); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad request" })); }
+      const base = `${String(req.headers["x-forwarded-proto"] || "http").split(",")[0]}://${req.headers.host}`;
+      try { return res.end(JSON.stringify(await relayer.saveAvatar(body, base))); }
+      catch (e) { res.statusCode = e.status || 500; return res.end(JSON.stringify({ error: e.status ? e.message : "Upload failed, please try again." })); }
     }
     if (url === "/image" && req.method === "POST") {
       const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();

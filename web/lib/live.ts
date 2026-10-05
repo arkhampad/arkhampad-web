@@ -81,6 +81,12 @@ export function parseMeta(uri: string | null | undefined): LiveCoin["about"] {
 type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null };
 type OwnRow = { image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
 
+/** Names with no Latin letters or digits, or placeholder "?" names, are spam in lists (search still finds them). */
+// Fake market caps (hundreds of billions on a day-old token) never show either.
+const listable = (r: { name: string; symbol: string; mcap_usd?: number | null; fdv_usd?: number | null }) =>
+  /[A-Za-z0-9]/.test(r.name) && /[A-Za-z0-9]/.test(r.symbol) && !/^\?+$/.test(r.name.trim()) &&
+  !(Number(r.mcap_usd) > 2e10) && !(Number(r.fdv_usd) > 5e10);
+
 export function fromExt(r: ExtRow): LiveCoin {
   const [c1, c2] = colours(r.address);
   const mc = r.mcap_usd ?? r.fdv_usd;
@@ -146,12 +152,13 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
   const w = like("name"); if (w) q = q.or(w);
   if (tab === "Trending") q = q.not("trending_rank", "is", null).order("trending_rank", { ascending: true });
   else if (tab === "New") q = q.not("pool_created", "is", null).order("pool_created", { ascending: false });
-  else if (tab === "Gainers") q = q.gte("vol_24h", 5000).not("change_24h", "is", null).order("change_24h", { ascending: false });
-  else if (tab === "Losers") q = q.gte("vol_24h", 5000).not("change_24h", "is", null).order("change_24h", { ascending: true });
+  // gainers/losers: real trading only (volume, liquidity), no absurd jumps or dead coins
+  else if (tab === "Gainers") q = q.gte("vol_24h", 10000).gte("liq_usd", 5000).not("change_24h", "is", null).lte("change_24h", 5000).order("change_24h", { ascending: false });
+  else if (tab === "Losers") q = q.gte("vol_24h", 10000).gte("liq_usd", 5000).not("change_24h", "is", null).gt("change_24h", -95).order("change_24h", { ascending: true });
   else q = q.not("vol_24h", "is", null).order("vol_24h", { ascending: false });
   const { data, error } = await q.range(from, from + limit - 1);
   if (error) throw error;
-  let rows = (data as ExtRow[]).map(fromExt);
+  let rows = (data as ExtRow[]).filter(listable).map(fromExt);
   // When nothing is trending yet, fall back to volume.
   if (tab === "Trending" && rows.length === 0 && from === 0) return listCoins("Top volume", opts);
   return rows;

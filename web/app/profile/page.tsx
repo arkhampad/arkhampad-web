@@ -7,6 +7,7 @@ import { useApp } from "@/components/shell";
 import { useWallet } from "@/components/wallet";
 import { OrdersList } from "@/components/orders";
 import { PortfolioCard } from "@/components/portfolio";
+import { ProfileHead } from "@/components/profilehead";
 import { ProfitSheet } from "@/components/profit";
 import { positionPnl } from "@/lib/pnl";
 import type { Pnl } from "@/lib/share";
@@ -62,13 +63,7 @@ export default function Profile() {
   const copy = async () => { try { await navigator.clipboard.writeText(w.address as string); toast("Address copied"); } catch { /* blocked */ } };
   return (
     <div className="wrap page" style={{ maxWidth: 1100 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <span className="av" style={{ width: 60, height: 60, borderRadius: 20, background: "linear-gradient(135deg, var(--volt), var(--mint))", color: "var(--on-volt)", fontSize: 22, fontWeight: 900 }}>{w.address.slice(2, 4).toUpperCase()}</span>
-        <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <b style={{ fontSize: 22 }}>{short(w.address)}</b>
-          <button type="button" className="mono dim" onClick={copy} style={{ background: "none", border: 0, padding: 0, textAlign: "left", fontSize: 12 }}>Copy address</button>
-        </span>
-      </div>
+      <ProfileHead />
       <div className="card" style={{ gap: 14, borderRadius: 22 }}>
         <span className="dim" style={{ fontSize: 13 }}>Total balance (testnet)</span>
         <span className="mono" style={{ fontSize: 38, fontWeight: 900, letterSpacing: -1 }}>${(w.totalUsdc + coinsValue).toFixed(2)}</span>
