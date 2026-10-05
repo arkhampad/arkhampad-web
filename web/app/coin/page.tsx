@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getCoin, useCoinMarket, shareCoin, prepareCard, usd, short, ago, listCoins, type LiveCoin } from "@/lib/live";
-import { Avatar, Bar, ChainTag } from "@/components/bits";
+import { Avatar, Bar, ChainTag, useIsMobile } from "@/components/bits";
 import { Intervals } from "@/components/trade";
 import { TradePanel } from "@/components/tradepanel";
 import { AboutCard, CreatorCard, HoldersCard, PromoteButton } from "@/components/cointools";
@@ -38,6 +38,8 @@ function CoinView() {
     setIv(c.own && age < 6 * 3600_000 ? "1m" : "15m");
   }, [c]);
   const [sheet, setSheet] = useState<null | "buy" | "sell">(null);
+  const [mt, setMt] = useState<"safety" | "trades" | "holders" | "chat">("safety");
+  const mobile = useIsMobile();
   const m = useCoinMarket(c, iv, setC);
   const candles = m.candles, own = m.own, ext = m.ext;
 
@@ -66,10 +68,28 @@ function CoinView() {
 
   const up = c.chg >= 0;
   const target = (c.startMc ?? 0) * (7500 / 4500);
+  const tradesPanel = (
+          <div className="panel">
+              <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""} <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· last 5</span></span>
+              {c.own ? (
+                own === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : own.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span> :
+                  own.slice(0, 5).map((t) => (
+                    <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid var(--row)", fontSize: 13, color: "var(--text2)" }}>
+                      <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.up ? "up" : "down"} style={{ fontWeight: 700 }}>{t.up ? "Buy" : "Sell"}</span><span>{t.amt}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.ts)}</span>
+                    </div>))
+              ) : (
+                ext === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : ext.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>Trades will show here.</span> :
+                  ext.slice(0, 5).map((t) => (
+                    <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid var(--row)", fontSize: 13, color: "var(--text2)" }}>
+                      <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.side === "Buy" ? "up" : "down"} style={{ fontWeight: 700 }}>{t.side}</span><span>{t.usd}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.at)}</span>
+                    </div>))
+              )}
+            </div>
+  );
   return (
     <div className="wrap page" style={{ paddingBottom: 140 }}>
       <Link href="/" className="dim hide-m" style={{ fontSize: 13 }}>← Discover</Link>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+      <div className="coin-head">
         <span className="coin-av"><Avatar name={c.name} c1={c.c1} c2={c.c2} size={60} img={c.image} /></span>
         <div style={{ flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -84,7 +104,7 @@ function CoinView() {
             {c.own && c.creator ? <>· by {short(c.creator)}</> : null} · {c.age} old
           </div>
         </div>
-        <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><PriceAlertButton c={c} className="btn ghost sm" label="🔔 Price alert" /><button type="button" className="btn ghost sm" aria-label="Share on X" onClick={() => shareCoin(c)}><IShare size={15} />Share</button><PromoteButton c={c} /></span>
+        <span className="coin-acts"><PriceAlertButton c={c} className="btn ghost sm" label="Price alert" /><button type="button" className="btn ghost sm" aria-label="Share on X" onClick={() => shareCoin(c)}><IShare size={15} />Share</button><PromoteButton c={c} /></span>
       </div>
 
       <div className="grid6 hide-m">
@@ -96,42 +116,49 @@ function CoinView() {
         <div className="main-col">
           <div className="panel">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}><span className="mono" style={{ fontWeight: 800, fontSize: 28, letterSpacing: -0.8 }}>{c.price}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 700 }}>{up ? "+" : ""}{c.chg.toFixed(1)}%</span></div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}><span className="mono coin-price" style={{ fontWeight: 800, fontSize: 28, letterSpacing: -0.8 }}>{c.price}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 700 }}>{up ? "+" : ""}{c.chg.toFixed(1)}%</span></div>
               {c.own && <Intervals value={iv} onChange={setIv} />}
             </div>
-            {c.own ? <TvChart candles={candles} supply={1e9} empty="No trades yet for a chart." seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} />}
+            {c.own ? <TvChart candles={candles} supply={1e9} empty="No trades yet for a chart." height={mobile ? 250 : undefined} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} height={mobile ? 300 : undefined} />}
           </div>
-          <div className="grid6 show-m stats-m">
-            <Stat k="Price" v={c.price} /><Stat k="Market cap" v={c.mc} /><Stat k="24h" v={`${up ? "+" : ""}${c.chg.toFixed(1)}%`} cls={up ? "up" : "down"} />
-            <Stat k="Volume 24h" v={c.vol} /><Stat k={c.own ? "In curve" : "Liquidity"} v={c.liq} /><Stat k={c.own ? "Buyers" : "Trades 24h"} v={c.own ? c.holders : c.trades} />
+          <div className="show-m coin-strip">
+            <span><i>Vol 24h</i><b className="mono">{c.vol}</b></span>
+            <span><i>{c.own ? "In curve" : "Liquidity"}</i><b className="mono">{c.liq}</b></span>
+            <span><i>{c.own ? "Buyers" : "Trades 24h"}</i><b className="mono">{c.own ? c.holders : c.trades}</b></span>
+            <span><i>Age</i><b className="mono">{c.age}</b></span>
           </div>
-          {c.own && <SafetyCard c={c} />}
-          {c.own && <LockCard c={c} />}
-          {c.own && <Comments c={c} />}
-          <div className="panel">
-            <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""} <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· last 5</span></span>
-            {c.own ? (
-              own === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : own.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span> :
-                own.slice(0, 5).map((t) => (
-                  <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid var(--row)", fontSize: 13, color: "var(--text2)" }}>
-                    <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.up ? "up" : "down"} style={{ fontWeight: 700 }}>{t.up ? "Buy" : "Sell"}</span><span>{t.amt}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.ts)}</span>
-                  </div>))
-            ) : (
-              ext === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : ext.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>Trades will show here.</span> :
-                ext.slice(0, 5).map((t) => (
-                  <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "10px 0", borderTop: "1px solid var(--row)", fontSize: 13, color: "var(--text2)" }}>
-                    <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.side === "Buy" ? "up" : "down"} style={{ fontWeight: 700 }}>{t.side}</span><span>{t.usd}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.at)}</span>
-                  </div>))
+          <div className="hide-m col-stack">
+            {c.own && <SafetyCard c={c} />}
+            {c.own && <LockCard c={c} />}
+            {c.own && <Comments c={c} />}
+            {tradesPanel}
+          </div>
+          {/* phones: graduation up top, details in tabs */}
+          <div className="show-m col-stack">
+            {c.own && (
+              <div className="card" style={{ gap: 6, padding: "10px 12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ fontWeight: 700 }}>🎓 Graduation</span><span className="mono volt" style={{ fontWeight: 700 }}>{c.phase === 2 ? "Graduated" : `${c.progress.toFixed(0)}%`}</span></div>
+                <Bar pct={c.progress} />
+              </div>
             )}
+            <div className="mtabs" role="tablist">
+              {(c.own ? (["safety", "trades", "holders", "chat"] as const) : (["trades"] as const)).map((t) => (
+                <button key={t} type="button" role="tab" aria-selected={mt === t || (!c.own && t === "trades")} className={mt === t || (!c.own && t === "trades") ? "on" : ""} onClick={() => setMt(t)}>{t[0].toUpperCase() + t.slice(1)}</button>
+              ))}
+            </div>
+            {c.own && mt === "safety" && <><SafetyCard c={c} /><LockCard c={c} /></>}
+            {(mt === "trades" || !c.own) && tradesPanel}
+            {c.own && mt === "holders" && <HoldersCard c={c} />}
+            {c.own && mt === "chat" && <Comments c={c} />}
           </div>
         </div>
         <aside className="side-col" style={{ flexBasis: 360 }}>
           {c.own && <OrdersList coin={c.address} chainId={c.chainId} title="Your open orders" />}
           <AboutCard c={c} />
           {c.own && <CreatorCard c={c} onImage={(url) => setC({ ...c, image: url })} />}
-          {c.own && <HoldersCard c={c} />}
+          {c.own && <div className="hide-m"><HoldersCard c={c} /></div>}
           {c.own && (
-            <div className="card" style={{ gap: 10 }}>
+            <div className="card hide-m" style={{ gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span style={{ fontWeight: 700 }}>Graduation</span><span className="mono volt" style={{ fontWeight: 600 }}>{c.phase === 2 ? "Graduated" : `${usd(c.mcNum)} / ${usd(target)}`}</span></div>
               <Bar pct={c.progress} /><span className="dim" style={{ fontSize: 12 }}>At graduation the coin moves to a locked pool forever.</span>
             </div>

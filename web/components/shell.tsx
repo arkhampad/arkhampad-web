@@ -211,7 +211,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider value={ctx}>
-      <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--on-volt)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}><span className="hide-m">Testnet is open: trade with free test USDC · Mainnet soon · Follow @Arkhampad →</span><span className="show-m">Testnet open · free test USDC · Follow @Arkhampad →</span></a>
+      <a className="testnet-strip" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--on-volt)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}><span className="hide-m">Testnet is open: trade with free test USDC · Mainnet soon · Follow @Arkhampad →</span><span className="show-m">Testnet open · free test USDC · Follow @Arkhampad →</span></a>
       <Ticker />
       <header className="hdr">
         <div className="wrap hdr-in">

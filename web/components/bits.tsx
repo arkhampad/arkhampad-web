@@ -1,6 +1,6 @@
 "use client";
 import { initials, sparkPath } from "@/lib/util";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { Chain } from "@/lib/types";
 
 export function Avatar({ name, c1, c2, size = 40, round = false, img }: { name: string; c1: string; c2: string; size?: number; round?: boolean; img?: string | null }) {
@@ -88,4 +88,17 @@ export function BrandMark({ size = 32, tile = true }: { size?: number; tile?: bo
   return (
     <span style={{ width: size, height: size, borderRadius: Math.round(size * 0.28), background: "radial-gradient(circle at 30% 20%, #232838, #05060A 72%)", border: "1px solid var(--line2)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{svg}</span>
   );
+}
+
+/** True on phone-sized screens (matches the site's 760px breakpoint). False until mounted. */
+export function useIsMobile() {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia("(max-width: 760px)");
+    const f = () => setM(q.matches);
+    f();
+    q.addEventListener("change", f);
+    return () => q.removeEventListener("change", f);
+  }, []);
+  return m;
 }

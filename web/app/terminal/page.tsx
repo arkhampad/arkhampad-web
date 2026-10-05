@@ -3,15 +3,15 @@ import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Avatar, Spark } from "@/components/bits";
+import { Avatar, Spark, useIsMobile } from "@/components/bits";
 import { Intervals } from "@/components/trade";
 import { TradePanel } from "@/components/tradepanel";
-import { IDown, ISearch } from "@/components/icons";
+import { IDown, ISearch, IX } from "@/components/icons";
 import { ScrollTabs } from "@/components/scrolltabs";
 import { getCoin, listCoins, useCoinMarket, useLive, ago, short, shareCoin, prepareCard, type LiveCoin, type Tab } from "@/lib/live";
 
-const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
-const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
+const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 300, borderRadius: 12 }} /> });
+const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 300, borderRadius: 12 }} /> });
 const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
 
 function CoinList({ tab, q, sel, onPick }: { tab: Tab; q: string; sel: string | null; onPick: (c: LiveCoin) => void }) {
@@ -21,11 +21,14 @@ function CoinList({ tab, q, sel, onPick }: { tab: Tab; q: string; sel: string | 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       {list.data.map((x) => (
-        <button key={x.id} type="button" onClick={() => onPick(x)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 10, border: 0, background: x.id === sel ? "var(--raise)" : "transparent", textAlign: "left" }}>
+        <button key={x.id} type="button" onClick={() => onPick(x)} className={`tl-row${x.id === sel ? " on" : ""}`}>
           <Avatar name={x.name} c1={x.c1} c2={x.c2} size={30} img={x.image} />
-          <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}><span style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.tick}</span><span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>{x.mc}</span></span>
-          <span style={{ width: 44 }}><Spark vals={x.spark} up={x.chg >= 0} height={18} fill={false} stroke={2} /></span>
-          <span className={`mono ${x.chg >= 0 ? "up" : "down"}`} style={{ fontWeight: 700, fontSize: 12, minWidth: 58, textAlign: "right" }}>{x.chg >= 0 ? "+" : ""}{x.chg.toFixed(1)}%</span>
+          <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+            <span style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.tick}</span>
+            <span className="mono" style={{ fontSize: 11, color: "var(--faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.mc}</span>
+          </span>
+          <span style={{ width: 40, flex: "none" }}><Spark vals={x.spark} up={x.chg >= 0} height={18} fill={false} stroke={2} /></span>
+          <span className={`mono ${x.chg >= 0 ? "up" : "down"}`} style={{ fontWeight: 700, fontSize: 12, minWidth: 56, textAlign: "right" }}>{x.chg >= 0 ? "+" : ""}{x.chg.toFixed(1)}%</span>
         </button>
       ))}
     </div>
@@ -35,12 +38,14 @@ function CoinList({ tab, q, sel, onPick }: { tab: Tab; q: string; sel: string | 
 function TerminalView() {
   const q = useSearchParams();
   const router = useRouter();
+  const mobile = useIsMobile();
   const [tab, setTab] = useState<Tab>("Trending");
   const [search, setSearch] = useState(q.get("q") || "");
   const [qDebounced, setQ] = useState("");
   const [picker, setPicker] = useState(false);
   const [c, setC] = useState<LiveCoin | null>(null);
   const [iv, setIv] = useState("15m");
+  const [below, setBelow] = useState<"trades" | "about">("trades");
   // young coins have few trades: start on 1-minute candles so the chart isn't empty
   const youngId = useRef("");
   useEffect(() => { if (c) prepareCard(c); }, [c?.id, c?.mc]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -62,64 +67,91 @@ function TerminalView() {
     })();
     return () => { alive = false; };
   }, [id]);
+  // the coin picker is a full screen on phones: no page scroll behind it
+  useEffect(() => { if (!picker) return; const prev = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = prev; }; }, [picker]);
 
   const m = useCoinMarket(c, iv, setC);
   const pick = (x: LiveCoin) => { setPicker(false); router.replace(`/terminal/?c=${x.id}`, { scroll: false }); setC(x); window.scrollTo({ top: 0 }); };
 
   const side = (
     <>
-      <label className="search" style={{ height: 38, flex: "none" }}><ISearch size={15} color="var(--faint)" /><span className="sr">Search</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search coin or CA" /></label>
-      <ScrollTabs gap={2}>{TABS.map((t) => <button key={t} type="button" className={`tab${tab === t ? " on" : ""}`} style={{ height: 30, fontSize: 12, padding: "0 10px", flex: "none" }} onClick={() => setTab(t)}>{t}</button>)}</ScrollTabs>
-      <div style={{ maxHeight: "calc(100vh - 230px)", overflowY: "auto", margin: "0 -4px", padding: "0 4px" }}><CoinList tab={tab} q={qDebounced} sel={c?.id ?? null} onPick={pick} /></div>
+      <label className="search" style={{ height: 40, flex: "none" }}><ISearch size={15} color="var(--faint)" /><span className="sr">Search</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search coin or paste CA" /></label>
+      <ScrollTabs gap={4}>{TABS.map((t) => <button key={t} type="button" className={`chip sm${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</ScrollTabs>
+      <div className="tl-scroll"><CoinList tab={tab} q={qDebounced} sel={c?.id ?? null} onPick={pick} /></div>
     </>
+  );
+  const up = (c?.chg ?? 0) >= 0;
+  const stats: [string, string, string][] = c ? [["Price", c.price, ""], ["MC", c.mc, ""], ["24h", `${up ? "+" : ""}${c.chg.toFixed(1)}%`, up ? "up" : "down"], ["Vol", c.vol, ""], [c.own ? "In curve" : "Liq", c.liq, ""]] : [];
+
+  const trades = (
+    <div className="panel trades-few" style={{ padding: 12, gap: 6 }}>
+      <span style={{ fontWeight: 700, fontSize: 14 }}>Latest trades{c?.own ? " · testnet" : ""}</span>
+      {c?.own ? (
+        m.own === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : m.own.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span> :
+          m.own.slice(0, 12).map((t) => (
+            <div key={t.id} className="mono trade-row">
+              <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.up ? "up" : "down"} style={{ fontWeight: 700 }}>{t.up ? "Buy" : "Sell"}</span><span>{t.amt}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.ts)}</span>
+            </div>))
+      ) : (
+        m.ext === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : m.ext.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>Trades will show here.</span> :
+          m.ext.slice(0, 12).map((t) => (
+            <div key={t.id} className="mono trade-row">
+              <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.side === "Buy" ? "up" : "down"} style={{ fontWeight: 700 }}>{t.side}</span><span>{t.usd}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.at)}</span>
+            </div>))
+      )}
+    </div>
   );
 
   return (
-    <div style={{ maxWidth: 1600, margin: "0 auto", padding: "16px 20px 120px", display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
-      <aside className="panel hide-m" style={{ flex: "1 1 280px", maxWidth: 320, padding: 10, gap: 8, position: "sticky", top: 84 }}>{side}</aside>
-      <section style={{ flex: "999 1 560px", minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-        <button type="button" className="show-m" onClick={() => setPicker(!picker)} style={{ display: "flex", alignItems: "center", gap: 10, height: 56, padding: "0 12px", borderRadius: 14, border: "1px solid var(--line2)", background: "var(--field)" }}>
-          {c ? <Avatar name={c.name} c1={c.c1} c2={c.c2} size={34} img={c.image} /> : <span className="skel" style={{ width: 34, height: 34, borderRadius: 10 }} />}
-          <span style={{ flex: 1, textAlign: "left", display: "flex", flexDirection: "column" }}><span style={{ fontWeight: 800, fontSize: 15 }}>{c?.tick ?? "…"}</span><span className="mono" style={{ fontSize: 11, color: "var(--dim)" }}>Tap to switch coin</span></span><IDown size={16} />
+    <div className="term">
+      <aside className="panel term-list">{side}</aside>
+
+      <section className="term-main">
+        {/* phones: one compact bar that opens the coin switcher */}
+        <button type="button" className="term-switch" onClick={() => setPicker(true)} aria-haspopup="dialog">
+          {c ? <Avatar name={c.name} c1={c.c1} c2={c.c2} size={30} img={c.image} /> : <span className="skel" style={{ width: 30, height: 30, borderRadius: 9 }} />}
+          <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}><b style={{ fontSize: 15 }}>{c?.tick ?? "…"}</b> <span className="mono faint" style={{ fontSize: 11 }}>· switch</span></span>
+          <IDown size={14} color="var(--faint)" />
+          {c && <span className={`chg ${up ? "u" : "d"}`}>{up ? "+" : ""}{c.chg.toFixed(1)}%</span>}
         </button>
-        {picker && <div className="panel show-m" style={{ padding: 8, gap: 8 }}>{side}</div>}
-        {!c ? <div className="skel" style={{ height: 70, borderRadius: 16 }} /> : (
-          <div className="panel" style={{ flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 14px" }}>
-            <Avatar name={c.name} c1={c.c1} c2={c.c2} size={44} img={c.image} />
-            <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-              <Link href={`/coin/?c=${c.id}`} style={{ fontWeight: 900, fontSize: 18 }}>{c.name} <span className="mono dim" style={{ fontWeight: 600, fontSize: 13 }}>{c.tick}</span></Link>
-              <span className="mono dim" style={{ fontSize: 12 }}>{c.chain}{c.own ? " testnet" : ""} · {short(c.address)} · {c.age}</span>
+
+        {!c ? <div className="skel" style={{ height: 64, borderRadius: 14 }} /> : (
+          <div className="panel term-head">
+            <span className="hide-m" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <Avatar name={c.name} c1={c.c1} c2={c.c2} size={38} img={c.image} />
+              <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <Link href={`/coin/?c=${c.id}`} style={{ fontWeight: 800, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name} <span className="mono dim" style={{ fontWeight: 600, fontSize: 12 }}>{c.tick}</span></Link>
+                <span className="mono dim" style={{ fontSize: 11 }}>{c.chain}{c.own ? " testnet" : ""} · {short(c.address)} · {c.age}</span>
+              </span>
             </span>
-            <span style={{ flex: 1 }} />
-            {[["Price", c.price, ""], ["MC", c.mc, ""], ["24h", `${c.chg >= 0 ? "+" : ""}${c.chg.toFixed(1)}%`, c.chg >= 0 ? "up" : "down"], ["Vol", c.vol, ""], [c.own ? "In curve" : "Liq", c.liq, ""]].map(([k, v, cls]) => (
-              <span key={k} className="hide-m" style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 10px", borderLeft: "1px solid var(--line)" }}><span style={{ fontSize: 11, color: "var(--faint)" }}>{k}</span><span className={`mono ${cls}`} style={{ fontWeight: 700, fontSize: 14 }}>{v}</span></span>
-            ))}
-            <span className="show-m mono" style={{ fontWeight: 800, fontSize: 22 }}>{c.mc} <span className={c.chg >= 0 ? "up" : "down"} style={{ fontSize: 13 }}>{c.chg >= 0 ? "+" : ""}{c.chg.toFixed(1)}%</span></span>
+            <span className="term-stats">
+              {stats.map(([k, v, cls]) => <span key={k}><i>{k}</i><b className={`mono ${cls}`}>{v}</b></span>)}
+            </span>
           </div>
         )}
-        <div className="panel" style={{ padding: 12, gap: 8 }}>
+
+        <div className="panel" style={{ padding: mobile ? 8 : 12, gap: 8 }}>
           {c?.own && <Intervals value={iv} onChange={setIv} />}
-          {c && (c.own ? <TvChart candles={m.candles} supply={1e9} empty="No trades yet for a chart." height={420} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} height={460} />)}
+          {c && (c.own ? <TvChart candles={m.candles} supply={1e9} empty="No trades yet for a chart." height={mobile ? 260 : 420} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} height={mobile ? 300 : 460} />)}
         </div>
-        {c && <div className="show-m" style={{ display: "flex", flexDirection: "column", gap: 12 }}><TradePanel coin={c} onShare={() => shareCoin(c)} /></div>}
-        <div className="panel trades-few" style={{ padding: 12, gap: 8 }}>
-          <span style={{ fontWeight: 700 }}>Latest trades{c?.own ? " · testnet" : ""}</span>
-          {c?.own ? (
-            m.own === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : m.own.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span> :
-              m.own.slice(0, 12).map((t) => (
-                <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "9px 0", borderTop: "1px solid var(--line)", fontSize: 13, color: "var(--text2)" }}>
-                  <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.up ? "up" : "down"} style={{ fontWeight: 700 }}>{t.up ? "Buy" : "Sell"}</span><span>{t.amt}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.ts)}</span>
-                </div>))
-          ) : (
-            m.ext === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : m.ext.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>Trades will show here.</span> :
-              m.ext.slice(0, 12).map((t) => (
-                <div key={t.id} className="mono" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", padding: "9px 0", borderTop: "1px solid var(--line)", fontSize: 13, color: "var(--text2)" }}>
-                  <span style={{ color: "var(--text)" }}>{t.who}</span><span className={t.side === "Buy" ? "up" : "down"} style={{ fontWeight: 700 }}>{t.side}</span><span>{t.usd}</span><span style={{ textAlign: "right", color: "var(--faint)" }}>{ago(t.at)}</span>
-                </div>))
-          )}
-        </div>
+
+        {c && <div className="show-m"><TradePanel coin={c} onShare={() => shareCoin(c)} /></div>}
+        {c && mobile && (
+          <div className="seg-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={below === "trades"} className={below === "trades" ? "on" : ""} onClick={() => setBelow("trades")}>Trades</button>
+            <button type="button" role="tab" aria-selected={below === "about"} className={below === "about" ? "on" : ""} onClick={() => setBelow("about")}>About</button>
+          </div>
+        )}
+        {(!mobile || below === "trades") && trades}
+        {c && mobile && below === "about" && (
+          <div className="panel" style={{ padding: 12, gap: 8, fontSize: 13 }}>
+            <Link href={`/coin/?c=${c.id}`} className="volt" style={{ fontWeight: 700 }}>Open the full {c.tick} page →</Link>
+            <span className="mono dim">{c.chain}{c.own ? " testnet" : ""} · {short(c.address)} · {c.age} old</span>
+          </div>
+        )}
       </section>
-      <aside className="hide-m" style={{ flex: "1 1 320px", maxWidth: 380, minWidth: 0, display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 84 }}>
+
+      <aside className="term-trade">
         {c && <TradePanel coin={c} withLimit onShare={() => shareCoin(c)} />}
         {c && !c.own && (
           <div className="card" style={{ gap: 6, padding: 14 }}>
@@ -128,6 +160,13 @@ function TerminalView() {
           </div>
         )}
       </aside>
+
+      {picker && (
+        <div className="term-picker" role="dialog" aria-modal="true" aria-label="Switch coin">
+          <div className="term-picker-top"><b>Switch coin</b><button type="button" className="icon-btn" aria-label="Close" onClick={() => setPicker(false)}><IX size={15} /></button></div>
+          <div className="term-picker-body">{side}</div>
+        </div>
+      )}
     </div>
   );
 }

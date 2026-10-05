@@ -171,7 +171,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const label = ext && !extLive ? "Opens on mainnet" : !coin.own && !ext ? "Opens on mainnet" : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
     : mode === "Limit" ? `Set limit ${side === "buy" ? "buy" : "sell"}` : mode === "Auto" ? "Set take profit / stop loss" : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
   return (
-    <div className="card" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
+    <div className="card tp" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 4, borderRadius: 14, background: "var(--bg)" }}>
         <button type="button" onClick={() => { setSide("buy"); if (mode === "Auto") setMode("Market"); }} style={{ height: 42, borderRadius: 11, border: 0, fontWeight: 800, fontSize: 15, background: side === "buy" ? "var(--up)" : "transparent", color: side === "buy" ? "#04130C" : "var(--muted)" }}>Buy</button>
         <button type="button" onClick={() => setSide("sell")} style={{ height: 42, borderRadius: 11, border: 0, fontWeight: 800, fontSize: 15, background: side === "sell" ? "var(--down)" : "transparent", color: side === "sell" ? "#1A0505" : "var(--muted)" }}>Sell</button>
@@ -202,7 +202,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
         <>
           <label htmlFor={`amt-${coin.id}`} style={{ fontSize: 13, display: "flex", justifyContent: "space-between" }} className="dim"><span>Amount</span><span>Cash <b className="mono" style={{ color: "var(--text)" }}>${cash.toFixed(2)}</b></span></label>
           {coin.own && w.signedIn && cash < 1 && <button type="button" className="btn volt sm" onClick={() => openFunds("deposit")}>Get free test USDC</button>}
-          <div style={{ display: "flex", alignItems: "center", height: 60, padding: "0 16px", borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line3)" }}>
+          <div className="tp-amt" style={{ display: "flex", alignItems: "center", height: 60, padding: "0 16px", borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line3)" }}>
             <span className="mono dim" style={{ fontWeight: 700, fontSize: 26 }}>$</span>
             <input id={`amt-${coin.id}`} inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} style={{ flex: 1, minWidth: 0, background: "transparent", border: 0, outline: "none", font: "700 26px var(--mono)", paddingLeft: 4 }} />
             <span className="mono dim" style={{ fontWeight: 600, fontSize: 13 }}>USDC</span>

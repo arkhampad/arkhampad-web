@@ -73,11 +73,7 @@ export default function Discover() {
   const total = useLive(totalCoins, [], 120_000);
   const promoted = useLive(listPromoted, [], 60_000);
   const tops = useLive(() => board(7, 10), [], 120_000);
-  const [feat, setFeat] = useState<"hot" | "grad">("hot");
   const hasGrad = (almost.data?.length ?? 0) > 0;
-  // Hot right now and Almost graduating take turns every 2 minutes.
-  useEffect(() => { if (!hasGrad) { setFeat("hot"); return; } const t = setInterval(() => setFeat((f) => (f === "hot" ? "grad" : "hot")), 120_000); return () => clearInterval(t); }, [hasGrad]);
-  const featured = feat === "grad" && hasGrad ? almost.data : hot.data;
   const live = useLive<LiveTrade[]>(() => recentTrades(8), [], 0);
   useTradeFeed(() => live.reload());
 
@@ -85,8 +81,13 @@ export default function Discover() {
 
   return (
     <div className="wrap page">
-      <section style={{ padding: "8px 0 2px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12 }}>
-        <h1 className="hero-h1" style={{ margin: 0, fontSize: "clamp(28px, 4.2vw, 48px)", lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.035em", maxWidth: 900 }}>
+      {/* phones: a short header; the full hero (with the idea box) is for bigger screens */}
+      <section className="show-m" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>Discover</h1>
+        <span className="dim" style={{ fontSize: 13 }}>{total.data ? <><b className="mono" style={{ color: "var(--text)" }}>{total.data.toLocaleString("en-US")}</b> coins · Robinhood, Base, BNB</> : "Coins on Robinhood, Base and BNB"}</span>
+      </section>
+      <section className="hide-m" style={{ padding: "4px 0 0", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10 }}>
+        <h1 className="hero-h1" style={{ margin: 0, fontSize: "clamp(28px, 3.4vw, 40px)", lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.035em", maxWidth: 900 }}>
           Create and trade with <span className="grad-text" style={{ background: "linear-gradient(90deg, var(--volt), var(--mint))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>intelligence.</span>
         </h1>
         <p className="h-sub hide-m" style={{ maxWidth: 560, fontSize: 15 }}>Type an idea, get a ready coin. Trade thousands of coins with USDC.</p>
@@ -122,18 +123,17 @@ export default function Discover() {
         </section>
       )}
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <button type="button" className={`tab${feat === "hot" || !hasGrad ? " on" : ""}`} style={{ height: 40, fontSize: 18, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }} onClick={() => setFeat("hot")}><IFire size={18} color="var(--burn)" />Hot right now</button>
-          {hasGrad && <button type="button" className={`tab${feat === "grad" ? " on" : ""}`} style={{ height: 40, fontSize: 18, fontWeight: 800 }} onClick={() => setFeat("grad")}>🎓 Almost graduating</button>}
-        </div>
-        {!featured ? <div className="grid3">{[0, 1, 2].map((i) => <div key={i} className="skel" style={{ height: 300, borderRadius: 22 }} />)}</div> : (
-          <>
-            <div className="grid3 hide-m">{featured.map((c) => <HotCard key={c.id} c={c} grad={feat === "grad" && hasGrad} />)}</div>
-            <div className="hscroll show-m" style={{ gap: 12, margin: "0 -16px", padding: "0 16px" }}>{featured.map((c) => <div key={c.id} style={{ flex: "none", width: 280 }}><HotCard c={c} grad={feat === "grad" && hasGrad} /></div>)}</div>
-          </>
-        )}
+      <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="feat-head"><h2><IFire size={16} color="var(--burn)" />Hot right now</h2><span className="dim" style={{ fontSize: 11 }}>changes every minute</span></div>
+        {!hot.data ? <div className="feat-row">{[0, 1, 2].map((i) => <div key={i} className="skel" style={{ height: 120, borderRadius: 16, minWidth: 236 }} />)}</div> :
+          <div className="feat-row">{hot.data.map((c) => <HotCard key={c.id} c={c} />)}</div>}
       </section>
+      {hasGrad && almost.data && (
+        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="feat-head"><h2>🎓 Almost graduating</h2><span className="dim" style={{ fontSize: 11 }}>launched here</span></div>
+          <div className="feat-row">{almost.data.map((c) => <HotCard key={c.id} c={c} grad />)}</div>
+        </section>
+      )}
 
       <section className="row">
         <div className="main-col">
