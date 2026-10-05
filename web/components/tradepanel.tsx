@@ -5,7 +5,7 @@ import type { Address } from "viem";
 import { IBell, IShare } from "./icons";
 import { useApp } from "./shell";
 import { useWallet } from "./wallet";
-import { FEE, buy, fromCoin, fromUsdc, onLocalTrade, placeOrder, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError, type OrderKind } from "@/lib/chain";
+import { lastFee, warmFees, buy, fromCoin, fromUsdc, onLocalTrade, placeOrder, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError, type OrderKind } from "@/lib/chain";
 import { refreshOrders } from "./orders";
 import { ProfitSheet } from "./profit";
 import { positionPnl } from "@/lib/pnl";
@@ -21,6 +21,8 @@ const fmtCoins = (t: number) => (!Number.isFinite(t) || t <= 0 ? "0" : t >= 1e9 
 export function TradePanel({ coin, withLimit = false, onShare, initialSide = "buy" }: { coin: LiveCoin; withLimit?: boolean; onShare?: () => void; initialSide?: "buy" | "sell" }) {
   const { toast, openFunds } = useApp(); void withLimit;
   const caution = useBuyWarning(coin);
+  // fetch today's network fees now, so pressing Buy or Sell never waits for them
+  useEffect(() => { if (coin.own) warmFees(coin.chainId, ["buy", "sell", "poolBuy", "poolSell"]); }, [coin.chainId, coin.own]);
   const w = useWallet();
   const [side, setSide] = useState<"buy" | "sell">(initialSide);
   const [mode, setMode] = useState("Market");
@@ -73,7 +75,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           if (n === seq.current) setQuote(fromCoin(raw));
         } else {
           const raw = sellAmount <= 0n ? 0n : inPool ? await quotePool(coin.chainId, token, false, sellAmount) : await quoteSell(coin.chainId, curve as Address, sellAmount);
-          if (n === seq.current) setQuote(Math.max(0, fromUsdc(raw) - fromUsdc(FEE)));
+          if (n === seq.current) setQuote(Math.max(0, fromUsdc(raw) - fromUsdc(lastFee(coin.chainId, inPool ? "poolSell" : "sell"))));
         }
       } catch { if (n === seq.current) setQuote(null); }
     }, 200);
@@ -154,7 +156,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           const r = await positionPnl(coin.chainId, coin.address, who, { name: coin.name, tick: coin.tick, chain: coin.chain, image: coin.image, c1: coin.c1, c2: coin.c2, mcNow: coin.mcNum ?? 0 }).catch(() => null);
           if (r && r.pct >= 5) setResult(r);
         }, 3000);
-        toast(`Sold for $${((t?.usdc ?? 0) - fromUsdc(FEE)).toFixed(2)}`);
+        toast(`Sold for $${((t?.usdc ?? 0) - fromUsdc(lastFee(coin.chainId, inPool ? "poolSell" : "sell"))).toFixed(2)}`);
       }
       await w.refresh();
     } catch (e) {

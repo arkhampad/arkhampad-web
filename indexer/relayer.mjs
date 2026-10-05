@@ -8,6 +8,8 @@ import fs from "node:fs";
 import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, decodeFunctionResult, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress, verifyTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { moderate } from "./moderation.mjs";
+import { makeFees } from "./fees.mjs";
+import { makeLimits, LIMITS } from "./limits.mjs";
 
 const CHAINS = JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./chains.json", import.meta.url), "utf8"));
 const log = (...a) => console.log(new Date().toISOString(), "relayer:", ...a);
@@ -129,6 +131,9 @@ export function makeRelayer() {
   let og = null;
   const upkeepLast = new Map();
   const dripLog = new Map(); // user -> [timestamps] for gas top-ups
+  const fees = makeFees({ log });
+  const limits = makeLimits({ log });
+  fees.warm([...nets.values()]);
   log(`relayer ${account.address} on ${[...nets.values()].map((n) => n.c.name).join(", ")}`);
 
   async function send(n, to, data, fixedGas) {
@@ -151,7 +156,7 @@ export function makeRelayer() {
     return hash;
   }
 
-  async function handle(body) {
+  async function handle(body, opts = {}) {
     const n = nets.get(Number(body?.chainId));
     if (!n) { const e = new Error("unsupported chain"); e.status = 400; throw e; }
     const kind = body.kind;
@@ -254,11 +259,22 @@ export function makeRelayer() {
     } else {
       const e = new Error("unknown request"); e.status = 400; throw e;
     }
+    // Network fee: the signed fee must cover today's real cost (orders were signed earlier: skipped).
+    const signedFee = kind === "extSwap" ? body.swap?.fee : body.fee;
+    if (!opts.order && signedFee !== undefined) await fees.check(n, kind, big(signedFee, "fee"));
+    // Volume limits (mainnet, first weeks): buys only.
+    const D = 10 ** DEC(n);
+    const buyUsd = kind === "buy" || kind === "poolBuy" ? Number(big(body.usdcIn, "usdcIn")) / D
+      : kind === "launch" ? Number(big(body.launch?.launchUsdc ?? "0", "launchUsdc")) / D
+      : kind === "extSwap" && body.swap?.isBuy === true ? Number(big(body.swap.amountIn, "amountIn")) / D : 0;
+    if (buyUsd > 0) await limits.check(db, n, String(body.user ?? body.swap?.user ?? ""), buyUsd, [...nets.keys()]);
     const t0 = Date.now();
     const hash = await send(n, to, data, fixedGas);
     const t1 = Date.now();
     const rc = await n.pub.waitForTransactionReceipt({ hash, pollingInterval: 150, timeout: 60_000 });
     const t2 = Date.now();
+    fees.record(n, kind, rc);
+    if (kind === "extSwap" && buyUsd > 0 && rc.status === "success") limits.add(n, String(body.swap.user), buyUsd);
     log(`${n.c.name} ${kind} ${hash} sent ${t1 - t0}ms mined ${t2 - t1}ms`);
     return {
       hash,
@@ -424,7 +440,7 @@ export function makeRelayer() {
       if (!hit) continue;
       inflight.add(o.id);
       try {
-        const out = await handle(o.body);
+        const out = await handle(o.body, { order: true });
         await db.query("update orders set status='filled', tx_hash=$2, updated_at=now() where id=$1", [o.id, out.hash]);
         log(`${n.c.name} order ${o.id} ${o.kind} filled at mc $${mc.toFixed(0)} ${out.hash}`);
         const label = { limit_buy: "Limit buy", take_profit: "Take profit", stop_loss: "Stop loss" }[o.kind];
@@ -617,10 +633,44 @@ export function makeRelayer() {
   }
   setInterval(() => { alertTick().catch((e) => log(`alerts error: ${e.message}`)); }, Number(process.env.ALERT_TICK_MS ?? 15_000));
 
+  /** Live network fee for one kind of request, in site units (6-decimal dollars). */
+  async function feeQuote(chainId, kind) {
+    const n = nets.get(Number(chainId));
+    if (!n) throw err("unsupported chain");
+    const q = await fees.quote(n, String(kind));
+    return { fee: String(q.raw / 10n ** BigInt(DEC(n) - 6)), usd: q.usd, busy: q.busy };
+  }
+
+  // Relayer gas: if its ETH (or BNB) runs low, every trade stops. Watched every 5 minutes;
+  // the owner gets a bell + push alert (ALERT_WALLET) and the status page shows it.
+  const LOW = { ETH: Number(process.env.LOW_GAS_ETH ?? 0.005), BNB: Number(process.env.LOW_GAS_BNB ?? 0.03) };
+  const gasState = {};
+  const warned = new Map();
+  async function gasWatch() {
+    for (const n of nets.values()) {
+      try {
+        const sym = n.c.native ?? "ETH";
+        const bal = Number(await n.pub.getBalance({ address: account.address })) / 1e18;
+        const low = bal < (LOW[sym] ?? LOW.ETH);
+        gasState[n.c.name] = { balance: +bal.toFixed(6), symbol: sym, low, at: new Date().toISOString() };
+        if (!low) { warned.delete(n.c.chainId); continue; }
+        const last = warned.get(n.c.chainId) ?? 0;
+        if (Date.now() - last < 6 * 3_600_000) continue;
+        warned.set(n.c.chainId, Date.now());
+        log(`LOW GAS on ${n.c.name}: ${bal.toFixed(5)} ${sym} left in ${account.address}`);
+        const to = (process.env.ALERT_WALLET || "").trim().toLowerCase();
+        if (to && notifier) notifier.notify(to, { kind: "system", title: `⚠️ Relayer gas low on ${n.c.name}`, body: `${bal.toFixed(5)} ${sym} left. Top up ${account.address} or trades will stop.`, url: "/" });
+      } catch (e) { gasState[n.c.name] = { error: String(e.shortMessage || e.message).slice(0, 120), at: new Date().toISOString() }; }
+    }
+  }
+  setTimeout(() => { gasWatch().catch(() => {}); }, 10_000);
+  setInterval(() => { gasWatch().catch(() => {}); }, 300_000);
+  const health = () => ({ address: account.address, gas: gasState, limits: LIMITS });
+
   function config() {
     return { relayer: account.address, minFee: String(MIN_FEE), vapidPublicKey: notifier?.publicKey ?? null, chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, usdDecimals: DEC(n), minFee: String(minFeeOf(n)), approvals: n.c.approvals ?? "permit", faucet: !!n.faucet })) };
   }
-  return { handle, config, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
+  return { handle, config, feeQuote, health, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -646,9 +696,14 @@ export function httpHandler(relayer, status) {
     res.setHeader("content-type", "application/json");
     if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
     const url = (req.url || "/").split("?")[0];
-    if (url === "/health" || url === "/") return res.end(JSON.stringify(status));
+    if (url === "/health" || url === "/") return res.end(JSON.stringify(relayer ? { ...status, relayer: relayer.health() } : status));
     if (!relayer) { res.statusCode = 503; return res.end(JSON.stringify({ error: "relayer off" })); }
     if (url === "/config") return res.end(JSON.stringify(relayer.config()));
+    if (url === "/fee" && req.method === "GET") {
+      const q = new URL(req.url, "http://x").searchParams;
+      try { res.setHeader("cache-control", "no-store"); return res.end(JSON.stringify(await relayer.feeQuote(q.get("chainId"), q.get("kind") || "buy"))); }
+      catch (e) { res.statusCode = e.status || 500; return res.end(JSON.stringify({ error: e.status ? e.message : "fee unavailable" })); }
+    }
     if (url.startsWith("/img/") && req.method === "GET") {
       const img = await relayer.image(url.slice(5)).catch(() => null);
       if (!img) { res.statusCode = 404; return res.end(JSON.stringify({ error: "not found" })); }

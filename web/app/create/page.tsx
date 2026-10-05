@@ -7,7 +7,7 @@ import { ICopy, IFire, IGlobe, IRocket, ISpark, IX } from "@/components/icons";
 import { useApp } from "@/components/shell";
 import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCoin } from "@/lib/share";
 import { useWallet } from "@/components/wallet";
-import { FEE, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage } from "@/lib/chain";
+import { lastFee, warmFees, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage } from "@/lib/chain";
 
 const PALETTE = [["#1B1F6B", "#7C5CFF"], ["#0B3B2E", "#2BB38A"], ["#3B1B0B", "#FF8A3D"]];
 const OPTS0 = [
@@ -50,7 +50,8 @@ function CreateView() {
   const w = useWallet();
   const chainId = (CHAINS.find((c) => c.name === chain) ?? CHAINS[0]).id;
   const cash = fromUsdc(w.usdc[chainId] ?? 0n);
-  const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(FEE) * (boost === "none" ? 1 : 2);
+  useEffect(() => { warmFees(chainId, ["launch", "promote"]); }, [chainId]);
+  const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(lastFee(chainId, "launch")) + (boost === "none" ? 0 : fromUsdc(lastFee(chainId, "promote")));
   const o = OPTS[pick];
   const choose = (i: number, list = OPTS) => { setPick(i); setName(list[i].name); setTick(list[i].tick); setDesc(list[i].desc); };
 

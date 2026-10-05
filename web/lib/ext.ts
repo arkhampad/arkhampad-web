@@ -2,7 +2,7 @@
 // Trading coins listed on other DEXs (mainnet only): live quotes from the KyberSwap aggregator,
 // gasless execution through PadExtSwap (the user signs; ArkhamPad takes 1%).
 import { createPublicClient, domainSeparator, http, parseAbi, type Address, type Hex } from "viem";
-import { TradeError, type Signer } from "./chain";
+import { TradeError, netFee, type Signer } from "./chain";
 
 type ExtNet = { id: number; slug: string; usdc: Address; usdcDecimals: number; rpc: string; swap: Address | null; permitUsdc: boolean };
 const env = (k: string) => (process.env as Record<string, string | undefined>)[k] || "";
@@ -69,7 +69,6 @@ async function ensurePermit(n: ExtNet, s: Signer, token: Address, need: bigint) 
   await relay({ chainId: n.id, kind: "permitExt", token, owner: s.address, value: MAX.toString(), deadline: deadline.toString(), signature });
 }
 
-const NET_FEE = 10_000n; // $0.01 in 6-decimal USDC
 const TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "address"], ["amountIn", "uint256"], ["minOut", "uint256"], ["target", "address"], ["dataHash", "bytes32"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]].map(([name, type]) => ({ name, type })) };
 
 /** Buys or sells a coin from another DEX. Never fills worse than the quote minus 2%. */
@@ -78,6 +77,7 @@ export async function extTrade(chainId: number, coin: Address, side: "buy" | "se
   if (!n || !n.swap) throw new TradeError("Trading coins from other DEXs opens on mainnet.");
   if (n.usdcDecimals !== 6) throw new TradeError("This network isn't supported yet.");
   const isBuy = side === "buy";
+  const NET_FEE = await netFee(n.id, "extSwap"); // live network fee (6-decimal USDC)
   const spend = isBuy ? amount - (amount * FEE_BPS) / 10_000n : amount;
   const r = await route(n, isBuy ? n.usdc : coin, isBuy ? coin : n.usdc, spend);
   const build = await fetch(`${API}/${n.slug}/api/v1/route/build`, { method: "POST", headers: { ...HEAD, "content-type": "application/json" }, body: JSON.stringify({ routeSummary: r.summary, sender: n.swap, recipient: n.swap, slippageTolerance: 150, deadline: Math.floor(Date.now() / 1000) + 600 }) }).catch(() => null);

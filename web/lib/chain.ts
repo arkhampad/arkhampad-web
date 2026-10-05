@@ -67,7 +67,37 @@ export const PROMOTE = parseAbi(["function plans(uint8) view returns (uint64 sec
 const ROUTER_VIEW = parseAbi(["function promoter() view returns (address)", "function quotePool(address coin, bool isBuy, uint256 amountIn) returns (uint256)"]);
 const POOL_EVENT = parseAbi(["event PoolTraded(address indexed user, address indexed coin, bool isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 fee, uint256 nonce)"]);
 
-export const FEE = 10_000n; // network fee the relayer gets back: $0.01 (site units: 6 decimals)
+export const FEE = 10_000n; // smallest network fee ($0.01, site units: 6 decimals); the live one comes from the relayer
+
+// Live network fee per kind of request: what the relayer really spends on gas, in USDC.
+// Cached for 20 seconds and fetched ahead of time, so a trade never waits on it.
+type FeeKind = "buy" | "sell" | "poolBuy" | "poolSell" | "launch" | "withdraw" | "promote" | "extSwap";
+const feeCache = new Map<string, { at: number; fee: bigint }>();
+const feeLoads = new Map<string, Promise<bigint>>();
+export async function netFee(chainId: number, kind: FeeKind): Promise<bigint> {
+  const key = `${chainId}:${kind}`;
+  const hit = feeCache.get(key);
+  if (hit && Date.now() - hit.at < 20_000) return hit.fee;
+  let p = feeLoads.get(key);
+  if (!p) {
+    p = (async () => {
+      try {
+        const r = await fetch(`${RELAYER}/fee?chainId=${chainId}&kind=${kind}`, { signal: AbortSignal.timeout(3000) });
+        const j = await r.json();
+        if (j?.busy) throw new TradeError("The network is very busy right now. Please try again in a few minutes.");
+        const fee = BigInt(String(j?.fee ?? "0"));
+        if (r.ok && fee >= FEE) { feeCache.set(key, { at: Date.now(), fee }); return fee; }
+      } catch (e) { if (e instanceof TradeError) throw e; }
+      return hit?.fee ?? FEE;
+    })().finally(() => feeLoads.delete(key));
+    feeLoads.set(key, p);
+  }
+  return p;
+}
+/** Last known fee without waiting (for estimates on screen). */
+export function lastFee(chainId: number, kind: FeeKind): bigint { return feeCache.get(`${chainId}:${kind}`)?.fee ?? FEE; }
+/** Fetches the usual fees ahead of a trade. */
+export function warmFees(chainId: number, kinds: FeeKind[] = ["buy", "sell"]) { for (const k of kinds) netFee(chainId, k).catch(() => {}); }
 
 // The site counts dollars with 6 decimals everywhere. Some networks' dollar token has more
 // (BNB's USDC: 18). These convert at the edge, right where amounts go to or come from a chain.
@@ -75,7 +105,6 @@ const decOf = (n: Net) => n.usdDecimals ?? 6;
 const scaleOf = (n: Net) => 10n ** BigInt(decOf(n) - 6);
 const up = (n: Net, v: bigint) => v * scaleOf(n); // site units -> chain units
 const down = (n: Net, v: bigint) => v / scaleOf(n); // chain units -> site units
-const feeRaw = (n: Net) => up(n, FEE);
 export const MAX = 2n ** 256n - 1n;
 export const toUsdc = (n: number) => BigInt(Math.round(n * 1e6));
 export const fromUsdc = (v: bigint) => Number(v) / 1e6;
@@ -123,7 +152,10 @@ async function relay(body: Record<string, unknown>): Promise<Relayed> {
     throw new TradeError("Can't reach ArkhamPad right now. Check your connection.");
   }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new TradeError(j.error || "Something went wrong. Please try again.");
+  if (!r.ok) {
+    if (j.code === "FEE_CHANGED") feeCache.clear(); // the next tap signs with the new fee
+    throw new TradeError(j.error || "Something went wrong. Please try again.");
+  }
   return j as Relayed;
 }
 
@@ -240,13 +272,14 @@ export async function buy(chainId: number, curve: Address, coin: Address, usdcIn
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (usdcIn <= 0n) throw new TradeError("Enter an amount.");
-  const [bal, quote] = await Promise.all([usdcBalance(chainId, s.address), quoteBuy(chainId, curve, usdcIn), ensureAllowance(n, s, n.usdc, up(n, usdcIn + FEE))]);
-  if (bal < usdcIn + FEE) throw new TradeError("Not enough USDC on this network.");
+  const fee = await netFee(chainId, "buy");
+  const [bal, quote] = await Promise.all([usdcBalance(chainId, s.address), quoteBuy(chainId, curve, usdcIn), ensureAllowance(n, s, n.usdc, up(n, usdcIn + fee))]);
+  if (bal < usdcIn + fee) throw new TradeError("Not enough USDC on this network.");
   if (quote === 0n) throw new TradeError("Amount is too small.");
   const minOut = (quote * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
-  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Buy: TYPES.Buy }, primaryType: "Buy", message: { user: s.address, curve, usdcIn: up(n, usdcIn), minCoinsOut: minOut, fee: feeRaw(n), nonce, deadline: dl } });
-  const rc = await confirm(n, await relay({ chainId: n.id, kind: "buy", user: s.address, curve, usdcIn: S(up(n, usdcIn)), minCoinsOut: S(minOut), fee: S(feeRaw(n)), nonce: S(nonce), deadline: S(dl), signature }));
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Buy: TYPES.Buy }, primaryType: "Buy", message: { user: s.address, curve, usdcIn: up(n, usdcIn), minCoinsOut: minOut, fee: up(n, fee), nonce, deadline: dl } });
+  const rc = await confirm(n, await relay({ chainId: n.id, kind: "buy", user: s.address, curve, usdcIn: S(up(n, usdcIn)), minCoinsOut: S(minOut), fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
   const t = tradeFrom(n, rc as never, curve, coin, s.address);
   emit(t);
   prepareSell(n, s, coin);
@@ -257,14 +290,14 @@ export async function sell(chainId: number, curve: Address, coin: Address, coinA
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (coinAmount <= 0n) throw new TradeError("Enter an amount.");
-  const [held, quote] = await Promise.all([tokenBalance(chainId, coin, s.address), quoteSell(chainId, curve, coinAmount), ensureAllowance(n, s, coin, coinAmount)]);
+  const [held, quote, fee] = await Promise.all([tokenBalance(chainId, coin, s.address), quoteSell(chainId, curve, coinAmount), netFee(chainId, "sell"), ensureAllowance(n, s, coin, coinAmount)]);
   if (held < coinAmount) throw new TradeError("You don't hold that many.");
-  if (quote <= FEE) throw new TradeError("This sale is too small to cover the network fee.");
-  const net = quote - FEE;
+  if (quote <= fee) throw new TradeError("This sale is too small to cover the network fee.");
+  const net = quote - fee;
   const minOut = (net * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
-  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Sell: TYPES.Sell }, primaryType: "Sell", message: { user: s.address, curve, coinAmount, minUsdcOut: up(n, minOut), fee: feeRaw(n), nonce, deadline: dl } });
-  const rc = await confirm(n, await relay({ chainId: n.id, kind: "sell", user: s.address, curve, coinAmount: S(coinAmount), minUsdcOut: S(up(n, minOut)), fee: S(feeRaw(n)), nonce: S(nonce), deadline: S(dl), signature }));
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Sell: TYPES.Sell }, primaryType: "Sell", message: { user: s.address, curve, coinAmount, minUsdcOut: up(n, minOut), fee: up(n, fee), nonce, deadline: dl } });
+  const rc = await confirm(n, await relay({ chainId: n.id, kind: "sell", user: s.address, curve, coinAmount: S(coinAmount), minUsdcOut: S(up(n, minOut)), fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
   const t = tradeFrom(n, rc as never, curve, coin, s.address);
   emit(t);
   return t;
@@ -291,13 +324,14 @@ export async function poolBuy(chainId: number, coin: Address, usdcIn: bigint, s:
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (usdcIn <= 0n) throw new TradeError("Enter an amount.");
-  const [bal, quote] = await Promise.all([usdcBalance(chainId, s.address), quotePool(chainId, coin, true, usdcIn), ensureAllowance(n, s, n.usdc, up(n, usdcIn + FEE))]);
-  if (bal < usdcIn + FEE) throw new TradeError("Not enough USDC on this network.");
+  const fee = await netFee(chainId, "poolBuy");
+  const [bal, quote] = await Promise.all([usdcBalance(chainId, s.address), quotePool(chainId, coin, true, usdcIn), ensureAllowance(n, s, n.usdc, up(n, usdcIn + fee))]);
+  if (bal < usdcIn + fee) throw new TradeError("Not enough USDC on this network.");
   if (quote === 0n) throw new TradeError("Amount is too small.");
   const minOut = (quote * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
-  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { PoolBuy: TYPES.PoolBuy }, primaryType: "PoolBuy", message: { user: s.address, coin, usdcIn: up(n, usdcIn), minCoinsOut: minOut, fee: feeRaw(n), nonce, deadline: dl } });
-  const rc = await confirm(n, await relay({ chainId: n.id, kind: "poolBuy", user: s.address, coin, usdcIn: S(up(n, usdcIn)), minCoinsOut: S(minOut), fee: S(feeRaw(n)), nonce: S(nonce), deadline: S(dl), signature }));
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { PoolBuy: TYPES.PoolBuy }, primaryType: "PoolBuy", message: { user: s.address, coin, usdcIn: up(n, usdcIn), minCoinsOut: minOut, fee: up(n, fee), nonce, deadline: dl } });
+  const rc = await confirm(n, await relay({ chainId: n.id, kind: "poolBuy", user: s.address, coin, usdcIn: S(up(n, usdcIn)), minCoinsOut: S(minOut), fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
   const t = poolTradeFrom(n, rc as never, coin, s.address);
   emit(t);
   prepareSell(n, s, coin);
@@ -308,13 +342,13 @@ export async function poolSell(chainId: number, coin: Address, coinAmount: bigin
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (coinAmount <= 0n) throw new TradeError("Enter an amount.");
-  const [held, quote] = await Promise.all([tokenBalance(chainId, coin, s.address), quotePool(chainId, coin, false, coinAmount), ensureAllowance(n, s, coin, coinAmount)]);
+  const [held, quote, fee] = await Promise.all([tokenBalance(chainId, coin, s.address), quotePool(chainId, coin, false, coinAmount), netFee(chainId, "poolSell"), ensureAllowance(n, s, coin, coinAmount)]);
   if (held < coinAmount) throw new TradeError("You don't hold that many.");
-  if (quote <= FEE) throw new TradeError("This sale is too small to cover the network fee.");
-  const minOut = ((quote - FEE) * (10_000n - SLIPPAGE_BPS)) / 10_000n;
+  if (quote <= fee) throw new TradeError("This sale is too small to cover the network fee.");
+  const minOut = ((quote - fee) * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
-  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { PoolSell: TYPES.PoolSell }, primaryType: "PoolSell", message: { user: s.address, coin, coinAmount, minUsdcOut: up(n, minOut), fee: feeRaw(n), nonce, deadline: dl } });
-  const rc = await confirm(n, await relay({ chainId: n.id, kind: "poolSell", user: s.address, coin, coinAmount: S(coinAmount), minUsdcOut: S(up(n, minOut)), fee: S(feeRaw(n)), nonce: S(nonce), deadline: S(dl), signature }));
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { PoolSell: TYPES.PoolSell }, primaryType: "PoolSell", message: { user: s.address, coin, coinAmount, minUsdcOut: up(n, minOut), fee: up(n, fee), nonce, deadline: dl } });
+  const rc = await confirm(n, await relay({ chainId: n.id, kind: "poolSell", user: s.address, coin, coinAmount: S(coinAmount), minUsdcOut: S(up(n, minOut)), fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
   const t = poolTradeFrom(n, rc as never, coin, s.address);
   emit(t);
   return t;
@@ -324,14 +358,15 @@ export type LaunchInput = { name: string; symbol: string; metadataURI: string; l
 export async function launch(chainId: number, l: LaunchInput, s: Signer): Promise<{ coin: Address; curve: Address }> {
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
-  const need = l.launchUsdc + FEE;
+  const fee = await netFee(chainId, "launch");
+  const need = l.launchUsdc + fee;
   const bal = await usdcBalance(chainId, s.address);
   if (bal < need) throw new TradeError(`You need at least $${fromUsdc(need).toFixed(2)} USDC on ${n.short} to launch.`);
   await ensureAllowance(n, s, n.usdc, up(n, need));
   const nonce = randomNonce(), dl = deadline();
-  const message = { user: s.address, name: l.name, symbol: l.symbol, metadataURI: l.metadataURI, lockSeconds: BigInt(l.lockSeconds), feeMode: l.feeMode, launchUsdc: up(n, l.launchUsdc), minCoinsOut: 0n, fee: feeRaw(n), nonce, deadline: dl };
+  const message = { user: s.address, name: l.name, symbol: l.symbol, metadataURI: l.metadataURI, lockSeconds: BigInt(l.lockSeconds), feeMode: l.feeMode, launchUsdc: up(n, l.launchUsdc), minCoinsOut: 0n, fee: up(n, fee), nonce, deadline: dl };
   const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Create: TYPES.Create }, primaryType: "Create", message });
-  const rc = await confirm(n, await relay({ chainId: n.id, kind: "launch", user: s.address, launch: { name: l.name, symbol: l.symbol, metadataURI: l.metadataURI, lockSeconds: String(l.lockSeconds), feeMode: l.feeMode, launchUsdc: S(up(n, l.launchUsdc)), minCoinsOut: "0" }, fee: S(feeRaw(n)), nonce: S(nonce), deadline: S(dl), signature }));
+  const rc = await confirm(n, await relay({ chainId: n.id, kind: "launch", user: s.address, launch: { name: l.name, symbol: l.symbol, metadataURI: l.metadataURI, lockSeconds: String(l.lockSeconds), feeMode: l.feeMode, launchUsdc: S(up(n, l.launchUsdc)), minCoinsOut: "0" }, fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
   const ev = parseEventLogs({ abi: HUB, logs: rc.logs as never, eventName: "CoinCreated" })[0];
   if (!ev) throw new TradeError("Launch went through but the coin wasn't found. Check your profile.");
   const a = ev.args as { coin: Address; curve: Address };
@@ -343,12 +378,12 @@ export async function withdraw(chainId: number, to: Address, amount: bigint, s: 
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (amount <= 0n) throw new TradeError("Enter an amount.");
-  const bal = await usdcBalance(chainId, s.address);
-  if (bal < amount + FEE) throw new TradeError("Not enough USDC (keep $0.01 for the network fee).");
-  await ensureAllowance(n, s, n.usdc, up(n, amount + FEE));
+  const [bal, fee] = await Promise.all([usdcBalance(chainId, s.address), netFee(chainId, "withdraw")]);
+  if (bal < amount + fee) throw new TradeError(`Not enough USDC (keep $${fromUsdc(fee).toFixed(2)} for the network fee).`);
+  await ensureAllowance(n, s, n.usdc, up(n, amount + fee));
   const nonce = randomNonce(), dl = deadline();
-  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Withdraw: TYPES.Withdraw }, primaryType: "Withdraw", message: { user: s.address, to, amount: up(n, amount), fee: feeRaw(n), nonce, deadline: dl } });
-  return confirm(n, await relay({ chainId: n.id, kind: "withdraw", user: s.address, to, amount: S(up(n, amount)), fee: S(feeRaw(n)), nonce: S(nonce), deadline: S(dl), signature }));
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Withdraw: TYPES.Withdraw }, primaryType: "Withdraw", message: { user: s.address, to, amount: up(n, amount), fee: up(n, fee), nonce, deadline: dl } });
+  return confirm(n, await relay({ chainId: n.id, kind: "withdraw", user: s.address, to, amount: S(up(n, amount)), fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
 }
 
 export async function promote(chainId: number, coin: Address, plan: 1 | 2 | 3, s: Signer, coinChainId: number = chainId) {
@@ -357,12 +392,12 @@ export async function promote(chainId: number, coin: Address, plan: 1 | 2 | 3, s
   const promoter = await client(chainId).readContract({ address: n.router, abi: ROUTER_VIEW, functionName: "promoter" });
   const [, price, active] = await client(chainId).readContract({ address: promoter, abi: PROMOTE, functionName: "plans", args: [plan] });
   if (!active) throw new TradeError("This promotion isn't available right now.");
-  const bal = await usdcBalance(chainId, s.address);
-  if (bal < down(n, price) + FEE) throw new TradeError("Not enough USDC to promote.");
-  await ensureAllowance(n, s, n.usdc, price + feeRaw(n));
+  const [bal, fee] = await Promise.all([usdcBalance(chainId, s.address), netFee(chainId, "promote")]);
+  if (bal < down(n, price) + fee) throw new TradeError("Not enough USDC to promote.");
+  await ensureAllowance(n, s, n.usdc, price + up(n, fee));
   const nonce = randomNonce(), dl = deadline();
-  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Promote: TYPES.Promote }, primaryType: "Promote", message: { user: s.address, coin, coinChainId: BigInt(coinChainId), plan, maxPrice: price, fee: feeRaw(n), nonce, deadline: dl } });
-  return confirm(n, await relay({ chainId: n.id, kind: "promote", user: s.address, coin, coinChainId: String(coinChainId), plan: String(plan), maxPrice: S(price), fee: S(feeRaw(n)), nonce: S(nonce), deadline: S(dl), signature }));
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Promote: TYPES.Promote }, primaryType: "Promote", message: { user: s.address, coin, coinChainId: BigInt(coinChainId), plan, maxPrice: price, fee: up(n, fee), nonce, deadline: dl } });
+  return confirm(n, await relay({ chainId: n.id, kind: "promote", user: s.address, coin, coinChainId: String(coinChainId), plan: String(plan), maxPrice: S(price), fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
 }
 
 export async function faucet(chainId: number, to: Address) {
@@ -494,6 +529,8 @@ export async function placeOrder(p: { chainId: number; coin: Address; curve: Add
   if (p.amount <= 0n) throw new TradeError("Enter an amount.");
   if (!(p.triggerMc > 0)) throw new TradeError("Pick a market cap.");
   const isBuy = p.kind === "limit_buy";
+  // orders fill later, maybe when gas is higher: they carry twice today's fee
+  const fee = (await netFee(p.chainId, p.pool ? (isBuy ? "poolBuy" : "poolSell") : (isBuy ? "buy" : "sell"))) * 2n;
   const price = p.triggerMc / 1e9; // USDC per coin at the trigger
   let min: bigint;
   if (isBuy) {
@@ -502,10 +539,10 @@ export async function placeOrder(p: { chainId: number; coin: Address; curve: Add
   } else {
     // stop loss gets more room (prices fall fast); take profit sells at or above the target
     const room = p.kind === "stop_loss" ? 0.8 : 0.96;
-    const v = fromCoin(p.amount) * price * 0.99 * room - fromUsdc(FEE);
+    const v = fromCoin(p.amount) * price * 0.99 * room - fromUsdc(fee);
     min = up(n, BigInt(Math.max(1, Math.floor(v * 1e6))));
   }
-  await ensureAllowance(n, s, isBuy ? n.usdc : p.coin, isBuy ? up(n, p.amount + FEE) : p.amount);
+  await ensureAllowance(n, s, isBuy ? n.usdc : p.coin, isBuy ? up(n, p.amount + fee) : p.amount);
   const nonce = randomNonce();
   const dl = BigInt(Math.floor(Date.now() / 1000) + 30 * 86400); // valid for 30 days
   const venue = p.pool ? "pool" : "curve";
@@ -514,8 +551,8 @@ export async function placeOrder(p: { chainId: number; coin: Address; curve: Add
   const primary = { buy: "Buy", sell: "Sell", poolBuy: "PoolBuy", poolSell: "PoolSell" }[reqKind];
   const target = p.pool ? { coin: p.coin } : { curve: p.curve as Address };
   const message = isBuy
-    ? { user: s.address, ...target, usdcIn: up(n, p.amount), minCoinsOut: min, fee: feeRaw(n), nonce, deadline: dl }
-    : { user: s.address, ...target, coinAmount: p.amount, minUsdcOut: min, fee: feeRaw(n), nonce, deadline: dl };
+    ? { user: s.address, ...target, usdcIn: up(n, p.amount), minCoinsOut: min, fee: up(n, fee), nonce, deadline: dl }
+    : { user: s.address, ...target, coinAmount: p.amount, minUsdcOut: min, fee: up(n, fee), nonce, deadline: dl };
   const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { [primary]: types }, primaryType: primary, message });
   const request = { kind: reqKind, ...Object.fromEntries(Object.entries(message).map(([k, v]) => [k, typeof v === "bigint" ? v.toString() : v])), signature };
   let r: Response;
