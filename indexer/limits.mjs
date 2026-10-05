@@ -3,9 +3,9 @@
 // unless LIMITS_ON=all.
 const num = (v, d) => { const x = Number(v); return Number.isFinite(x) && x >= 0 ? x : d; };
 export const LIMITS = {
-  trade: num(process.env.LIMIT_TRADE_USD, 500),
-  userDay: num(process.env.LIMIT_USER_DAY_USD, 2000),
-  day: num(process.env.LIMIT_DAY_USD, 50000),
+  trade: num(process.env.LIMIT_TRADE_USD, 100),
+  userDay: num(process.env.LIMIT_USER_DAY_USD, 500),
+  day: num(process.env.LIMIT_DAY_USD, 10000),
   on: (process.env.LIMITS_ON || "mainnet").toLowerCase(), // mainnet | all | off
 };
 const TESTNETS = new Set([84532, 46630, 97, 11155111, 421614]);

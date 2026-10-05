@@ -16,9 +16,13 @@ import { useInbox } from "./alerts";
 import { RefLinker } from "./community";
 import { useRouter } from "next/navigation";
 import { findByAddress } from "@/lib/live";
+import { NETS } from "@/lib/chain";
 
 type Ctx = { openLogin: () => void; openFunds: (t: "deposit" | "withdraw") => void; toast: (m: string) => void; loggedIn: boolean };
 const AppCtx = createContext<Ctx>({ openLogin: () => {}, openFunds: () => {}, toast: () => {}, loggedIn: false });
+// real money on any network (mainnet) -> the top strip says we are live
+const LIVE = NETS.some((n) => !n.faucet);
+
 export const useApp = () => useContext(AppCtx);
 
 export function Logo() {
@@ -211,7 +215,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider value={ctx}>
-      <a className="testnet-strip" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--on-volt)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}><span className="hide-m">Testnet is open: trade with free test USDC · Mainnet soon · Follow @Arkhampad →</span><span className="show-m">Testnet open · free test USDC · Follow @Arkhampad →</span></a>
+      <a className="testnet-strip" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--on-volt)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}>{LIVE ? <><span className="hide-m">Live on Robinhood Chain and Base · Follow @Arkhampad →</span><span className="show-m">Live on Robinhood and Base · Follow @Arkhampad →</span></> : <><span className="hide-m">Testnet is open: trade with free test USDC · Mainnet soon · Follow @Arkhampad →</span><span className="show-m">Testnet open · free test USDC · Follow @Arkhampad →</span></>}</a>
       <Ticker />
       <header className="hdr">
         <div className="wrap hdr-in">
