@@ -15,7 +15,7 @@ export const refreshInbox = () => subs.forEach((f) => f());
 export function useInbox() {
   const w = useWallet();
   const [data, setData] = useState<Inbox | null>(null);
-  const load = useCallback(async () => { if (w.address) setData(await inbox(w.address as Address)); else setData(null); }, [w.address]);
+  const load = useCallback(async () => { if (w.address && w.signer) setData(await inbox(w.signer)); else setData(null); }, [w.address, w.signer]);
   useEffect(() => { load(); subs.add(load); const iv = setInterval(load, 15_000); return () => { subs.delete(load); clearInterval(iv); }; }, [load]);
   return { data, reload: load };
 }

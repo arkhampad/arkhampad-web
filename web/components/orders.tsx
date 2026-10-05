@@ -14,7 +14,7 @@ export const refreshOrders = () => listeners.forEach((f) => f());
 export function useOrders() {
   const w = useWallet();
   const [orders, setOrders] = useState<Order[] | null>(null);
-  const load = useCallback(async () => { if (w.address) setOrders(await myOrders(w.address)); else setOrders([]); }, [w.address]);
+  const load = useCallback(async () => { if (w.address && w.signer) setOrders(await myOrders(w.signer)); else setOrders([]); }, [w.address, w.signer]);
   useEffect(() => {
     load();
     listeners.add(load);

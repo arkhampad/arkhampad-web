@@ -5,6 +5,7 @@
 //
 // Env: RELAYER_KEY (the relayer wallet's private key), and the chain RPC env vars.
 import fs from "node:fs";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, decodeFunctionResult, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress, verifyTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { moderate } from "./moderation.mjs";
@@ -532,6 +533,26 @@ export function makeRelayer() {
     return user.toLowerCase();
   }
 
+  // ---- read sessions: a wallet signs once, then reads its private data (orders, inbox) with a token
+  const SESSION_SECRET = createHash("sha256").update(`ap-session:${process.env.SESSION_SECRET || process.env.RELAYER_KEY || "dev"}`).digest();
+  const SESSION_TTL = 24 * 3600;
+  const mac = (msg) => createHmac("sha256", SESSION_SECRET).update(msg).digest("hex");
+  async function session(body) {
+    if (body?.action !== "session") throw err("bad request");
+    const user = await signedBy(body);
+    const exp = Math.floor(Date.now() / 1000) + SESSION_TTL;
+    return { token: `${user}.${exp}.${mac(`${user}.${exp}`)}`, exp };
+  }
+  /** The wallet a read token belongs to, or an error. */
+  function tokenUser(token) {
+    const [user, exp, sig] = String(token || "").split(".");
+    if (!user || !exp || !sig || !/^0x[0-9a-f]{40}$/.test(user)) throw err("Sign in again to see this.", 401);
+    if (Number(exp) < Date.now() / 1000) throw err("Session expired. Sign in again.", 401);
+    const want = Buffer.from(mac(`${user}.${exp}`), "hex"), got = Buffer.from(sig, "hex");
+    if (want.length !== got.length || !timingSafeEqual(want, got)) throw err("Sign in again to see this.", 401);
+    return user;
+  }
+
   async function action(body) {
     if (!db) throw err("Not available right now.", 503);
     const user = await signedBy(body);
@@ -703,7 +724,7 @@ export function makeRelayer() {
   function config() {
     return { relayer: account.address, minFee: String(MIN_FEE), vapidPublicKey: notifier?.publicKey ?? null, chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, usdDecimals: DEC(n), minFee: String(minFeeOf(n)), approvals: n.c.approvals ?? "permit", faucet: !!n.faucet })) };
   }
-  return { handle, config, feeQuote, health, graduate, saveImage, saveAvatar, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
+  return { handle, config, feeQuote, health, graduate, saveImage, saveAvatar, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, session, tokenUser, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -756,22 +777,23 @@ export function httpHandler(relayer, status) {
     }
     if (url === "/inbox" && req.method === "GET") {
       const q = new URL(req.url, "http://x").searchParams;
-      try { return res.end(JSON.stringify(await relayer.inbox(q.get("user")))); }
-      catch (e) { res.statusCode = 400; return res.end(JSON.stringify({ error: e.message })); }
+      // private: only the wallet's own session token can read it
+      try { return res.end(JSON.stringify(await relayer.inbox(relayer.tokenUser(q.get("token"))))); }
+      catch (e) { res.statusCode = e.status || 400; return res.end(JSON.stringify({ error: e.message })); }
     }
     if (url === "/orders" && req.method === "GET") {
       const q = new URL(req.url, "http://x").searchParams;
-      try { return res.end(JSON.stringify(await relayer.listOrders(q.get("user")))); }
-      catch (e) { res.statusCode = 400; return res.end(JSON.stringify({ error: e.message })); }
+      try { return res.end(JSON.stringify(await relayer.listOrders(relayer.tokenUser(q.get("token"))))); }
+      catch (e) { res.statusCode = e.status || 400; return res.end(JSON.stringify({ error: e.message })); }
     }
-    if ((url === "/orders" || url === "/orders/cancel" || url === "/follow" || url === "/action") && req.method === "POST") {
+    if ((url === "/orders" || url === "/orders/cancel" || url === "/follow" || url === "/action" || url === "/session") && req.method === "POST") {
       const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
       if (limited(ip)) { res.statusCode = 429; return res.end(JSON.stringify({ error: "Too many requests, slow down." })); }
       let raw = "";
       for await (const ch of req) { raw += ch; if (raw.length > 20_000) { res.statusCode = 413; return res.end(JSON.stringify({ error: "too large" })); } }
       let body;
       try { body = JSON.parse(raw); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad request" })); }
-      try { return res.end(JSON.stringify(url === "/orders" ? await relayer.createOrder(body) : url === "/follow" ? await relayer.setFollow(body) : url === "/action" ? await relayer.action(body) : await relayer.cancelOrder(body))); }
+      try { return res.end(JSON.stringify(url === "/orders" ? await relayer.createOrder(body) : url === "/follow" ? await relayer.setFollow(body) : url === "/action" ? await relayer.action(body) : url === "/session" ? await relayer.session(body) : await relayer.cancelOrder(body))); }
       catch (e) { res.statusCode = e.status || 500; if (!e.status) log("order error", e.message); return res.end(JSON.stringify({ error: e.status ? e.message : "Something went wrong. Please try again." })); }
     }
     if (url === "/avatar" && req.method === "POST") {

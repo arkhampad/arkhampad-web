@@ -564,8 +564,41 @@ export async function placeOrder(p: { chainId: number; coin: Address; curve: Add
   return j.id as string;
 }
 
-export async function myOrders(user: Address): Promise<Order[]> {
-  const r = await fetch(`${RELAYER}/orders?user=${user}`).catch(() => null);
+// ---- private reads (your orders and inbox): one signature per day per wallet, then a token
+const sessions = new Map<string, { token: string; exp: number }>();
+const pendingSession = new Map<string, Promise<string | null>>();
+export async function readToken(s: Signer | null): Promise<string | null> {
+  if (!s) return null;
+  const k = s.address.toLowerCase();
+  const now = Date.now() / 1000;
+  let have = sessions.get(k);
+  if (!have) { try { const raw = sessionStorage.getItem(`ap_sess_${k}`); if (raw) have = JSON.parse(raw); } catch { /* private mode */ } }
+  if (have && have.exp - 120 > now) { sessions.set(k, have); return have.token; }
+  if (pendingSession.has(k)) return pendingSession.get(k)!;
+  const p = (async () => {
+    try {
+      const time = BigInt(Math.floor(now));
+      const payload = {};
+      const hash = keccak256(new TextEncoder().encode(JSON.stringify(payload)));
+      const signature = await s.signTypedData(NETS[0].id, { domain: { name: "ArkhamPad", version: "1" }, types: { Request: [{ name: "action", type: "string" }, { name: "payload", type: "bytes32" }, { name: "time", type: "uint256" }] }, primaryType: "Request", message: { action: "session", payload: hash, time } });
+      const r = await fetch(`${RELAYER}/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user: s.address, action: "session", payload, time: time.toString(), signature }) });
+      if (!r.ok) return null;
+      const j = (await r.json()) as { token: string; exp: number };
+      sessions.set(k, j);
+      try { sessionStorage.setItem(`ap_sess_${k}`, JSON.stringify(j)); } catch { /* private mode */ }
+      return j.token;
+    } catch { return null; } finally { pendingSession.delete(k); }
+  })();
+  pendingSession.set(k, p);
+  return p;
+}
+const dropToken = (s: Signer) => { const k = s.address.toLowerCase(); sessions.delete(k); try { sessionStorage.removeItem(`ap_sess_${k}`); } catch { /* */ } };
+
+export async function myOrders(s: Signer | null): Promise<Order[]> {
+  const token = await readToken(s);
+  if (!token || !s) return [];
+  const r = await fetch(`${RELAYER}/orders?token=${encodeURIComponent(token)}`).catch(() => null);
+  if (r?.status === 401) dropToken(s);
   if (!r || !r.ok) return [];
   return r.json();
 }
@@ -603,8 +636,11 @@ export async function accountAction(action: string, payload: Record<string, unkn
 
 export type Note = { id: string; kind: string; title: string; body: string; url: string; read: boolean; created_at: string };
 export type PriceAlert = { id: string; chain_id: number; coin: string; tick: string; direction: "above" | "below"; target_mc: number; status: string; created_at: string; hit_at: string | null };
-export async function inbox(user: Address): Promise<{ notes: Note[]; unread: number; alerts: PriceAlert[] }> {
-  const r = await fetch(`${RELAYER}/inbox?user=${user}`).catch(() => null);
+export async function inbox(s: Signer | null): Promise<{ notes: Note[]; unread: number; alerts: PriceAlert[] }> {
+  const token = await readToken(s);
+  if (!token || !s) return { notes: [], unread: 0, alerts: [] };
+  const r = await fetch(`${RELAYER}/inbox?token=${encodeURIComponent(token)}`).catch(() => null);
+  if (r?.status === 401) dropToken(s);
   if (!r || !r.ok) return { notes: [], unread: 0, alerts: [] };
   return r.json();
 }
