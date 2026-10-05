@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -42,7 +43,8 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
     uint256 public constant BPS = 10_000;
     uint256 public constant COIN_CUT_BPS = 3_000; // 30% of pool fees to the coin side
     /// @notice Most USDC one buyback call spends in the pool.
-    uint256 public constant MAX_BUYBACK_STEP = 100e6;
+    /// @notice Most USDC one buyback call spends ($100, in the dollar token's own decimals).
+    uint256 public immutable MAX_BUYBACK_STEP;
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;
 
     IPoolManager public immutable poolManager;
@@ -98,6 +100,7 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
         ) revert ZeroAddress();
         poolManager = poolManager_;
         positionManager = positionManager_;
+        MAX_BUYBACK_STEP = 100 * 10 ** IERC20Metadata(address(usdc_)).decimals();
         permit2 = permit2_;
         usdc = usdc_;
         _deployer = msg.sender;

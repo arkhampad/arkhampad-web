@@ -34,7 +34,8 @@ const EV = {
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const usd = (x) => Number(x) / 1e6;
+/** Dollar amounts from the chain's dollar token (6 decimals for USDC/USDG, 18 on BNB). */
+const usdOf = (c) => (x) => Number(x) / 10 ** (c.usdDecimals ?? 6);
 const tok = (x) => Number(x) / 1e18;
 const lc = (a) => a.toLowerCase();
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -72,6 +73,7 @@ async function lastBlock(chainId, start) {
 
 
 async function syncChain(c, client) {
+  const usd = usdOf(c);
   const RANGE = RANGE_DEFAULT ?? BigInt(c.blockRange || 500);
   const head = await client.getBlockNumber().catch((err) => { throw new Error(`getBlockNumber: ${err.shortMessage || err.message}${err.details ? " | " + err.details : ""}`); });
   let from = (await lastBlock(c.chainId, c.startBlock)) + 1n;
@@ -211,7 +213,7 @@ async function syncChain(c, client) {
               const r = byId.get(e.args.id);
               if (!r) continue;
               const usdcIs0 = BigInt(c.usdc) < BigInt(r.address);
-              const t = poolTrade(e.args, usdcIs0);
+              const t = poolTrade(e.args, usdcIs0, c.usdDecimals ?? 6);
               let trader = lc(e.args.sender);
               if (c.router && trader === lc(c.router)) trader = viaPool.get(`${e.transactionHash}:${r.address}`) ?? trader;
               const at = await ts(e.blockNumber);

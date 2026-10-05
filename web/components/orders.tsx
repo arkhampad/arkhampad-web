@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "./shell";
 import { useWallet } from "./wallet";
-import { TradeError, cancelOrder, myOrders, type Order } from "@/lib/chain";
+import { NETS, TradeError, cancelOrder, myOrders, type Order } from "@/lib/chain";
 import { usd } from "@/lib/live";
 
 const LABEL: Record<string, string> = { limit_buy: "Limit buy", take_profit: "Take profit", stop_loss: "Stop loss" };
@@ -66,7 +66,7 @@ export function OrdersList({ coin, chainId, title = "Your orders" }: { coin?: st
           <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid var(--row)" }}>
             <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
               <b style={{ fontSize: 13 }}>{LABEL[o.kind]} <span className="mono dim" style={{ fontWeight: 500 }}>at {usd(o.trigger_mc)} MC</span></b>
-              <span className="mono dim" style={{ fontSize: 11 }}>{o.kind === "limit_buy" ? usd(Number(o.amount) / 1e6, 2) : `${(Number(o.amount) / 1e18).toLocaleString("en-US", { maximumFractionDigits: 0 })} coins`} · {o.status}{o.note && o.status !== "open" && o.status !== "filled" ? ` · ${o.note}` : ""}</span>
+              <span className="mono dim" style={{ fontSize: 11 }}>{o.kind === "limit_buy" ? usd(Number(o.amount) / 10 ** (NETS.find((n) => n.id === o.chain_id)?.usdDecimals ?? 6), 2) : `${(Number(o.amount) / 1e18).toLocaleString("en-US", { maximumFractionDigits: 0 })} coins`} · {o.status}{o.note && o.status !== "open" && o.status !== "filled" ? ` · ${o.note}` : ""}</span>
             </span>
             {o.status === "open" && <button type="button" className="btn ghost sm" disabled={busy === o.id} onClick={() => cancel(o)}>{busy === o.id ? "…" : "Cancel"}</button>}
           </div>

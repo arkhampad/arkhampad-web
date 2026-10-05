@@ -29,3 +29,9 @@ contract MockPoolBuilder is IPadPoolBuilder {
         buybackFunds += usdcAmount;
     }
 }
+
+/// BNB-style dollar: 18 decimals and no permit (users must approve once).
+contract MockUSD18 is ERC20 {
+    constructor() ERC20("Binance-Peg USD Coin", "USDC") {}
+    function mint(address to, uint256 amount) external { _mint(to, amount); }
+}

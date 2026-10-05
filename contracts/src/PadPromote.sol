@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title PadPromote
@@ -36,10 +37,11 @@ contract PadPromote {
         usdc = usdc_;
         admin = admin_;
         treasury = treasury_;
-        // 6 hours $10, 24 hours $20, 7 days $99
-        _setPlan(1, 6 hours, 10e6, true);
-        _setPlan(2, 24 hours, 20e6, true);
-        _setPlan(3, 7 days, 99e6, true);
+        // 6 hours $10, 24 hours $20, 7 days $99 (in the dollar token's own decimals)
+        uint256 d = 10 ** IERC20Metadata(address(usdc_)).decimals();
+        _setPlan(1, 6 hours, uint128(10 * d), true);
+        _setPlan(2, 24 hours, uint128(20 * d), true);
+        _setPlan(3, 7 days, uint128(99 * d), true);
     }
 
     /// @notice Promotes `coin` (a coin on chain `chainId`; any chain the site lists).

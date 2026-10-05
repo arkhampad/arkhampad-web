@@ -7,7 +7,7 @@ import { ICopy, IFire, IGlobe, IRocket, ISpark, IX } from "@/components/icons";
 import { useApp } from "@/components/shell";
 import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCoin } from "@/lib/share";
 import { useWallet } from "@/components/wallet";
-import { FEE, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage } from "@/lib/chain";
+import { FEE, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage } from "@/lib/chain";
 
 const PALETTE = [["#1B1F6B", "#7C5CFF"], ["#0B3B2E", "#2BB38A"], ["#3B1B0B", "#FF8A3D"]];
 const OPTS0 = [
@@ -31,7 +31,9 @@ function CreateView() {
   const [name, setName] = useState(OPTS0[0].name);
   const [tick, setTick] = useState(OPTS0[0].tick);
   const [desc, setDesc] = useState(OPTS0[0].desc);
-  const [chain, setChain] = useState("Base");
+  // networks come from the site config (testnet: Robinhood + Base; mainnet adds more)
+  const CHAINS = NETS.map((n) => ({ id: n.id, name: n.short, color: n.short === "Robinhood" ? "var(--rh)" : n.short === "Base" ? "var(--base)" : n.short === "BNB" ? "#F0B90B" : "var(--volt)" }));
+  const [chain, setChain] = useState(CHAINS.find((c) => c.name === "Base")?.name ?? CHAINS[0].name);
   const [lock, setLock] = useState("Lock 24h");
   const [fee, setFee] = useState("burn");
   const [boost, setBoost] = useState("none");
@@ -46,7 +48,7 @@ function CreateView() {
   const [imgPreview, setImgPreview] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const w = useWallet();
-  const chainId = chain === "Base" ? 84532 : 46630;
+  const chainId = (CHAINS.find((c) => c.name === chain) ?? CHAINS[0]).id;
   const cash = fromUsdc(w.usdc[chainId] ?? 0n);
   const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(FEE) * (boost === "none" ? 1 : 2);
   const o = OPTS[pick];
@@ -216,7 +218,7 @@ function CreateView() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Label t="Chain" sub="pick one" />
           <div className="grid2 keep" style={{ gap: 8 }}>
-            {[["Robinhood", "var(--rh)"], ["Base", "var(--base)"]].map(([n, col]) => (
+            {CHAINS.map(({ name: n, color: col }) => (
               <button key={n} type="button" onClick={() => setChain(n)} className="seg" style={{ height: 46, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 700, fontSize: 14, border: chain === n ? `2px solid ${col}` : undefined }}><span className="dot" style={{ width: 10, height: 10, background: col }} />{n}</button>
             ))}
           </div>

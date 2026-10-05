@@ -75,3 +75,11 @@ contract RobinhoodMainnetForkTest is ForkBase {
         _setup("ROBINHOOD_RPC", 0x8366a39CC670B4001A1121B8F6A443A643e40951, 0x58daec3116aae6D93017bAAea7749052E8a04fA7, 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168);
     }
 }
+
+/// BNB Chain mainnet: 18-decimal USDC without permit (users approve once, with gas the relayer tops up),
+/// trading, graduation into the real Uniswap v4.
+contract BnbMainnetForkTest is ForkBase {
+    function setUp() public {
+        _setup("BNB_RPC", 0x28e2Ea090877bF75740558f6BFB36A5ffeE9e9dF, 0x7A4a5c919aE2541AeD11041A1AEeE68f1287f95b, 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d);
+    }
+}

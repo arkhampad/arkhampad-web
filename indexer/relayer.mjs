@@ -77,7 +77,10 @@ const addr = (v, name) => { if (typeof v !== "string" || !isAddress(v)) throw ne
 const hex = (v, name) => { if (typeof v !== "string" || !isHex(v)) throw new Error(`${name} is not hex`); return v; };
 const str = (v, name, max) => { if (typeof v !== "string" || v.length > max) throw new Error(`${name} too long`); return v; };
 const sigOf = (b) => ({ deadline: big(b.deadline, "deadline"), nonce: big(b.nonce, "nonce"), signature: hex(b.signature, "signature") });
-const feeOf = (b) => { const f = big(b.fee, "fee"); if (f < MIN_FEE) throw new Error("fee too low"); return f; };
+/** $0.01 in a network's dollar token (6 decimals for USDC/USDG, 18 on BNB). */
+const DEC = (n) => n?.c?.usdDecimals ?? 6;
+const minFeeOf = (n) => (n ? 10n ** BigInt(DEC(n) - 2) : MIN_FEE);
+const feeOf = (b, n) => { const f = big(b.fee, "fee"); if (f < minFeeOf(n)) throw new Error("fee too low"); return f; };
 
 const IMG_MAX = 200_000; // bytes of image data
 
@@ -124,6 +127,7 @@ export function makeRelayer() {
   let notifier = null;
   let og = null;
   const upkeepLast = new Map();
+  const dripLog = new Map(); // user -> [timestamps] for gas top-ups
   log(`relayer ${account.address} on ${[...nets.values()].map((n) => n.c.name).join(", ")}`);
 
   async function send(n, to, data, fixedGas) {
@@ -157,24 +161,24 @@ export function makeRelayer() {
       fixedGas = 200_000n;
     } else if (kind === "buy") {
       fixedGas = 700_000n;
-      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "buy", args: [addr(body.user, "user"), addr(body.curve, "curve"), big(body.usdcIn, "usdcIn"), big(body.minCoinsOut, "minCoinsOut"), feeOf(body), sigOf(body)] });
+      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "buy", args: [addr(body.user, "user"), addr(body.curve, "curve"), big(body.usdcIn, "usdcIn"), big(body.minCoinsOut, "minCoinsOut"), feeOf(body, n), sigOf(body)] });
     } else if (kind === "sell") {
       fixedGas = 700_000n;
-      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "sell", args: [addr(body.user, "user"), addr(body.curve, "curve"), big(body.coinAmount, "coinAmount"), big(body.minUsdcOut, "minUsdcOut"), feeOf(body), sigOf(body)] });
+      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "sell", args: [addr(body.user, "user"), addr(body.curve, "curve"), big(body.coinAmount, "coinAmount"), big(body.minUsdcOut, "minUsdcOut"), feeOf(body, n), sigOf(body)] });
     } else if (kind === "poolBuy") {
       fixedGas = 900_000n;
-      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "poolBuy", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.usdcIn, "usdcIn"), big(body.minCoinsOut, "minCoinsOut"), feeOf(body), sigOf(body)] });
+      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "poolBuy", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.usdcIn, "usdcIn"), big(body.minCoinsOut, "minCoinsOut"), feeOf(body, n), sigOf(body)] });
     } else if (kind === "poolSell") {
       fixedGas = 900_000n;
-      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "poolSell", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.coinAmount, "coinAmount"), big(body.minUsdcOut, "minUsdcOut"), feeOf(body), sigOf(body)] });
+      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "poolSell", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.coinAmount, "coinAmount"), big(body.minUsdcOut, "minUsdcOut"), feeOf(body, n), sigOf(body)] });
     } else if (kind === "launch") {
       const l = body.launch ?? {};
       const launch = { name: str(l.name, "name", 32), symbol: str(l.symbol, "symbol", 10), metadataURI: str(l.metadataURI ?? "", "metadataURI", 1200), lockSeconds: big(l.lockSeconds, "lockSeconds"), feeMode: Number(l.feeMode) === 1 ? 1 : 0, launchUsdc: big(l.launchUsdc, "launchUsdc"), minCoinsOut: big(l.minCoinsOut, "minCoinsOut") };
-      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "launch", args: [addr(body.user, "user"), launch, feeOf(body), sigOf(body)] });
+      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "launch", args: [addr(body.user, "user"), launch, feeOf(body, n), sigOf(body)] });
     } else if (kind === "withdraw") {
-      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "withdraw", args: [addr(body.user, "user"), addr(body.to, "to"), big(body.amount, "amount"), feeOf(body), sigOf(body)] });
+      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "withdraw", args: [addr(body.user, "user"), addr(body.to, "to"), big(body.amount, "amount"), feeOf(body, n), sigOf(body)] });
     } else if (kind === "promote") {
-      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "promote", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.coinChainId, "coinChainId"), Number(big(body.plan, "plan")), big(body.maxPrice, "maxPrice"), feeOf(body), sigOf(body)] });
+      data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "promote", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.coinChainId, "coinChainId"), Number(big(body.plan, "plan")), big(body.maxPrice, "maxPrice"), feeOf(body, n), sigOf(body)] });
     } else if (kind === "cancel") {
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "cancel", args: [addr(body.user, "user"), big(body.nonce, "nonce"), hex(body.signature, "signature")] });
     } else if (kind === "extSwap") {
@@ -182,7 +186,7 @@ export function makeRelayer() {
       if (!n.c.extSwap) { const e = new Error("Trading coins from other DEXs opens on mainnet."); e.status = 400; throw e; }
       const w = body.swap ?? {};
       to = getAddress(n.c.extSwap);
-      data = encodeFunctionData({ abi: EXT_ABI, functionName: "swap", args: [{ user: addr(w.user, "user"), isBuy: w.isBuy === true, coin: addr(w.coin, "coin"), amountIn: big(w.amountIn, "amountIn"), minOut: big(w.minOut, "minOut"), target: addr(w.target, "target"), data: hex(w.data, "data"), fee: feeOf(w), nonce: big(w.nonce, "nonce"), deadline: big(w.deadline, "deadline"), signature: hex(w.signature, "signature") }] });
+      data = encodeFunctionData({ abi: EXT_ABI, functionName: "swap", args: [{ user: addr(w.user, "user"), isBuy: w.isBuy === true, coin: addr(w.coin, "coin"), amountIn: big(w.amountIn, "amountIn"), minOut: big(w.minOut, "minOut"), target: addr(w.target, "target"), data: hex(w.data, "data"), fee: feeOf(w, n), nonce: big(w.nonce, "nonce"), deadline: big(w.deadline, "deadline"), signature: hex(w.signature, "signature") }] });
       fixedGas = 1_500_000n;
     } else if (kind === "permitExt") {
       // EIP-2612 approval for PadExtSwap (USDC or a coin that supports permit)
@@ -191,6 +195,31 @@ export function makeRelayer() {
       to = addr(body.token, "token");
       data = encodeFunctionData({ abi: PERMIT_ABI, functionName: "permit", args: [addr(body.owner, "owner"), getAddress(n.c.extSwap), big(body.value, "value"), big(body.deadline, "deadline"), Number(v ?? 27n), r, ss] });
       fixedGas = 200_000n;
+    } else if (kind === "gas") {
+      // Networks whose dollar has no permit (BNB): give the user just enough gas for one approve.
+      if (n.c.approvals !== "gas") { const e = new Error("Not needed on this network."); e.status = 400; throw e; }
+      const user = addr(body.user, "user"), token = addr(body.token, "token");
+      const spender = body.spender === "ext" && n.c.extSwap ? getAddress(n.c.extSwap) : n.router;
+      const ERC = [{ type: "function", name: "allowance", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] }, { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }];
+      const [allow, bal, native, gasPrice] = await Promise.all([
+        n.pub.readContract({ address: token, abi: ERC, functionName: "allowance", args: [user, spender] }),
+        n.pub.readContract({ address: token, abi: ERC, functionName: "balanceOf", args: [user] }),
+        n.pub.getBalance({ address: user }),
+        n.pub.getGasPrice(),
+      ]);
+      if (allow >= 2n ** 128n) return { ok: true, already: true };
+      if (bal === 0n) { const e = new Error("Nothing to approve yet."); e.status = 400; throw e; }
+      const need = (gasPrice * 130_000n * 3n) / 2n; // one approve, with room
+      if (native >= need) return { ok: true, already: true };
+      const day = Date.now() - 86_400_000;
+      const seen = (dripLog.get(user) ?? []).filter((t) => t > day);
+      if (seen.length >= 6) { const e = new Error("Too many approvals today. Please try again tomorrow."); e.status = 429; throw e; }
+      dripLog.set(user, [...seen, Date.now()]);
+      const t0 = Date.now();
+      const hash = await n.wallet.sendTransaction({ to: user, value: need - native, gas: 21_000n });
+      await n.pub.waitForTransactionReceipt({ hash, pollingInterval: 150, timeout: 60_000 });
+      log(`${n.c.name} gas top-up ${user} ${need - native} wei ${hash} (${Date.now() - t0}ms)`);
+      return { hash, status: "success", logs: [] };
     } else if (kind === "settle" || kind === "collect" || kind === "buyback") {
       // Anyone can trigger these; they only move fees where the contracts say. One per coin a minute.
       const target = addr(kind === "settle" ? body.curve : body.coin, kind === "settle" ? "curve" : "coin");
@@ -319,7 +348,7 @@ export function makeRelayer() {
     const dl = big(r.deadline, "deadline");
     const now = BigInt(Math.floor(Date.now() / 1000));
     if (dl < now + 60n || dl > now + 31n * 86400n) throw err("Order must last between a minute and a month.");
-    feeOf(r);
+    feeOf(r, n);
     // the signature must really be the user's, for exactly these numbers
     const t = SIGNED[r.kind];
     const message = Object.fromEntries(t.fields.map((f) => [f.name, f.type === "address" ? getAddress(r[f.name]) : big(r[f.name], f.name)]));
@@ -367,11 +396,11 @@ export function makeRelayer() {
         n.pub.readContract({ address: curve, abi: CURVE_PRICE_ABI, functionName: "vUsdc" }),
         n.pub.readContract({ address: curve, abi: CURVE_PRICE_ABI, functionName: "vCoin" }),
       ]);
-      return (Number(v) / 1e6) / (Number(t) / 1e18) * 1e9;
+      return (Number(v) / 10 ** DEC(n)) / (Number(t) / 1e18) * 1e9;
     }
     // pool: what 1 coin sells for right now
     const { result } = await n.pub.simulateContract({ address: n.router, abi: QUOTE_POOL_ABI, functionName: "quotePool", args: [getAddress(o.coin), false, 10n ** 18n], account: account.address });
-    return (Number(result) / 1e6) * 1e9;
+    return (Number(result) / 10 ** DEC(n)) * 1e9;
   }
 
   const inflight = new Set();
@@ -504,19 +533,19 @@ export function makeRelayer() {
         const row = (await db.query("select earned, paid from ref_earnings($1) where chain_id=$2", [user, n.c.chainId])).rows[0];
         const due = row ? Number(row.earned) - Number(row.paid) : 0;
         if (due < 1) throw err("You can claim from $1.00.");
-        const amount = BigInt(Math.floor(due * 1e6));
+        const amount = BigInt(Math.floor(due * 1e6)) * 10n ** BigInt(DEC(n) - 6);
         const usdc = getAddress(n.c.usdc);
         const bal = await n.pub.readContract({ address: usdc, abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }], functionName: "balanceOf", args: [account.address] });
         if (bal < amount) throw err("Payouts are being topped up. Please try again later.", 503);
         // record first (so a double tap can't pay twice), then send
-        const ins = await db.query(`insert into ref_payouts (referrer, chain_id, amount) values ($1,$2,$3) returning id`, [user, n.c.chainId, Number(amount) / 1e6]);
+        const ins = await db.query(`insert into ref_payouts (referrer, chain_id, amount) values ($1,$2,$3) returning id`, [user, n.c.chainId, Number(amount) / 10 ** DEC(n)]);
         try {
           const data = encodeFunctionData({ abi: [{ type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] }], functionName: "transfer", args: [getAddress(user), amount] });
           const hash = await send(n, usdc, data, 120_000n);
           await n.pub.waitForTransactionReceipt({ hash, timeout: 60_000 });
           await db.query("update ref_payouts set tx_hash=$2 where id=$1", [ins.rows[0].id, hash]);
-          log(`${n.c.name} referral payout ${user} $${(Number(amount) / 1e6).toFixed(2)} ${hash}`);
-          return { paid: Number(amount) / 1e6, hash };
+          log(`${n.c.name} referral payout ${user} $${(Number(amount) / 10 ** DEC(n)).toFixed(2)} ${hash}`);
+          return { paid: Number(amount) / 10 ** DEC(n), hash };
         } catch (e) {
           await db.query("delete from ref_payouts where id=$1", [ins.rows[0].id]);
           throw err("Payout failed. Please try again.", 502);
@@ -585,7 +614,7 @@ export function makeRelayer() {
   setInterval(() => { alertTick().catch((e) => log(`alerts error: ${e.message}`)); }, Number(process.env.ALERT_TICK_MS ?? 15_000));
 
   function config() {
-    return { relayer: account.address, minFee: String(MIN_FEE), vapidPublicKey: notifier?.publicKey ?? null, chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, faucet: !!n.faucet })) };
+    return { relayer: account.address, minFee: String(MIN_FEE), vapidPublicKey: notifier?.publicKey ?? null, chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, usdDecimals: DEC(n), minFee: String(minFeeOf(n)), approvals: n.c.approvals ?? "permit", faucet: !!n.faucet })) };
   }
   return { handle, config, graduate, saveImage, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
 }

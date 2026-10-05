@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Address, Hex } from "viem";
-import { NETS, onLocalTrade, usdcBalance, type Signer, type TypedData } from "@/lib/chain";
+import { NETS, onLocalTrade, usdcBalance, type Signer, type TypedData, sendWithAccount } from "@/lib/chain";
 import type { AuthState } from "./privy-root";
 
 export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID || "cmus4w0sd00h00cjst76oq5h6";
@@ -90,7 +90,7 @@ function DevBridge({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     import("viem/accounts").then(({ privateKeyToAccount }) => {
       const acct = privateKeyToAccount(DEV_PK as Hex);
-      setSigner({ address: acct.address, signTypedData: (_chainId: number, t: TypedData) => acct.signTypedData(t as never) });
+      setSigner({ address: acct.address, signTypedData: (_chainId: number, t: TypedData) => acct.signTypedData(t as never), sendTx: (chainId, tx) => sendWithAccount(acct, chainId, tx) });
     });
   }, []);
   const value = useMemo(() => ({ ready: !!signer, signedIn: on && !!signer, address: on && signer ? signer.address : null, login: () => setOn(true), logout: () => setOn(false), signer: on ? signer : null }), [on, signer]);

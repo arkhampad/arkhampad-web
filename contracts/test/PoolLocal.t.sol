@@ -15,13 +15,14 @@ import {PadCurve} from "../src/PadCurve.sol";
 /// @notice Full flow against a fresh local Uniswap v4 deployment.
 abstract contract PoolLocalBase is PoolFlow, DeployPermit2 {
     function _usdcAt() internal virtual returns (address);
+    function _mock() internal virtual returns (string memory) { return "Mocks.sol:MockUSDC"; }
 
     function setUp() public {
         pm = IPoolManager(deployCode("out/PoolManager.sol/PoolManager.json", abi.encode(address(this))));
         permit2 = IAllowanceTransfer(deployPermit2());
         posm = IPositionManager(deployCode("out/PositionManager.sol/PositionManager.json", abi.encode(pm, permit2, uint256(300_000), IPositionDescriptor(address(0)), IWETH9(address(0)))));
         address at = _usdcAt();
-        deployCodeTo("Mocks.sol:MockUSDC", at);
+        deployCodeTo(_mock(), at);
         usdc = IERC20(at);
         _deployPad();
     }
@@ -48,4 +49,14 @@ contract PoolLocalUsdcLowTest is PoolLocalBase {
 contract PoolLocalUsdcHighTest is PoolLocalBase {
     function _usdcAt() internal pure override returns (address) { return address(0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF); }
     function test_order() public { vm.prank(creator); (address c,) = hub.createCoin("A", "A", "", 0, PadCurve.FeeMode.ToCreator, 0, 0); assertFalse(builder.usdcIsCurrency0(c)); }
+}
+
+/// BNB-style dollar (18 decimals, no permit), sorting first and last.
+contract PoolLocalUsd18LowTest is PoolLocalBase {
+    function _usdcAt() internal pure override returns (address) { return address(0x0000000000000000000000000000000000001000); }
+    function _mock() internal pure override returns (string memory) { return "Mocks.sol:MockUSD18"; }
+}
+contract PoolLocalUsd18HighTest is PoolLocalBase {
+    function _usdcAt() internal pure override returns (address) { return address(0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF); }
+    function _mock() internal pure override returns (string memory) { return "Mocks.sol:MockUSD18"; }
 }

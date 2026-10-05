@@ -32,3 +32,12 @@ test("sell, coin is currency0 (swapper receives USDC: positive)", () => {
   assert.equal(t.coins, 500_000);
   assert.ok(Math.abs(t.price / price - 1) < 1e-6);
 });
+
+test("BNB: 18-decimal dollar, sell, coin is currency0", () => {
+  const price = 0.0000123;
+  const ratio = price; // both 18 decimals: dollar raw per coin raw == price
+  const t = poolTrade({ amount0: -500_000n * 10n ** 18n, amount1: 6_100_000_000_000_000_000n, sqrtPriceX96: BigInt(Math.round(Math.sqrt(ratio) * 2 ** 96)) }, false, 18);
+  assert.equal(t.isBuy, false);
+  assert.equal(t.usdc, 6.1);
+  assert.ok(Math.abs(t.price / price - 1) < 1e-6);
+});

@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
 import type { Chain, Coin } from "./mock";
 import { shareCoinCard, prepareCard } from "./share";
+import { NETS } from "./chain";
 export { prepareCard };
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://yvdudswzmdziwnfurwir.supabase.co";
@@ -16,7 +17,7 @@ export function db() {
 }
 
 // Our launchpad runs on testnets for now; other DEX coins come from mainnets.
-export const OWN_CHAINS = [84532, 46630];
+export const OWN_CHAINS = NETS.map((n) => n.id);
 export const chainName = (id: number): Chain => (id === 8453 || id === 84532 ? "Base" : id === 56 || id === 97 ? "BNB" : id === 5042 ? "Arc" : "Robinhood");
 export const isOwnChain = (id: number) => OWN_CHAINS.includes(id);
 

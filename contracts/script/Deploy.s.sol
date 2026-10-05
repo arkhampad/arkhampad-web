@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -38,6 +39,9 @@ contract Deploy is Script {
             v = V4(0x8366a39CC670B4001A1121B8F6A443A643e40951, 0x58daec3116aae6D93017bAAea7749052E8a04fA7, 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168);
         } else if (block.chainid == 84532) {
             v = V4(0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408, 0x4B2C77d209D3405F41a037Ec6c77F7F5b8e2ca80, 0x036CbD53842c5426634e7929541eC2318f3dCF7e);
+        } else if (block.chainid == 56) {
+            // BNB Chain mainnet: Binance-Peg USDC has 18 decimals and no permit
+            v = V4(0x28e2Ea090877bF75740558f6BFB36A5ffeE9e9dF, 0x7A4a5c919aE2541AeD11041A1AEeE68f1287f95b, 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d);
         } else if (block.chainid == 8453) {
             v = V4(0x498581fF718922c3f8e6A244956aF099B2652b2b, 0x7C5f5A4bBd8fD63184577525326123B519429bDc, 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
         } else {
@@ -73,15 +77,17 @@ contract Deploy is Script {
         bool testCurve = keccak256(bytes(vm.envOr("CURVE", string("main")))) == keccak256("test");
         V4 memory v = _chain();
 
-        PadHub.CurveParams memory cp = testCurve
-            ? PadHub.CurveParams({vUsdc: 450e6, vCoin: 1e27, coinsForSale: 225403330717033245926072205, coinsReserved: 774596669282966754073927795})
-            : PadHub.CurveParams({vUsdc: 4500e6, vCoin: 1e27, coinsForSale: 225403330717033245926072205, coinsReserved: 774596669282966754073927795});
-
         vm.startBroadcast(key);
         if (v.usdc == address(0)) {
-            require(block.chainid != 4663 && block.chainid != 8453, "set USDC on mainnet");
+            require(block.chainid != 4663 && block.chainid != 8453 && block.chainid != 56, "set USDC on mainnet");
             v.usdc = address(new TestUSDC());
         }
+        // curve sizes in the dollar token's own decimals (6 for USDC/USDG, 18 on BNB)
+        uint256 dollar = 10 ** IERC20Metadata(v.usdc).decimals();
+        PadHub.CurveParams memory cp = PadHub.CurveParams({
+            vUsdc: (testCurve ? 450 : 4500) * dollar, vCoin: 1e27,
+            coinsForSale: 225403330717033245926072205, coinsReserved: 774596669282966754073927795
+        });
         uint64 nonce = vm.getNonce(deployer);
         address builderAddr = vm.computeCreateAddress(deployer, nonce);
         bytes32 salt = _mine(builderAddr, v.poolManager, builderAddr);

@@ -1,9 +1,9 @@
 "use client";
 // Loaded after the page is on screen, so sign-in code never slows the first paint.
-import { PrivyProvider, usePrivy, useSignTypedData, useWallets, type ConnectedWallet } from "@privy-io/react-auth";
+import { PrivyProvider, usePrivy, useSendTransaction, useSignTypedData, useWallets, type ConnectedWallet } from "@privy-io/react-auth";
 import { useEffect, useMemo, useRef } from "react";
 import type { Address, Hex } from "viem";
-import { baseSepolia } from "viem/chains";
+import { baseSepolia, bsc } from "viem/chains";
 import { robinhoodTestnet, type Signer, type TypedData } from "@/lib/chain";
 
 export type AuthState = { ready: boolean; address: Address | null; signer: Signer | null; login: () => void; logout: () => void };
@@ -17,6 +17,9 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
   const { ready, authenticated, login, logout } = usePrivy();
   const { wallets } = useWallets();
   const { signTypedData } = useSignTypedData();
+  const { sendTransaction } = useSendTransaction();
+  const sendRef = useRef(sendTransaction);
+  sendRef.current = sendTransaction;
   const wallet: ConnectedWallet | undefined = useMemo(() => wallets.find((w) => w.walletClientType === "privy") ?? wallets[0], [wallets]);
   const address = authenticated && wallet ? (wallet.address as Address) : null;
   // The signer object must stay the same between renders (only the address matters),
@@ -29,6 +32,18 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
     if (!address) return null;
     return {
       address,
+      sendTx: async (chainId: number, tx: { to: Address; data: Hex }) => {
+        const w = walletRef.current;
+        if (!w) throw new Error("Wallet not ready. Please try again.");
+        if (w.walletClientType === "privy") {
+          // embedded wallet: sends silently (gas was topped up by ArkhamPad)
+          const { hash } = await sendRef.current({ to: tx.to, data: tx.data, chainId }, { address: w.address, uiOptions: { showWalletUIs: false } });
+          return hash as Hex;
+        }
+        if (Number(String(w.chainId).split(":").pop()) !== chainId) await w.switchChain(chainId);
+        const provider = await w.getEthereumProvider();
+        return (await provider.request({ method: "eth_sendTransaction", params: [{ from: w.address, to: tx.to, data: tx.data }] })) as Hex;
+      },
       signTypedData: async (chainId: number, t: TypedData) => {
         const w = walletRef.current;
         if (!w) throw new Error("Wallet not ready. Please try again.");
@@ -65,7 +80,7 @@ const CONFIG = {
   loginMethods: (process.env.NEXT_PUBLIC_TELEGRAM_LOGIN === "1" ? ["google", "twitter", "telegram", "email", "wallet"] : ["google", "twitter", "email", "wallet"]) as ("google" | "twitter" | "telegram" | "email" | "wallet")[],
   appearance: { theme: "dark" as const, accentColor: "#D4FF3A" as `#${string}`, logo: "/icon-192.png", landingHeader: "Sign in to ArkhamPad", showWalletLoginFirst: false },
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" as const }, showWalletUIs: false },
-  supportedChains: [baseSepolia, robinhoodTestnet],
+  supportedChains: [baseSepolia, robinhoodTestnet, bsc],
   defaultChain: baseSepolia,
 };
 
