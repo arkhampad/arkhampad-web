@@ -3,7 +3,7 @@ import { initials, sparkPath } from "@/lib/util";
 import { useEffect, useId, useState } from "react";
 import type { Chain } from "@/lib/types";
 
-export function Avatar({ name, c1, c2, size = 40, round = false, img }: { name: string; c1: string; c2: string; size?: number; round?: boolean; img?: string | null }) {
+export function Avatar({ name, c1, c2, size = 40, round = true, img }: { name: string; c1: string; c2: string; size?: number; round?: boolean; img?: string | null }) {
   const [broken, setBroken] = useState(false);
   const radius = round ? "50%" : Math.round(size * 0.3);
   if (img && !broken) {

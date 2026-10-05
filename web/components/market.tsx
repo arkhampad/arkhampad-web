@@ -10,14 +10,12 @@ const href = (c: Coin) => `/coin/?c=${c.id}`;
 /** Compact featured coin card: tap anywhere to open the coin. */
 export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
   const p = Math.max(0, Math.min(100, c.progress));
-  // heartbeat speeds up as the coin nears graduation
-  const beat = p >= 70 ? `${(1.4 - ((p - 70) / 30) * 1.0).toFixed(2)}s` : "0s";
   return (
     <Link href={href(c)} className="card click-card hc">
       <span className="hc-top">
         <Avatar name={c.name} c1={c.c1} c2={c.c2} size={34} img={c.image} />
         <span className="hc-name"><b>{c.name}</b><span className="mono">{c.tick} · {c.chain} · {c.age}</span></span>
-        {grad ? <span className="mono hc-pct">{p >= 70 && <span className="beat" aria-hidden="true" style={{ ["--beat" as string]: beat }}>🔥</span>}{p.toFixed(0)}%</span> : <Chg n={c.chg} />}
+        {grad ? <span className="mono hc-pct">{p.toFixed(0)}%</span> : <Chg n={c.chg} />}
       </span>
       {grad ? (
         <>
@@ -93,20 +91,23 @@ export function CoinTable({ list, start = 0 }: { list: Coin[]; start?: number })
   );
 }
 
+/** Phone list, app-style: name and market cap on the left, price and 24h change on the right. */
 export function CoinRows({ list }: { list: Coin[] }) {
   return (
     <div>
       {list.map((c) => (
-        <Link key={c.id} href={href(c)} className="lrow">
-          <Avatar name={c.name} c1={c.c1} c2={c.c2} size={36} img={c.image} />
-          <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-            <span style={{ fontWeight: 650, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
-            <span className="mono dim" style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}><span className="dot" style={{ width: 6, height: 6, background: c.chain === "Base" ? "var(--base)" : c.chain === "BNB" ? "var(--bnb)" : c.chain === "Arc" ? "var(--arc)" : "var(--rh)" }} />{c.tick} · {c.age}</span>
+        <Link key={c.id} href={href(c)} className="lrow arow">
+          <span className="arow-av">
+            <Avatar name={c.name} c1={c.c1} c2={c.c2} size={40} img={c.image} />
+            <i style={{ background: c.chain === "Base" ? "var(--base)" : c.chain === "BNB" ? "var(--bnb)" : c.chain === "Arc" ? "var(--arc)" : "var(--rh)" }} aria-label={c.chain} />
           </span>
-          <span style={{ width: 52, flex: "none" }}><Spark vals={c.spark} up={c.chg >= 0} height={22} fill={false} stroke={1.8} /></span>
-          <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, minWidth: 74 }}>
-            <span className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{c.mc}</span>
-            <span className={`mono ${c.chg >= 0 ? "up" : "down"}`} style={{ fontWeight: 700, fontSize: 12 }}>{c.chg >= 0 ? "+" : ""}{c.chg.toFixed(1)}%</span>
+          <span className="arow-l">
+            <b>{c.tick}</b>
+            <span className="mono">{c.mc} MC</span>
+          </span>
+          <span className="arow-r">
+            <b className="mono">{c.price}</b>
+            <span className={`mono ${c.chg >= 0 ? "up" : "down"}`}>{c.chg >= 0 ? "▲" : "▼"} {Math.abs(c.chg).toFixed(2)}%</span>
           </span>
         </Link>
       ))}

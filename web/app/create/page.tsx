@@ -194,7 +194,7 @@ function CreateView() {
     </div>
   );
 
-  const SPARKS: [string, string][] = [["🐸 Frog trader", "A frog that trades on Robinhood"], ["🐼 Panda astronaut", "A sleepy panda astronaut"], ["🍕 Moon pizza", "Pizza that goes to the moon"], ["🐱 Surfing cat", "A cat that surfs the ocean waves"], ["👑 King shiba", "A shiba inu wearing a crown"], ["🤖 Meme robot", "A robot that only eats memes"], ["🦆 Pirate duck", "A pirate duck looking for treasure"], ["🐧 DJ penguin", "A penguin DJ at an ice party"], ["🐉 Gold dragon", "A dragon made of gold coins"], ["🍌 Rocket banana", "A banana on a rocket"]];
+  const SPARKS: [string, string][] = [["Frog trader", "A frog that trades on Robinhood"], ["Panda astronaut", "A sleepy panda astronaut"], ["Moon pizza", "Pizza that goes to the moon"], ["Surfing cat", "A cat that surfs the ocean waves"], ["King shiba", "A shiba inu wearing a crown"], ["Meme robot", "A robot that only eats memes"], ["Pirate duck", "A pirate duck looking for treasure"], ["DJ penguin", "A penguin DJ at an ice party"], ["Gold dragon", "A dragon made of gold coins"], ["Rocket banana", "A banana on a rocket"]];
   const STEPS = ["Idea", "Details", "Launch"];
   const go = (i: number) => { setStep(i); window.scrollTo({ top: 0 }); };
   const skipAi = () => { setName(""); setTick(""); setDesc(""); setImgFile(null); setImgPreview(null); go(1); };
@@ -204,7 +204,7 @@ function CreateView() {
     if (step === 1) { if (!detailsOk) { toast(!name.trim() ? "Give your coin a name." : "Ticker: 1 to 10 letters or numbers."); return; } go(2); return; }
     launchNow();
   };
-  const nextLabel = step === 0 ? (generated ? "Next: details" : thinking ? "Designing…" : "✦ Generate 3 coins")
+  const nextLabel = step === 0 ? (generated ? "Next: details" : thinking ? "Designing…" : "Generate 3 coins")
     : step === 1 ? "Next: launch settings"
     : busy || (w.signedIn ? `Launch ${name || "coin"} · ${boost === "none" ? "Free" : `$${boost}`}` : "Log in to launch");
   const pic = (size: number, radius: number) => (
@@ -307,7 +307,7 @@ function CreateView() {
                 <div className="cr-sg">{[["No lock", "None"], ["Lock 1h", "1 hour"], ["Lock 24h", "24 hours"]].map(([k, t]) => <button key={k} type="button" className={lock === k ? "on" : ""} onClick={() => setLock(k)}>{t}</button>)}</div>
               </div>
               <div className="cr-set"><div className="cr-lbl">Creator fees <span>{fee === "burn" ? "fees buy your coin and burn it" : "fees go to your balance"}</span></div>
-                <div className="cr-sg"><button type="button" className={fee === "you" ? "on" : ""} onClick={() => setFee("you")}>💰 To you</button><button type="button" className={fee === "burn" ? "on" : ""} onClick={() => setFee("burn")}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</button></div>
+                <div className="cr-sg"><button type="button" className={fee === "you" ? "on" : ""} onClick={() => setFee("you")}>To you</button><button type="button" className={fee === "burn" ? "on" : ""} onClick={() => setFee("burn")}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</button></div>
               </div>
               <div className="cr-set"><div className="cr-lbl">Be the first buyer <span>optional</span></div>
                 <div className="cr-chips">{[0, 10, 25, 50, 100].map((v) => <button key={v} type="button" className={first === v && !firstTxt ? "on" : ""} onClick={() => { setFirst(v); setFirstTxt(""); }}>${v}</button>)}</div>

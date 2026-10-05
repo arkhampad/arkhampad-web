@@ -1,23 +1,24 @@
 :root {
-  --bg: #0A0B10; --bg2: #0D0E13; --card: #11131A; --raise: #161922; --line: #1C1F28; --line2: #262A35; --line3: #2E3340;
-  --text: #F2F3F5; --text2: #C9CDD4; --muted: #A9AFBA; --dim: #8A909C; --faint: #7E8592;
-  --volt: #D4FF3A; --mint: #5CFFB0; --up: #3DDC97; --down: #FF6B6B; --warn: #FFB43C; --burn: #FF8A3D;
-  --rh: #CCFF4D; --base: #5B8CFF; --bnb: #F0B90B; --arc: #9B8CFF; --usdc: #2775CA;
-  --sans: "Geist Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --mono: "Geist Mono", ui-monospace, Menlo, Consolas, monospace;
+  /* dark is the default: a calm, neutral trading-terminal palette */
+  --bg: #0A0B0D; --bg2: #0D0E11; --card: #111316; --raise: #17191D; --line: #1E2126; --line2: #2A2E35; --line3: #353A42;
+  --text: #E8EAED; --text2: #C2C6CC; --muted: #9AA0A8; --dim: #868C95; --faint: #6F757E;
+  --volt: #C6F01C; --mint: #2EBD85; --up: #2EBD85; --down: #F6465D; --warn: #E3A008; --burn: #F08A3C;
+  --rh: #B9E534; --base: #4F7CFF; --bnb: #F0B90B; --arc: #9B8CFF; --usdc: #2775CA;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --field: #12141B; --raise2: #1E2129; --hover: #101219; --row: #16181F; --deep: #07080C; --modal: #101217;
-  --hdr: rgba(10,11,16,0.92); --bar-bg: rgba(10,11,16,0.96); --on-volt: #0A0B10; --volt-ink: #D4FF3A;
-  --note: #E3E5E9; --warn-ink: #E8D9B8; --hl1: #151826; --hl2: #0D0E13; --focus: #4A5060; --skel1: #12141B; --skel2: #1A1D26; --shadow: rgba(0,0,0,0.5);
+  --field: #15171B; --raise2: #1D2025; --hover: #15171B; --row: #16181C; --deep: #08090B; --modal: #111316;
+  --hdr: rgba(10,11,13,0.94); --bar-bg: rgba(12,13,16,0.97); --on-volt: #0A0B0D; --volt-ink: #C6F01C;
+  --note: #DADDE1; --warn-ink: #E8D9B8; --hl1: #14161A; --hl2: #0D0E11; --focus: #4A5060; --skel1: #14161A; --skel2: #1B1E23; --shadow: rgba(0,0,0,0.5);
   color-scheme: dark;
 }
 :root[data-theme="light"] {
-  --bg: #F5F6F8; --bg2: #FFFFFF; --card: #FFFFFF; --raise: #EEF0F3; --line: #E3E6EB; --line2: #D6DAE1; --line3: #C2C7D0;
-  --text: #0E1116; --text2: #2A303A; --muted: #4D5462; --dim: #646B79; --faint: #7D8492;
-  --up: #0FA36B; --down: #E5484D; --warn: #B76E00; --rh: #6E8F00; --base: #2F6BFF;
-  --field: #FFFFFF; --raise2: #E6E9EE; --hover: #F3F5F8; --row: #EDEFF3; --deep: #FFFFFF; --modal: #FFFFFF;
-  --hdr: rgba(245,246,248,0.92); --bar-bg: rgba(255,255,255,0.96); --on-volt: #0A0B10; --volt-ink: #5E7D00;
-  --note: #2A303A; --warn-ink: #6B4A00; --hl1: #FFFFFF; --hl2: #F0F2F6; --focus: #9AA1AD; --skel1: #ECEEF2; --skel2: #F6F7F9; --shadow: rgba(16,24,40,0.12);
+  --bg: #F4F5F7; --bg2: #FFFFFF; --card: #FFFFFF; --raise: #EFF1F4; --line: #E6E8EC; --line2: #D8DCE2; --line3: #C4C9D1;
+  --text: #121417; --text2: #2E333A; --muted: #4F5560; --dim: #6A707B; --faint: #858A93;
+  --up: #0E9F6E; --down: #E5484D; --warn: #B76E00; --rh: #5E7D00; --base: #2F6BFF;
+  --field: #FFFFFF; --raise2: #E6E9EE; --hover: #F5F6F8; --row: #EFF1F4; --deep: #FFFFFF; --modal: #FFFFFF;
+  --hdr: rgba(244,245,247,0.94); --bar-bg: rgba(255,255,255,0.97); --on-volt: #0A0B0D; --volt-ink: #4C6600;
+  --note: #2A303A; --warn-ink: #6B4A00; --hl1: #FFFFFF; --hl2: #F0F2F6; --focus: #9AA1AD; --skel1: #ECEEF2; --skel2: #F6F7F9; --shadow: rgba(16,24,40,0.10);
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -535,3 +536,55 @@ textarea.inp { height: auto; padding: 12px 14px; line-height: 1.5; resize: none;
 /* header theme button: same visual weight as the other icons */
 .theme-btn svg { width: 18px; height: 18px; }
 @media (max-width: 760px) { .theme-btn svg { width: 18px !important; height: 18px !important; } }
+
+
+/* ================= update-52: natural, professional look ================= */
+/* numbers line up like a terminal */
+.mono, .tbl td, .num { font-variant-numeric: tabular-nums; }
+body { font-size: 14px; letter-spacing: -0.1px; }
+/* calmer shapes: smaller radii, no glow */
+.card { border-radius: 12px; }
+.panel { border-radius: 10px; }
+.btn { border-radius: 10px; font-weight: 600; letter-spacing: 0; }
+.btn.volt { box-shadow: none; }
+.chip { border-radius: 8px; font-weight: 500; }
+.chg { border-radius: 6px; font-weight: 600; }
+.tbl th { font-family: var(--sans); font-weight: 500; font-size: 11.5px; letter-spacing: 0; text-transform: none; color: var(--faint); }
+.tbl td { font-size: 13px; }
+/* AI box: plain border, no rainbow */
+.cr-ai::before { background: var(--line2) !important; animation: none !important; }
+.cr-badge { background: var(--raise); color: var(--text2); }
+.cr-gen { background: var(--volt); color: var(--on-volt); }
+:root[data-theme="light"] .cr-gen { background: var(--text); color: #fff; }
+/* alert icons */
+.note-ic { width: 32px; height: 32px; border-radius: 50%; background: var(--raise); color: var(--text2); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
+/* bottom bar: plain icons and labels, no lime pill */
+.bnav a.bnav-create .plus { width: auto; height: auto; background: none; border-radius: 0; }
+.bnav a.bnav-create .plus svg { stroke: currentColor; }
+.bnav a.bnav-create { color: var(--faint); font-weight: 500; }
+.bnav a.bnav-create.on { color: var(--text); font-weight: 600; }
+/* app-style coin rows (phones) */
+.arow { min-height: 64px; padding: 10px 16px; gap: 12px; border-bottom: 0; }
+.arow-av { position: relative; flex: none; display: flex; }
+.arow-av i { position: absolute; right: -1px; bottom: -1px; width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--bg); }
+.arow-l { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.arow-l b { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arow-l span { font-size: 13px; color: var(--faint); }
+.arow-r { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 0; }
+.arow-r b { font-size: 15px; font-weight: 600; }
+.arow-r span { font-size: 13px; font-weight: 500; }
+.m-bal { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.m-bal-v { font-size: 32px; font-weight: 700; letter-spacing: -1px; line-height: 1.1; }
+.m-bal-v span { color: var(--faint); }
+.mk-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 4px; }
+.mk-launch { display: flex; align-items: center; gap: 8px; width: min(520px, 50%); height: 42px; padding: 4px 4px 4px 12px; border-radius: 10px; background: var(--field); border: 1px solid var(--line2); }
+.mk-launch input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 14px; }
+.mk-launch:focus-within { border-color: var(--line3); }
+/* text tabs with an underline (Binance / fomo style) */
+.ttabs { border-bottom: 1px solid var(--line); }
+.ttab { flex: none; height: 40px; padding: 0 14px 0 0; margin-right: 8px; border: 0; background: none; color: var(--faint); font-size: 15px; font-weight: 600; position: relative; }
+.ttab.on { color: var(--text); }
+.ttab.on::after { content: ""; position: absolute; left: 0; right: 14px; bottom: -1px; height: 2px; border-radius: 1px; background: var(--text); }
+@media (max-width: 760px) { .ttab { font-size: 15px; height: 40px; } }
+/* invite card: quiet, with a brand accent instead of a lime slab */
+.invite-card { border-left: 3px solid var(--volt) !important; }

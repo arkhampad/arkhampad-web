@@ -137,7 +137,7 @@ function CoinView() {
           <div className="show-m col-stack">
             {c.own && (
               <div className="card" style={{ gap: 6, padding: "10px 12px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ fontWeight: 700 }}>🎓 Graduation</span><span className="mono volt" style={{ fontWeight: 700 }}>{c.phase === 2 ? "Graduated" : `${c.progress.toFixed(0)}%`}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ fontWeight: 700 }}>Graduation</span><span className="mono volt" style={{ fontWeight: 700 }}>{c.phase === 2 ? "Graduated" : `${c.progress.toFixed(0)}%`}</span></div>
                 <Bar pct={c.progress} />
               </div>
             )}

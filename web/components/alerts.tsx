@@ -1,4 +1,5 @@
 "use client";
+import { IBell } from "./icons";
 // Bell (unread count), price alert creator, and phone/computer push notifications.
 import { useCallback, useEffect, useState } from "react";
 import type { Address } from "viem";
@@ -39,7 +40,7 @@ export function PriceAlertButton({ c, className = "btn ghost sm", label = "Price
   };
   return (
     <>
-      <button type="button" className={className} onClick={() => { setOpen(true); if (!mc && now) pick(50); }}>🔔 {label}</button>
+      <button type="button" className={className} onClick={() => { setOpen(true); if (!mc && now) pick(50); }}><IBell size={14} />{label}</button>
       {open && (
         <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
           <div className="modal" role="dialog" aria-modal="true" aria-label={`Price alert for ${c.tick}`} style={{ gap: 12 }}>
@@ -52,7 +53,7 @@ export function PriceAlertButton({ c, className = "btn ghost sm", label = "Price
             </div>
             <div style={{ display: "flex", gap: 6 }}>{[-50, -25, 25, 50, 100].map((p) => <button key={p} type="button" className="seg mono" style={{ height: 34, minWidth: 0 }} onClick={() => pick(p)}>{p > 0 ? `+${p}` : p}%</button>)}</div>
             <button type="button" className="btn volt lg" disabled={busy} onClick={save}>{busy ? "Saving…" : w.signedIn ? "Set alert" : "Log in to set alerts"}</button>
-            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>You&apos;ll see it in 🔔 and get a push notification if you turn them on.</span>
+            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>You&apos;ll see it in Alerts and get a push notification if you turn them on.</span>
             <button type="button" className="btn ghost" onClick={() => setOpen(false)}>Close</button>
           </div>
         </div>
@@ -79,7 +80,7 @@ export function PushButton() {
     if (!w.signedIn || !w.signer) { w.login(); return; }
     try {
       const key = await vapidKey();
-      if (!key) throw new TradeError("Push notifications aren't set up yet. The 🔔 bell still works.");
+      if (!key) throw new TradeError("Push notifications aren't set up yet. Alerts in the app still work.");
       const perm = await Notification.requestPermission();
       if (perm !== "granted") { setState(perm === "denied" ? "blocked" : "off"); return; }
       const reg = await navigator.serviceWorker.register("/sw.js");

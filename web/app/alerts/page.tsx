@@ -7,7 +7,7 @@ import { useWallet } from "@/components/wallet";
 import { TradeError, accountAction } from "@/lib/chain";
 import { ago, usd } from "@/lib/live";
 
-const ICON: Record<string, string> = { price: "📈", order: "⚡", follow: "👀", graduated: "🎓" };
+const ICON: Record<string, string> = { price: "P", order: "O", follow: "F", graduated: "G" };
 
 export default function Alerts() {
   const w = useWallet();
@@ -43,7 +43,7 @@ export default function Alerts() {
       </div>
       <div className="card" style={{ gap: 8 }}>
         <b>Your price alerts</b>
-        {open.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No price alerts. Open any coin and tap 🔔 Price alert.</span> :
+        {open.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No price alerts. Open any coin and tap Price alert.</span> :
           open.map((a) => (
             <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderTop: "1px solid var(--row)" }}>
               <Link href={`/coin/?c=${a.chain_id}-${a.coin}`} style={{ flex: 1, fontSize: 14 }}><b>{a.tick}</b> <span className="dim">{a.direction === "above" ? "goes above" : "drops below"}</span> <b className="mono">{usd(a.target_mc)}</b></Link>
@@ -56,7 +56,7 @@ export default function Alerts() {
         <div className="panel" style={{ gap: 0, padding: 0 }}>
           {notes.map((n, i) => (
             <Link key={n.id} href={n.url} style={{ display: "flex", gap: 12, padding: "12px 14px", borderTop: i ? "1px solid var(--row)" : 0, background: n.read ? "transparent" : "var(--raise)" }}>
-              <span style={{ fontSize: 20 }}>{ICON[n.kind] ?? "🔔"}</span>
+              <span className="note-ic mono" aria-hidden="true">{ICON[n.kind] ?? "N"}</span>
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}><b style={{ fontSize: 14 }}>{n.title}</b><span className="dim" style={{ fontSize: 13 }}>{n.body}</span></span>
               <span className="mono dim" style={{ fontSize: 11 }}>{ago(n.created_at)}</span>
             </Link>

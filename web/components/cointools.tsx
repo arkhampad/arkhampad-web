@@ -117,7 +117,7 @@ export function PromoteButton({ c }: { c: LiveCoin }) {
   };
   return (
     <>
-      <button type="button" className="btn ghost sm" onClick={() => setOpen(true)}>🚀 Promote</button>
+      <button type="button" className="btn ghost sm" onClick={() => setOpen(true)}>Promote</button>
       {open && (
         <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
           <div className="modal" role="dialog" aria-modal="true" aria-label={`Promote ${c.tick}`} style={{ gap: 14 }}>

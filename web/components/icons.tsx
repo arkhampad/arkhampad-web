@@ -5,7 +5,8 @@ const mk = (paths: React.ReactNode) => ({ size = 18, color = "currentColor", w =
 );
 export const ISearch = mk(<><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>);
 export const IBell = mk(<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>);
-export const ISpark = mk(<><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" /></>);
+// "AI" actions use a plain terminal prompt, not sparkles
+export const ISpark = mk(<><path d="M4 17l6-5-6-5" /><path d="M12 19h8" /></>);
 export const IFire = mk(<path d="M12 22c4 0 7-3 7-7 0-5-5-7-5-12-3 2-4 5-4 7-1-1-2-2-2-4-2 2-3 5-3 9 0 4 3 7 7 7z" />);
 export const IHome = mk(<><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></>);
 export const IChart = mk(<><path d="M3 20h18" /><path d="M6 16l4-5 3 3 5-7" /></>);

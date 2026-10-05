@@ -8,7 +8,7 @@ const COLORS = ["#D4FF3A", "#5CFFB0", "#3DDC97", "#FFB43C", "#7C5CFF", "#2BB3FF"
 export function Celebrate({ toast }: { toast: (m: string) => void }) {
   const [burst, setBurst] = useState(0);
   useGraduations((c) => {
-    toast(`🎓 $${c.symbol} just graduated!`);
+    toast(`$${c.symbol} just graduated`);
     setBurst((n) => n + 1);
     setTimeout(() => setBurst(0), 3200);
   });

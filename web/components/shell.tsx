@@ -232,7 +232,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       <nav className="bnav show-m" aria-label="Bottom">
         <Link href="/" className={path === "/" ? "on" : ""}><IHome size={22} />Discover</Link>
         <Link href="/terminal/" className={isOn(path, "/terminal/") ? "on" : ""}><IChart size={22} />Terminal</Link>
-        <Link href="/create/" className={`bnav-create${isOn(path, "/create/") ? " on" : ""}`}><span className="plus"><IPlus size={22} color="#0A0B10" w={2.6} /></span>Create</Link>
+        <Link href="/create/" className={`bnav-create${isOn(path, "/create/") ? " on" : ""}`}><span className="plus"><IPlus size={22} color="currentColor" w={1.8} /></span>Create</Link>
         <Link href="/alerts/" className={isOn(path, "/alerts/") ? "on" : ""}><IBell size={22} />Alerts</Link>
         <Link href="/profile/" className={isOn(path, "/profile/") ? "on" : ""}><IUser size={22} />Profile</Link>
       </nav>

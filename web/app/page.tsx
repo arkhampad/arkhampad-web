@@ -5,15 +5,15 @@ import { listCoins, listPromoted, recentTrades, totalCoins, useLive, useTradeFee
 import { Avatar as Av } from "@/components/bits";
 import { Avatar, sparkUseful } from "@/components/bits";
 import { CoinRows, CoinTable, HotCard } from "@/components/market";
-import { IFire, ISpark } from "@/components/icons";
 import { ScrollTabs } from "@/components/scrolltabs";
 import { board, traderColors } from "@/lib/traders";
 import { useRouter } from "next/navigation";
+import { useWallet } from "@/components/wallet";
+import { useApp } from "@/components/shell";
 import { FinderBar, FinderResults, useFinder } from "@/components/finder";
 
 const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
 const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB", "Arc"];
-const IDEAS = ["Funny animal", "Internet meme", "Robot / AI", "Sports", "Surprise me"];
 const PAGE = 50;
 
 function Skeleton({ rows = 8 }: { rows?: number }) {
@@ -21,6 +21,8 @@ function Skeleton({ rows = 8 }: { rows?: number }) {
 }
 
 export default function Discover() {
+  const w = useWallet();
+  const { openFunds } = useApp();
   const router = useRouter();
   const fx = useFinder();
   const [tab, setTab] = useState<Tab>("Trending");
@@ -82,35 +84,40 @@ export default function Discover() {
   return (
     <div className="wrap page">
       {/* phones: a short header; the full hero (with the idea box) is for bigger screens */}
-      <section className="show-m" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>Discover</h1>
-        <span className="dim" style={{ fontSize: 13 }}>{total.data ? <><b className="mono" style={{ color: "var(--text)" }}>{total.data.toLocaleString("en-US")}</b> coins · Robinhood, Base, BNB</> : "Coins on Robinhood, Base and BNB"}</span>
-      </section>
-      <section className="hide-m" style={{ padding: "4px 0 0", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10 }}>
-        <h1 className="hero-h1" style={{ margin: 0, fontSize: "clamp(28px, 3.4vw, 40px)", lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.035em", maxWidth: 900 }}>
-          Create and trade with <span className="grad-text" style={{ background: "linear-gradient(90deg, var(--volt), var(--mint))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>intelligence.</span>
-        </h1>
-        <p className="h-sub hide-m" style={{ maxWidth: 560, fontSize: 15 }}>Type an idea, get a ready coin. Trade thousands of coins with USDC.</p>
-        {total.data ? (
-          <span className="pill mono" style={{ border: "1px solid var(--line2)", color: "var(--text2)", fontSize: 13, padding: "6px 12px" }}>
-            <span className="dot" style={{ background: "var(--up)", boxShadow: "0 0 0 3px rgba(61,220,151,0.18)" }} />
-            <b style={{ color: "var(--text)" }}>{total.data.toLocaleString("en-US")}</b> coins to trade
+      {/* phones: your balance and Deposit when signed in (app-style), otherwise a short title */}
+      <section className="show-m m-bal">
+        {w.signedIn ? (
+          <>
+            <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <span className="dim" style={{ fontSize: 13 }}>Total balance</span>
+              <b className="mono m-bal-v">${Math.floor(w.totalUsdc).toLocaleString("en-US")}<span>.{(w.totalUsdc % 1).toFixed(2).slice(2)}</span></b>
+              <span className="dim" style={{ fontSize: 12 }}>Test USDC on Robinhood and Base</span>
+            </span>
+            <button type="button" className="btn volt" style={{ height: 40, padding: "0 20px" }} onClick={() => openFunds("deposit")}>Deposit</button>
+          </>
+        ) : (
+          <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Markets</h1>
+            <span className="dim" style={{ fontSize: 13 }}>{total.data ? <><b className="mono" style={{ color: "var(--text)" }}>{total.data.toLocaleString("en-US")}</b> tokens on Robinhood, Base and BNB</> : "Tokens on Robinhood, Base and BNB"}</span>
           </span>
-        ) : null}
-        <form onSubmit={go} style={{ width: "100%", maxWidth: 720, display: "flex", alignItems: "center", gap: 10, padding: "6px 6px 6px 16px", borderRadius: 16, background: "var(--field)", border: "1px solid var(--line3)", flexWrap: "wrap" }}>
-          <ISpark size={20} color="var(--volt-ink)" />
-          <label htmlFor="idea" className="sr">Describe your coin</label>
-          <input id="idea" value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Describe your coin… a frog astronaut who only buys the dip" style={{ flex: "1 1 220px", minWidth: 0, height: 42, background: "transparent", border: 0, outline: "none", fontSize: 16 }} />
-          <button type="submit" className="btn volt" style={{ height: 44, padding: "0 20px", fontSize: 14, borderRadius: 12 }}>Generate coin</button>
+        )}
+      </section>
+      {/* web: a compact terminal-style header row instead of a big marketing hero */}
+      <section className="hide-m mk-head">
+        <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Markets</h1>
+          <span className="dim" style={{ fontSize: 13 }}>{total.data ? <><b className="mono" style={{ color: "var(--text)" }}>{total.data.toLocaleString("en-US")}</b> tokens · Robinhood, Base, BNB</> : "Robinhood, Base, BNB"}</span>
+        </span>
+        <form onSubmit={go} className="mk-launch">
+          <label htmlFor="idea" className="sr">Describe a new token</label>
+          <input id="idea" value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Launch a token: describe it in one sentence" />
+          <button type="submit" className="btn volt" style={{ height: 34, padding: "0 14px", fontSize: 13 }}>Create</button>
         </form>
-        <div className="hide-m" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          {IDEAS.map((t) => <button key={t} type="button" className="chip sm" onClick={() => router.push(`/create/?idea=${encodeURIComponent(t)}`)}>{t}</button>)}
-        </div>
       </section>
 
       {promoted.data && promoted.data.length > 0 && (
         <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span className="dim" style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}>🚀 PROMOTED</span>
+          <span className="dim" style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}>PROMOTED</span>
           <div className="hscroll" style={{ gap: 10 }}>
             {promoted.data.map((c) => (
               <Link key={c.id} href={`/coin/?c=${c.id}`} className="card" style={{ flex: "none", flexDirection: "row", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 16, minWidth: 220 }}>
@@ -124,13 +131,13 @@ export default function Discover() {
       )}
 
       <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div className="feat-head"><h2><IFire size={16} color="var(--burn)" />Hot right now</h2><span className="dim" style={{ fontSize: 11 }}>changes every minute</span></div>
+        <div className="feat-head"><h2>Hot right now</h2></div>
         {!hot.data ? <div className="feat-row">{[0, 1, 2].map((i) => <div key={i} className="skel" style={{ height: 120, borderRadius: 16, minWidth: 236 }} />)}</div> :
           <div className="feat-row">{hot.data.map((c) => <HotCard key={c.id} c={c} />)}</div>}
       </section>
       {hasGrad && almost.data && (
         <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div className="feat-head"><h2>🎓 Almost graduating</h2><span className="dim" style={{ fontSize: 11 }}>launched here</span></div>
+          <div className="feat-head"><h2>Almost graduating</h2></div>
           <div className="feat-row">{almost.data.map((c) => <HotCard key={c.id} c={c} grad />)}</div>
         </section>
       )}
@@ -139,7 +146,7 @@ export default function Discover() {
         <div className="main-col">
           <FinderBar fx={fx} />
           {fx.active ? <FinderResults fx={fx} /> : <>
-          <ScrollTabs>{TABS.map((t) => <button key={t} type="button" className={`chip${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</ScrollTabs>
+          <div className="ttabs"><ScrollTabs gap={0}>{TABS.map((t) => <button key={t} type="button" className={`ttab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</ScrollTabs></div>
           <ScrollTabs gap={6}>{CATS.map((t) => <button key={t} type="button" className={`chip sm${cat === t ? " on" : ""}`} onClick={() => setCat(t)}>{t}</button>)}</ScrollTabs>
           {(tab === "Launched here" || tab === "Bonding" || tab === "Graduated") && (
             <div className="dim" style={{ fontSize: 13 }}>Coins launched on ArkhamPad. We are on testnet now: these are test coins with test money.</div>
@@ -181,10 +188,10 @@ export default function Discover() {
             ))}
             <Link href="/traders/" className="btn ghost sm" style={{ height: 40 }}>Follow and copy with one tap</Link>
           </div>
-          <div className="card" style={{ background: "var(--volt)", color: "var(--on-volt)", border: 0 }}>
+          <div className="card invite-card">
             <span style={{ fontWeight: 800, fontSize: 17 }}>Invite friends, earn on every trade</span>
             <span style={{ fontSize: 13, lineHeight: 1.45 }}>You get a share of our fee on everything your friends trade.</span>
-            <Link href="/invite/" className="btn" style={{ alignSelf: "flex-start", height: 38, background: "var(--bg)", color: "var(--text)", border: 0 }}>Get my link</Link>
+            <Link href="/invite/" className="btn ghost sm" style={{ alignSelf: "flex-start", height: 36 }}>Get my link</Link>
           </div>
         </aside>
       </section>
