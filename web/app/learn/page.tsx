@@ -1,25 +1,25 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { catLabel, guides } from "@/lib/mock";
-import { ISpark } from "@/components/icons";
+import { catLabel, guides, type Cat } from "@/lib/guides";
+import { AskBox } from "@/components/ask";
 
 export default function Learn() {
-  const [cat, setCat] = useState("all");
+  const [cat, setCat] = useState<"all" | Cat>("all");
   const list = cat === "all" ? guides : guides.filter((g) => g.cat === cat);
   return (
     <div className="wrap page" style={{ maxWidth: 1300 }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, paddingTop: 12 }}>
         <h1 className="h-title" style={{ fontSize: "clamp(36px, 5vw, 52px)" }}>Learn</h1>
         <p className="h-sub" style={{ maxWidth: 560, fontSize: 17 }}>Short, clear guides to create, trade and stay safe. Or just ask.</p>
-        <form onSubmit={(e) => e.preventDefault()} style={{ width: "100%", maxWidth: 720, display: "flex", alignItems: "center", gap: 10, padding: "8px 8px 8px 16px", borderRadius: 16, background: "var(--field)", border: "1px solid var(--line3)", flexWrap: "wrap" }}>
-          <ISpark size={18} color="var(--volt-ink)" /><label htmlFor="lq" className="sr">Ask a question</label>
-          <input id="lq" placeholder="Ask anything, e.g. how do I withdraw to my exchange?" style={{ flex: "1 1 200px", minWidth: 0, height: 44, background: "transparent", border: 0, outline: "none", fontSize: 15 }} />
-          <button type="submit" className="btn volt">Ask AI</button>
-        </form>
+        <AskBox id="lq" />
       </div>
-      <div className="hscroll" style={{ justifyContent: "center", gap: 6 }}>
-        {[["all", "All"], ...Object.entries(catLabel)].map(([k, v]) => <button key={k} type="button" className={`chip sm${cat === k ? " on" : ""}`} onClick={() => setCat(k)}>{v}</button>)}
+      <div className="hscroll" style={{ justifyContent: "flex-start", gap: 6 }}>
+        {([["all", "All"], ...Object.entries(catLabel)] as [("all" | Cat), string][]).map(([k, v]) => (
+          <button key={k} type="button" className={`chip sm${cat === k ? " on" : ""}`} onClick={() => setCat(k)}>
+            {v} <span style={{ opacity: 0.6, marginLeft: 4 }}>{k === "all" ? guides.length : guides.filter((g) => g.cat === k).length}</span>
+          </button>
+        ))}
       </div>
       <div className="grid4">
         {list.map((g) => (
@@ -34,6 +34,7 @@ export default function Learn() {
           </Link>
         ))}
       </div>
+      <p className="dim" style={{ fontSize: 14, textAlign: "center", margin: "8px 0 0" }}>Can&apos;t find it? <Link href="/help/" className="volt">Visit Help</Link>.</p>
     </div>
   );
 }

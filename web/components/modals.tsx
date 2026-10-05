@@ -23,23 +23,6 @@ const Close = ({ onClose }: { onClose: () => void }) => (
   <button type="button" className="icon-btn" aria-label="Close" onClick={onClose} style={{ width: 40, height: 40, background: "transparent" }}><IX size={15} /></button>
 );
 
-export function SoonModal({ onClose }: { onClose: () => void }) {
-  return (
-    <Overlay onClose={onClose} label="Coming soon">
-      <div style={{ display: "flex", justifyContent: "flex-end" }}><Close onClose={onClose} /></div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12, marginTop: -18 }}>
-        <BrandMark size={52} />
-        <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt-ink)", fontWeight: 800 }}><span className="dot" style={{ background: "var(--volt)" }} />Testnet live</span>
-        <h2 style={{ margin: 0, fontSize: 30, fontWeight: 900, letterSpacing: -0.8 }}>Coming soon</h2>
-        <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>This feature opens very soon. Follow us on X and turn on notifications 🔔 so you don&apos;t miss it.</p>
-      </div>
-      <a className="btn white lg" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer"><IX size={16} color="#0A0B10" w={2.4} />Follow @Arkhampad on X</a>
-      <button type="button" className="btn lg" onClick={onClose}>Keep exploring</button>
-      <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: "var(--faint)", textAlign: "center" }}>We never ask for your seed phrase. Never send funds to an address you got from a DM.</p>
-    </Overlay>
-  );
-}
-
 export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdraw"; setTab: (t: "deposit" | "withdraw") => void; onClose: () => void }) {
   const w = useWallet();
   // the network with the one-tap test USDC button opens first

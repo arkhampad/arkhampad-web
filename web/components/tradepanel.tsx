@@ -18,7 +18,7 @@ import type { LiveCoin } from "@/lib/live";
 const fmtCoins = (t: number) => (!Number.isFinite(t) || t <= 0 ? "0" : t >= 1e9 ? (t / 1e9).toFixed(2) + "B" : t >= 1e6 ? (t / 1e6).toFixed(2) + "M" : t >= 1e3 ? (t / 1e3).toFixed(1) + "K" : t.toFixed(t < 1 ? 4 : 2));
 
 export function TradePanel({ coin, withLimit = false, onShare, initialSide = "buy" }: { coin: LiveCoin; withLimit?: boolean; onShare?: () => void; initialSide?: "buy" | "sell" }) {
-  const { toast, openSoon, openFunds } = useApp(); void withLimit;
+  const { toast, openFunds } = useApp(); void withLimit;
   const w = useWallet();
   const [side, setSide] = useState<"buy" | "sell">(initialSide);
   const [mode, setMode] = useState("Market");

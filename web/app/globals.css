@@ -208,3 +208,43 @@ textarea.inp { height: auto; padding: 12px 14px; line-height: 1.5; resize: none;
 @media (max-width: 760px) { .hot-spark { height: 60px; } }
 
 .btn.grow { flex: 1; height: 40px; }
+
+/* ask box (Learn, Help) */
+.ask-field { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 16px; background: var(--field); border: 1px solid var(--line3); }
+.ask-field:focus-within { border-color: var(--volt); }
+.ask-field input { flex: 1 1 auto; min-width: 0; height: 44px; background: transparent; border: 0; outline: none; font-size: 16px; color: var(--text); }
+.ask-field .btn:disabled { opacity: 0.55; }
+.ask-hit { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; min-height: 44px; }
+.ask-hit:hover { background: var(--hover); }
+
+/* help + legal pages */
+.doc-nav { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 92px; }
+.doc-nav a { padding: 7px 10px; border-radius: 9px; font-size: 13px; color: var(--muted); }
+.doc-nav a:hover { background: var(--hover); color: var(--text); }
+.doc h2 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.4px; scroll-margin-top: 96px; }
+.doc p { margin: 0; font-size: 16px; line-height: 1.75; color: var(--text2); max-width: 68ch; }
+.qa { border-bottom: 1px solid var(--line); }
+.qa summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 2px; font-weight: 700; font-size: 15px; min-height: 44px; }
+.qa summary::-webkit-details-marker { display: none; }
+.qa summary::after { content: "+"; font: 600 20px var(--mono); color: var(--faint); flex: none; transition: transform 0.15s; }
+.qa[open] summary::after { transform: rotate(45deg); color: var(--volt-ink); }
+.qa p { margin: 0 0 16px; font-size: 15px; line-height: 1.65; color: var(--text2); max-width: 68ch; }
+.fee-row { display: grid; grid-template-columns: minmax(0, 1.2fr) 110px minmax(0, 2fr); gap: 16px; padding: 14px 16px; border-top: 1px solid var(--line); align-items: baseline; }
+.fee-row:first-child { border-top: 0; }
+@media (max-width: 760px) {
+  .fee-row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
+  .fee-row > :last-child { grid-column: 1 / -1; }
+  .ask-field { padding-left: 12px; }
+  .ask-field .btn { padding: 0 14px; }
+}
+
+/* footer */
+.foot { border-top: 1px solid var(--line); margin-top: 8px; }
+.foot-in { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 28px; padding-top: 22px; padding-bottom: 26px; }
+.foot nav { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.foot nav a { font-size: 13px; color: var(--muted); min-height: 32px; display: inline-flex; align-items: center; }
+.foot nav a:hover { color: var(--text); }
+@media (max-width: 760px) {
+  .foot-in { padding-bottom: calc(96px + var(--safe-bottom)); }
+  main:has(+ .foot) > .page { padding-bottom: 28px; }
+}

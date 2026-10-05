@@ -1,7 +1,7 @@
 "use client";
 import { initials, sparkPath } from "@/lib/util";
 import { useId, useState } from "react";
-import type { Chain } from "@/lib/mock";
+import type { Chain } from "@/lib/types";
 
 export function Avatar({ name, c1, c2, size = 40, round = false, img }: { name: string; c1: string; c2: string; size?: number; round?: boolean; img?: string | null }) {
   const [broken, setBroken] = useState(false);

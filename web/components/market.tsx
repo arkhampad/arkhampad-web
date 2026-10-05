@@ -2,15 +2,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import type { Coin } from "@/lib/mock";
+import type { Coin } from "@/lib/types";
 import { Avatar, ChainTag, Chg, Spark } from "./bits";
 import { IBell } from "./icons";
-import { useApp } from "./shell";
 
 const href = (c: Coin) => `/coin/?c=${c.id}`;
 
 export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
-  const { openSoon } = useApp();
   const router = useRouter();
   const p = Math.max(0, Math.min(100, c.progress));
   // heartbeat speeds up as the coin nears graduation

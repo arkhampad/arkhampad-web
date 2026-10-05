@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { listCoins, recentTrades, useLive, useTradeFeed, type LiveCoin, type LiveTrade } from "@/lib/live";
 import { IBell, IChart, IHome, IPlus, ISearch, IUser } from "./icons";
-import { SoonModal, FundsModal, WelcomeModal } from "./modals";
+import { FundsModal, WelcomeModal } from "./modals";
 import { WalletProvider, useWallet } from "./wallet";
 import { Celebrate } from "./celebrate";
 import { OrderWatcher } from "./orders";
@@ -15,8 +15,8 @@ import { RefLinker } from "./community";
 import { useRouter } from "next/navigation";
 import { findByAddress } from "@/lib/live";
 
-type Ctx = { openLogin: () => void; openSoon: () => void; openFunds: (t: "deposit" | "withdraw") => void; toast: (m: string) => void; loggedIn: boolean };
-const AppCtx = createContext<Ctx>({ openLogin: () => {}, openSoon: () => {}, openFunds: () => {}, toast: () => {}, loggedIn: false });
+type Ctx = { openLogin: () => void; openFunds: (t: "deposit" | "withdraw") => void; toast: (m: string) => void; loggedIn: boolean };
+const AppCtx = createContext<Ctx>({ openLogin: () => {}, openFunds: () => {}, toast: () => {}, loggedIn: false });
 export const useApp = () => useContext(AppCtx);
 
 export function Logo() {
@@ -123,6 +123,28 @@ function isOn(path: string, href: string) {
   return path.startsWith(href.replace(/\/$/, ""));
 }
 
+function Footer() {
+  return (
+    <footer className="foot">
+      <div className="wrap foot-in">
+        <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontWeight: 800, fontSize: 14 }}>ArkhamPad</span>
+          <span style={{ fontSize: 12, color: "var(--faint)", maxWidth: 420, lineHeight: 1.5 }}>Meme coins are very risky. Nothing on ArkhamPad is financial advice.</span>
+        </span>
+        <nav aria-label="Footer">
+          <Link href="/learn/">Learn</Link>
+          <Link href="/help/">Help</Link>
+          <Link href="/help/#fees">Fees</Link>
+          <Link href="/terms/">Terms</Link>
+          <Link href="/privacy/">Privacy</Link>
+          <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer">X</a>
+          <a href="mailto:team@arkhampad.com">team@arkhampad.com</a>
+        </nav>
+      </div>
+    </footer>
+  );
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   return <WalletProvider><ShellInner>{children}</ShellInner></WalletProvider>;
 }
@@ -145,6 +167,7 @@ function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void
           <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("deposit"); }}>Deposit</button>
           <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); openFunds("withdraw"); }}>Withdraw</button>
           <Link href="/invite/" className="tab" style={{ textAlign: "left" }} onClick={() => setOpen(false)}>Invite & earn</Link>
+          <Link href="/help/" className="tab" style={{ textAlign: "left" }} onClick={() => setOpen(false)}>Help</Link>
           <button type="button" className="tab show-m" style={{ textAlign: "left" }} onClick={() => { setOpen(false); toggleTheme(); }}>Light / dark mode</button>
           <button type="button" className="tab" style={{ textAlign: "left", color: "var(--down)" }} onClick={() => { setOpen(false); w.logout(); }}>Log out</button>
         </span>
@@ -156,7 +179,6 @@ function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void
 function ShellInner({ children }: { children: React.ReactNode }) {
   const path = usePathname() || "/";
   const w = useWallet();
-  const [soon, setSoon] = useState(false);
   const [funds, setFunds] = useState<null | "deposit" | "withdraw">(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [welcome, setWelcome] = useState(false);
@@ -168,7 +190,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const closeWelcome = () => { setWelcome(false); try { localStorage.setItem("ap_welcome_seen", "1"); } catch { /* storage off */ } };
   const toast = useCallback((m: string) => { setMsg(m); }, []);
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(null), 2200); return () => clearTimeout(t); }, [msg]);
-  const ctx: Ctx = { openLogin: w.login, openSoon: () => setSoon(true), openFunds: (t) => (w.signedIn ? setFunds(t) : w.login()), toast, loggedIn: w.signedIn };
+  const ctx: Ctx = { openLogin: w.login, openFunds: (t) => (w.signedIn ? setFunds(t) : w.login()), toast, loggedIn: w.signedIn };
 
   return (
     <AppCtx.Provider value={ctx}>
@@ -189,6 +211,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main id="main">{children}</main>
+      {!isOn(path, "/terminal/") && <Footer />}
       <nav className="bnav show-m" aria-label="Bottom">
         <Link href="/" className={path === "/" ? "on" : ""}><IHome size={22} />Discover</Link>
         <Link href="/terminal/" className={isOn(path, "/terminal/") ? "on" : ""}><IChart size={22} />Terminal</Link>
@@ -197,7 +220,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         <Link href="/profile/" className={isOn(path, "/profile/") ? "on" : ""}><IUser size={22} />Profile</Link>
       </nav>
       {welcome && <WelcomeModal onClose={closeWelcome} />}
-      {soon && <SoonModal onClose={() => setSoon(false)} />}
       {funds && <FundsModal tab={funds} setTab={setFunds} onClose={() => setFunds(null)} />}
       <Celebrate toast={toast} />
       {w.signedIn && <OrderWatcher />}

@@ -2,7 +2,7 @@
 // Live data from the ArkhamPad database (Supabase). Read-only, public data.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
-import type { Chain, Coin } from "./mock";
+import type { Chain, Coin } from "./types";
 import { shareCoinCard, prepareCard } from "./share";
 import { NETS } from "./chain";
 export { prepareCard };

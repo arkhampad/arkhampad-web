@@ -1,3 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /profile/
+Disallow: /alerts/
+
 Sitemap: https://arkhampad.com/sitemap.xml
+Sitemap: https://arkhampad.com/sitemap-coins.xml

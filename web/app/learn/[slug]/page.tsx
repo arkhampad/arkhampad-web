@@ -1,23 +1,29 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { catLabel, guides } from "@/lib/mock";
-import { articles } from "@/lib/guides";
+import { catLabel, guides, guideBySlug } from "@/lib/guides";
 
 export function generateStaticParams() { return guides.map((g) => ({ slug: g.slug })); }
 export const dynamicParams = false;
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params; const g = guides.find((x) => x.slug === slug);
+  const { slug } = await params; const g = guideBySlug(slug);
   if (!g) return {};
-  return { title: g.title, description: articles[slug]?.short || g.desc, alternates: { canonical: `/learn/${slug}/` } };
+  return { title: g.title, description: g.short.length <= 170 ? g.short : g.desc, openGraph: { title: g.title, description: g.desc, type: "article", url: `/learn/${slug}/` }, alternates: { canonical: `/learn/${slug}/` } };
 }
 
 export default async function Article({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params; const g = guides.find((x) => x.slug === slug); const a = articles[slug];
-  if (!g || !a) notFound();
-  const ld = { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: a.faq.map(([q, ans]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: ans } })) };
-  const related = guides.filter((x) => x.cat === g.cat && x.slug !== slug).slice(0, 3);
+  const { slug } = await params; const g = guideBySlug(slug);
+  if (!g) notFound();
+  const a = g;
+  const ld = [
+    { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: a.faq.map(([q, ans]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: ans } })) },
+    { "@context": "https://schema.org", "@type": "Article", headline: g.title, description: g.desc, mainEntityOfPage: `https://arkhampad.com/learn/${slug}/`, publisher: { "@type": "Organization", name: "ArkhamPad", logo: { "@type": "ImageObject", url: "https://arkhampad.com/icon-512.png" } } },
+  ];
+  // related: same topic first, starting after this article so every guide gets linked
+  const same = guides.filter((x) => x.cat === g.cat && x.slug !== slug);
+  const at = guides.filter((x) => x.cat === g.cat).findIndex((x) => x.slug === slug);
+  const related = [...same.slice(at), ...same.slice(0, at)].slice(0, 3);
   return (
     <div className="wrap page" style={{ maxWidth: 1180 }}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />

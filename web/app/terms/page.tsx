@@ -1,9 +1,6 @@
-export const metadata = { title: "Terms of Use" };
-export default function Page() {
-  return (
-    <div className="wrap page" style={{ maxWidth: 760 }}>
-      <h1 className="h-title" style={{ fontSize: 36 }}>Terms of Use</h1>
-      <p className="h-sub">The full Terms of Use will be published here before ArkhamPad goes live.</p>
-    </div>
-  );
-}
+import type { Metadata } from "next";
+import { LegalPage } from "@/components/legal";
+import { terms } from "@/lib/legal";
+
+export const metadata: Metadata = { title: "Terms of Use", description: "The terms for using ArkhamPad, including risks, fees and your responsibilities.", alternates: { canonical: "/terms/" } };
+export default function Page() { return <LegalPage doc={terms} other={{ href: "/privacy/", label: "Privacy Policy" }} />; }
