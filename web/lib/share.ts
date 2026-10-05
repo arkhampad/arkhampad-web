@@ -1,7 +1,7 @@
 "use client";
 // Sharing: a clean branded card image + tidy text, opened in the X app on phones.
 
-export type ShareCoin = { name: string; tick: string; chain: string; mc: string; chg: number; address: string; id: string; image?: string | null; c1: string; c2: string; own?: boolean };
+export type ShareCoin = { name: string; tick: string; chain: string; mc: string; mcIsFdv?: boolean; chg: number; address: string; id: string; image?: string | null; c1: string; c2: string; own?: boolean };
 
 const SITE = "https://arkhampad.com";
 export const coinUrl = (c: ShareCoin) => `${SITE}/coin/?c=${c.id}`;
@@ -9,7 +9,7 @@ export const coinUrl = (c: ShareCoin) => `${SITE}/coin/?c=${c.id}`;
 export function coinText(c: ShareCoin, opts: { launched?: boolean } = {}) {
   const change = `${c.chg >= 0 ? "+" : ""}${c.chg.toFixed(1)}%`;
   const head = opts.launched ? `I just launched $${c.tick} on @Arkhampad 🚀` : `$${c.tick} on @Arkhampad`;
-  return [head, "", `${c.name} · ${c.chain}`, `Market cap ${c.mc} (${change} 24h)`, "", `CA: ${c.address}`].join("\n");
+  return [head, "", `${c.name} · ${c.chain}`, `${c.mcIsFdv ? "FDV" : "Market cap"} ${c.mc} (${change} 24h)`, "", `CA: ${c.address}`].join("\n");
 }
 
 const isPhone = () => typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -110,7 +110,7 @@ async function drawCard(c: ShareCoin): Promise<Blob | null> {
   // stats
   const up = c.chg >= 0;
   ctx.fillStyle = "#8A909C"; ctx.font = `600 22px ${sans}`;
-  ctx.fillText("Market cap", 64, 420);
+  ctx.fillText(c.mcIsFdv ? "FDV" : "Market cap", 64, 420);
   ctx.fillText("24h", 520, 420);
   ctx.fillStyle = "#F2F3F5"; ctx.font = `800 72px ${mono}`;
   ctx.fillText(c.mc, 64, 480);

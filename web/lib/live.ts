@@ -61,6 +61,8 @@ const colours = (addr: string) => PALETTE[parseInt(addr.slice(-2), 16) % PALETTE
 const sparkOf = (v: number[]) => (v.length >= 2 ? v : v.length === 1 ? [v[0], v[0]] : [1, 1]);
 
 export type LiveCoin = Coin & {
+  /** no circulating market cap known: `mc` is the fully diluted value */
+  mcIsFdv?: boolean;
   chainId: number; address: string; own: boolean; image: string | null;
   pool?: string | null; network?: string | null; dex?: string | null;
   priceNum: number | null; mcNum: number | null; volNum: number | null;
@@ -97,7 +99,7 @@ export function fromExt(r: ExtRow): LiveCoin {
     holders: "—", trades: count((r.buys_24h ?? 0) + (r.sells_24h ?? 0)), c1, c2,
     spark: sparkOf((r.spark ?? []).map(Number)), progress: 100,
     chainId: r.chain_id, address: r.address, own: false, image: r.image, pool: r.pool, network: r.network, dex: r.dex,
-    priceNum: r.price_usd, mcNum: mc, volNum: r.vol_24h, createdAt: r.pool_created,
+    priceNum: r.price_usd, mcNum: mc, volNum: r.vol_24h, createdAt: r.pool_created, mcIsFdv: r.mcap_usd == null && r.fdv_usd != null,
   };
 }
 

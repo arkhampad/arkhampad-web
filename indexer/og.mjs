@@ -35,7 +35,7 @@ export function coinSvg(c) {
   ${avatar}
   <text x="270" y="250" font-family="Inter" font-weight="800" font-size="70" fill="#F2F3F5">${esc(name)}</text>
   <text x="272" y="310" font-family="JetBrains Mono" font-weight="700" font-size="32" fill="#8A909C">$${esc(c.symbol)} · ${esc(CHAINS[c.chainId] || "")}</text>
-  <text x="64" y="430" font-family="Inter" font-weight="500" font-size="26" fill="#8A909C">Market cap</text>
+  <text x="64" y="430" font-family="Inter" font-weight="500" font-size="26" fill="#8A909C">${c.mcLabel || "Market cap"}</text>
   <text x="64" y="500" font-family="JetBrains Mono" font-weight="700" font-size="76" fill="#F2F3F5">${esc(money(c.mc))}</text>
   ${chg ? `<text x="600" y="430" font-family="Inter" font-weight="500" font-size="26" fill="#8A909C">24h</text><text x="600" y="500" font-family="JetBrains Mono" font-weight="700" font-size="76" fill="${up ? "#3DDC97" : "#FF6B6B"}">${esc(chg)}</text>` : ""}
   <rect x="64" y="540" width="1072" height="56" rx="16" fill="#FFFFFF" fill-opacity="0.05"/>
@@ -77,7 +77,7 @@ export function makeOg(db) {
     } else {
       const e = (await db.query("select name, symbol, mcap_usd, fdv_usd, change_24h, image from ext_tokens where chain_id=$1 and address=$2", [chainId, address]).catch(() => ({ rows: [] }))).rows[0];
       if (!e) return null;
-      card = { name: e.name, symbol: e.symbol, chainId, address, mc: e.mcap_usd || e.fdv_usd, change: e.change_24h == null ? null : Number(e.change_24h), image: await imageData(e.image), own: false };
+      card = { name: e.name, symbol: e.symbol, chainId, address, mc: e.mcap_usd || e.fdv_usd, mcLabel: e.mcap_usd ? "Market cap" : "FDV", change: e.change_24h == null ? null : Number(e.change_24h), image: await imageData(e.image), own: false };
     }
     const png = renderPng(coinSvg(card));
     cache.set(id, { png, at: Date.now() });

@@ -171,7 +171,13 @@ export async function applyUpdates(pool, chainId, ups) {
       `update ext_tokens set
          price_usd = coalesce($3, price_usd), liq_usd = $4, vol_24h = coalesce($5, vol_24h),
          change_1h = coalesce($6, change_1h), change_24h = coalesce($7, change_24h),
-         mcap_usd = coalesce($8, mcap_usd), fdv_usd = coalesce($9, fdv_usd),
+         -- DexScreener often reports FDV as "market cap" for tokens with a circulating supply below
+         -- the total. Keep the real circulating ratio we already know instead of jumping to FDV.
+         mcap_usd = case when $8 is not null and $9 is not null and abs($8 - $9) <= 0.02 * $9
+                          and mcap_usd is not null and fdv_usd > 0 and mcap_usd < 0.9 * fdv_usd
+                         then $9 * (mcap_usd / fdv_usd)
+                         else coalesce($8, mcap_usd) end,
+         fdv_usd = coalesce($9, fdv_usd),
          buys_24h = coalesce($10, buys_24h), sells_24h = coalesce($11, sells_24h),
          image = coalesce(image, $12),
          change_5m = coalesce($13, change_5m), vol_1h = coalesce($14, vol_1h), txns_5m = coalesce($15, txns_5m),
