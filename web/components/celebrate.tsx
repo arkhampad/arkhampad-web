@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGraduations } from "@/lib/live";
 
 const COLORS = ["#D4FF3A", "#5CFFB0", "#3DDC97", "#FFB43C", "#7C5CFF", "#2BB3FF", "#FF6B6B"];
@@ -17,6 +17,24 @@ export function Celebrate({ toast }: { toast: (m: string) => void }) {
     <div className="confetti" aria-hidden="true" key={burst}>
       {Array.from({ length: 70 }, (_, i) => (
         <i key={i} style={{ left: `${(i * 37) % 100}%`, background: COLORS[i % COLORS.length], ["--x" as string]: `${((i * 53) % 200) - 100}px`, ["--r" as string]: `${360 + ((i * 97) % 720)}deg`, ["--d" as string]: `${2 + ((i * 13) % 12) / 10}s`, animationDelay: `${(i % 10) * 0.04}s` }} />
+      ))}
+    </div>
+  );
+}
+
+/** One confetti burst when it mounts (e.g. right after launching a coin). Respects reduced motion. */
+export function Confetti() {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setOn(false); return; }
+    const t = setTimeout(() => setOn(false), 3400);
+    return () => clearTimeout(t);
+  }, []);
+  if (!on) return null;
+  return (
+    <div className="confetti" aria-hidden="true">
+      {Array.from({ length: 90 }, (_, i) => (
+        <i key={i} style={{ left: `${(i * 37) % 100}%`, background: COLORS[i % COLORS.length], ["--x" as string]: `${((i * 53) % 220) - 110}px`, ["--r" as string]: `${360 + ((i * 97) % 720)}deg`, ["--d" as string]: `${1.8 + ((i * 13) % 14) / 10}s`, animationDelay: `${(i % 12) * 0.03}s` }} />
       ))}
     </div>
   );

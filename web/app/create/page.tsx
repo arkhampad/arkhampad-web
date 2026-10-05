@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { FrogArt } from "@/components/bits";
 import { ICopy, IFire, IGlobe, IRocket, ISpark, IX } from "@/components/icons";
 import { useApp } from "@/components/shell";
+import { Confetti } from "@/components/celebrate";
 import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCoin } from "@/lib/share";
 import { useWallet } from "@/components/wallet";
 import { lastFee, warmFees, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage } from "@/lib/chain";
@@ -15,15 +16,16 @@ const OPTS0 = [
   { name: "Dip Hopper", tick: "HOPPR", desc: "A space frog that hops in every time the chart dips. Never sleeps, never sells.", c1: "#0B3B2E", c2: "#2BB38A" },
   { name: "Orbit Toad", tick: "OTOAD", desc: "Zero gravity, zero panic. This toad buys dips from low orbit.", c1: "#3B1B0B", c2: "#FF8A3D" },
 ];
-const Step = ({ n, t }: { n: number; t: string }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 10 }}><span className="mono" style={{ width: 26, height: 26, borderRadius: 8, background: "var(--volt)", color: "var(--on-volt)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{n}</span><span style={{ fontWeight: 800, fontSize: 18, letterSpacing: -0.3 }}>{t}</span></div>
-);
-const Label = ({ t, sub }: { t: string; sub?: string }) => <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontWeight: 700, fontSize: 14 }}>{t}</span>{sub && <span style={{ fontSize: 12, color: "var(--faint)" }}>{sub}</span>}</div>;
-
 function CreateView() {
   const q = useSearchParams();
   const { toast, openFunds } = useApp();
-  const [idea, setIdea] = useState(q.get("idea") || "A frog astronaut who only buys the dip");
+  const [idea, setIdea] = useState(q.get("idea") || "");
+  const [step, setStep] = useState(0);
+  const [generated, setGenerated] = useState(false);
+  // AI logos for the three ideas (sasa-style): drawn in parallel, picked with the idea
+  const [arts, setArts] = useState<(string | null | "loading" | "failed")[]>([null, null, null]);
+  const artRun = useRef(0);
+  const pickRef = useRef(0);
   const [pick, setPick] = useState(0);
   const [OPTS, setOpts] = useState(OPTS0);
   const [thinking, setThinking] = useState(false);
@@ -56,11 +58,32 @@ function CreateView() {
   useEffect(() => { warmFees(chainId, ["launch", "promote"]); }, [chainId]);
   const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(lastFee(chainId, "launch")) + (boost === "none" ? 0 : fromUsdc(lastFee(chainId, "promote")));
   const o = OPTS[pick];
-  const choose = (i: number, list = OPTS) => { setPick(i); setName(list[i].name); setTick(list[i].tick); setDesc(list[i].desc); };
+  const applyArt = async (dataUrl: string) => {
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      setImgFile(new File([blob], "coin.png", { type: blob.type || "image/png" }));
+      setImgPreview(dataUrl);
+    } catch { /* keep the current picture */ }
+  };
+  const choose = (i: number, list = OPTS, art = arts[i]) => {
+    setPick(i); pickRef.current = i; setName(list[i].name); setTick(list[i].tick); setDesc(list[i].desc);
+    if (art && art !== "loading" && art !== "failed") applyArt(art); else { setImgFile(null); setImgPreview(null); }
+  };
+  const drawOne = async (i: number, nm: string, ds: string, run: number) => {
+    try {
+      const r = await fetch("/api/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: nm, description: ds }) });
+      const j = await r.json().catch(() => ({}));
+      if (run !== artRun.current) return;
+      if (!r.ok || !j.dataUrl) { setArts((a) => a.map((x, k) => (k === i ? "failed" : x))); return; }
+      setArts((a) => a.map((x, k) => (k === i ? j.dataUrl : x)));
+      // picked while it was still drawing: use the picture now
+      if (pickRef.current === i) applyArt(j.dataUrl);
+    } catch { if (run === artRun.current) setArts((a) => a.map((x, k) => (k === i ? "failed" : x))); }
+  };
 
   // AI: one sentence (any language) -> three ready coins
   const generate = async (text = idea) => {
-    if (!text.trim()) { toast("Describe your coin in a few words."); return; }
+    if (!text.trim()) { toast("Describe your coin in a few words, or tap an idea."); return; }
     setThinking(true);
     try {
       const r = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idea: text }) });
@@ -68,8 +91,11 @@ function CreateView() {
       if (!r.ok || !Array.isArray(j.options) || !j.options.length) throw new Error(j.error || "AI is busy, please try again.");
       const list = j.options.slice(0, 3).map((o: { name: string; ticker: string; description: string }, i: number) => ({ name: o.name, tick: o.ticker, desc: o.description, c1: PALETTE[i][0], c2: PALETTE[i][1] }));
       setOpts(list);
-      choose(0, list);
-      setImgFile(null); setImgPreview(null);
+      setGenerated(true);
+      const run = ++artRun.current;
+      setArts(["loading", "loading", "loading"]);
+      choose(0, list, null);
+      list.forEach((x: { name: string; desc: string }, i: number) => { drawOne(i, x.name, x.desc, run); });
     } catch (e) { toast((e as Error).message || "AI is busy, please try again."); } finally { setThinking(false); }
   };
   // AI image for the chosen coin
@@ -138,6 +164,7 @@ function CreateView() {
 
   if (done) return (
     <div className="wrap page" style={{ maxWidth: 680 }}>
+      <Confetti />
       <div className="card" style={{ background: "var(--card)", borderRadius: 22, padding: 20, gap: 16 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10 }}>
           <span style={{ width: 92, height: 92, borderRadius: 26, overflow: "hidden", boxShadow: "0 20px 60px rgba(124,92,255,0.35)" }}>{imgPreview ? <img src={imgPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <FrogArt c1={o.c1} c2={o.c2} />}</span>
@@ -167,112 +194,159 @@ function CreateView() {
     </div>
   );
 
+  const SPARKS: [string, string][] = [["🐸 Frog trader", "A frog that trades on Robinhood"], ["🐼 Panda astronaut", "A sleepy panda astronaut"], ["🍕 Moon pizza", "Pizza that goes to the moon"], ["🐱 Surfing cat", "A cat that surfs the ocean waves"], ["👑 King shiba", "A shiba inu wearing a crown"], ["🤖 Meme robot", "A robot that only eats memes"], ["🦆 Pirate duck", "A pirate duck looking for treasure"], ["🐧 DJ penguin", "A penguin DJ at an ice party"], ["🐉 Gold dragon", "A dragon made of gold coins"], ["🍌 Rocket banana", "A banana on a rocket"]];
+  const STEPS = ["Idea", "Details", "Launch"];
+  const go = (i: number) => { setStep(i); window.scrollTo({ top: 0 }); };
+  const skipAi = () => { setName(""); setTick(""); setDesc(""); setImgFile(null); setImgPreview(null); go(1); };
+  const detailsOk = name.trim().length > 0 && /^[A-Z0-9]{1,10}$/.test(tick.trim());
+  const next = () => {
+    if (step === 0) { if (!generated) { if (idea.trim()) generate(); else toast("Describe your coin, or tap one of the ideas."); return; } go(1); return; }
+    if (step === 1) { if (!detailsOk) { toast(!name.trim() ? "Give your coin a name." : "Ticker: 1 to 10 letters or numbers."); return; } go(2); return; }
+    launchNow();
+  };
+  const nextLabel = step === 0 ? (generated ? "Next: details" : thinking ? "Designing…" : "✦ Generate 3 coins")
+    : step === 1 ? "Next: launch settings"
+    : busy || (w.signedIn ? `Launch ${name || "coin"} · ${boost === "none" ? "Free" : `$${boost}`}` : "Log in to launch");
+  const pic = (size: number, radius: number) => (
+    <span className="cr-pic" style={{ width: size, height: size, borderRadius: radius }}>{imgPreview ? <img src={imgPreview} alt="" /> : <FrogArt c1={o.c1} c2={o.c2} />}</span>
+  );
+
   return (
-    <div className="wrap page" style={{ maxWidth: 1240, paddingBottom: 150 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ margin: 0, fontSize: "clamp(24px, 3vw, 32px)", fontWeight: 900, letterSpacing: -0.8 }}>One sentence. One coin.</h1>
-        <p className="h-sub" style={{ fontSize: 14 }}>Any language. AI makes the name, ticker, story and image.</p>
+    <div className="wrap page cr">
+      <div className="cr-top">
+        <h1>Create a coin</h1>
+        <div className="cr-steps" role="tablist" aria-label="Steps">
+          {STEPS.map((t, i) => (
+            <button key={t} type="button" role="tab" aria-selected={step === i} className={`${step === i ? "on" : ""}${step > i ? " past" : ""}`} onClick={() => (i <= step || (i === 1 && generated) || (i === 2 && detailsOk) ? go(i) : undefined)}>
+              <i /><span>{i + 1} · {t}</span>
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="row">
-        <div className="main-col card" style={{ background: "var(--card)", borderRadius: 22, padding: 16, gap: 12 }}>
-          <Step n={1} t="Describe it" />
-          <label htmlFor="cidea" className="sr">Describe your coin in any language</label>
-          <div style={{ borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line3)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <textarea id="cidea" rows={2} value={idea} onChange={(e) => setIdea(e.target.value)} style={{ resize: "none", background: "transparent", border: 0, outline: "none", fontSize: 16, fontWeight: 500, lineHeight: 1.5 }} />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span className="pill mono" style={{ background: "var(--raise)", color: "var(--muted)", fontSize: 11 }}><IGlobe size={12} />Any language → English coin</span>
-              <button type="button" className="btn volt" disabled={thinking} onClick={() => generate()}><ISpark size={15} color="#0A0B10" />{thinking ? "Thinking…" : "Generate with AI"}</button>
-            </div>
-          </div>
-          <div className="grid3" style={{ gap: 8 }}>
-            {OPTS.map((x, i) => (
-              <button key={i} type="button" onClick={() => choose(i)} style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 14, border: pick === i ? "2px solid var(--volt)" : "1px solid var(--line2)", background: pick === i ? "rgba(212,255,58,0.06)" : "var(--bg)", minWidth: 0 }}>
-                <span style={{ width: 52, height: 52, borderRadius: 12, overflow: "hidden", flex: "none" }}><FrogArt c1={x.c1} c2={x.c2} /></span>
-                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                  <span style={{ fontWeight: 800, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.name}</span>
-                  <span className="mono volt" style={{ fontWeight: 700, fontSize: 11 }}>${x.tick}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-          <div style={{ height: 1, background: "var(--line)" }} />
-          <Step n={2} t="Make it yours" />
-          <div className="grid2" style={{ gap: 8 }}>
-            <div className="field"><label htmlFor="cn">Name</label><input id="cn" className="inp" value={name} maxLength={32} onChange={(e) => setName(e.target.value)} /></div>
-            <div className="field"><label htmlFor="ct">Ticker</label><input id="ct" className="inp mono" value={tick} maxLength={10} onChange={(e) => setTick(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} /></div>
-          </div>
-          <div className="field"><label htmlFor="cd">Description</label><textarea id="cd" rows={2} className="inp" value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { setImgFile(f); setImgPreview(URL.createObjectURL(f)); } }} />
-            <button type="button" className="btn ghost sm" disabled={drawing} onClick={drawImage}><ISpark size={14} color="var(--volt-ink)" />{drawing ? "Drawing…" : imgFile ? "New AI image" : "AI image"}</button>
-            <button type="button" className="btn ghost sm" onClick={() => fileRef.current?.click()}>{imgFile ? "Change image" : "Upload image"}</button>
-            {imgFile && <button type="button" className="btn ghost sm" onClick={() => { setImgFile(null); setImgPreview(null); }}>Remove image</button>}
-            <button type="button" className="btn ghost sm" aria-expanded={links} onClick={() => setLinks(!links)}>{links ? "Hide links" : "+ Add links (optional)"}</button>
-          </div>
-          {links && (
-            <div className="grid3" style={{ gap: 8 }}>
-              <div className="field"><label htmlFor="cx">X</label><input id="cx" className="inp" placeholder="x.com/yourcoin" value={xUrl} onChange={(e) => setXUrl(e.target.value)} /></div>
-              <div className="field"><label htmlFor="ctg">Telegram</label><input id="ctg" className="inp" placeholder="t.me/yourcoin" value={tgUrl} onChange={(e) => setTgUrl(e.target.value)} /></div>
-              <div className="field"><label htmlFor="cw">Website</label><input id="cw" className="inp" placeholder="yourcoin.com" value={webUrl} onChange={(e) => setWebUrl(e.target.value)} /></div>
+
+      <div className="cr-grid">
+        <div className="cr-main">
+          {step === 0 && (
+            <>
+              <div className="cr-ai">
+                <span className="cr-badge"><ISpark size={12} color="currentColor" />AI</span>
+                <h2>Your coin, designed in seconds</h2>
+                <p>One sentence in any language. You get 3 coins with a name, ticker, story and logo.</p>
+                <label htmlFor="cidea" className="sr">Describe your coin in any language</label>
+                <textarea id="cidea" rows={2} value={idea} maxLength={300} placeholder="e.g. A frog astronaut who only buys the dip" onChange={(e) => setIdea(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!thinking) generate(); } }} />
+                <div className="cr-sparks">
+                  {SPARKS.map(([a, b]) => <button key={a} type="button" onClick={() => { setIdea(b); generate(b); }} disabled={thinking}>{a}</button>)}
+                </div>
+                <button type="button" className="cr-gen" disabled={thinking} onClick={() => generate()}><ISpark size={16} color="currentColor" />{thinking ? "Designing your coins…" : generated ? "Generate again" : "Generate 3 coins"}</button>
+              </div>
+              {(thinking || generated) && (
+                <div className="cr-cards" role="radiogroup" aria-label="AI coins" aria-busy={thinking}>
+                  {thinking ? [0, 1, 2].map((i) => <div key={i} className="cr-card skel" style={{ height: 268 }} />) : OPTS.map((x, i) => {
+                    const a = arts[i];
+                    return (
+                      <button key={i} type="button" role="radio" aria-checked={pick === i} className={`cr-card${pick === i ? " on" : ""}`} onClick={() => choose(i)}>
+                        <span className="cr-art">
+                          {a === "loading" ? <span className="skel" style={{ position: "absolute", inset: 0 }} /> : a && a !== "failed" ? <img src={a} alt="" /> : <FrogArt c1={x.c1} c2={x.c2} />}
+                          {a === "loading" && <span className="cr-drawing">Drawing logo…</span>}
+                          <span className="cr-tick" aria-hidden="true">✓</span>
+                        </span>
+                        <b>{x.name}</b>
+                        <span className="mono cr-tk">${x.tick}</span>
+                        <span className="cr-ds">{x.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {generated && !thinking && <span className="cr-hint">{OPTS.length > 1 ? "Swipe to see all 3 · " : ""}tap one, then Next. You can still change everything.</span>}
+              <button type="button" className="cr-skip" onClick={skipAi}>Skip AI, I&apos;ll fill it in myself</button>
+            </>
+          )}
+
+          {step === 1 && (
+            <div className="card cr-pane">
+              <div className="cr-id">
+                <button type="button" className="cr-picbtn" onClick={() => fileRef.current?.click()} aria-label="Change picture">{pic(96, 18)}<span>Change</span></button>
+                <div className="cr-fields">
+                  <div className="field"><label htmlFor="cn">Name</label><input id="cn" className="inp" value={name} maxLength={32} placeholder="Harbor Cat" onChange={(e) => setName(e.target.value)} /></div>
+                  <div className="field"><label htmlFor="ct">Ticker</label><input id="ct" className="inp mono" value={tick} maxLength={10} placeholder="HCAT" onChange={(e) => setTick(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} /></div>
+                </div>
+              </div>
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { setImgFile(f); setImgPreview(URL.createObjectURL(f)); } e.target.value = ""; }} />
+              <div className="cr-mini">
+                <button type="button" className="btn ghost sm" disabled={drawing} onClick={drawImage}><ISpark size={14} color="var(--volt-ink)" />{drawing ? "Drawing…" : "New AI logo"}</button>
+                <button type="button" className="btn ghost sm" onClick={() => fileRef.current?.click()}>Upload image</button>
+                {imgFile && <button type="button" className="btn ghost sm" onClick={() => { setImgFile(null); setImgPreview(null); }}>Remove</button>}
+              </div>
+              <div className="field"><label htmlFor="cd">Story <span className="dim" style={{ fontWeight: 400 }}>· shown on your coin page</span></label><textarea id="cd" rows={3} className="inp" value={desc} maxLength={280} placeholder="What's the idea? Tell future holders a little about it." onChange={(e) => setDesc(e.target.value)} /></div>
+              <details className="cr-links" open={links} onToggle={(e) => setLinks((e.target as HTMLDetailsElement).open)}>
+                <summary>Links <span className="dim">optional</span></summary>
+                <div className="cr-links-in">
+                  <div className="field"><label htmlFor="cx">X</label><input id="cx" className="inp" placeholder="x.com/yourcoin" value={xUrl} onChange={(e) => setXUrl(e.target.value)} /></div>
+                  <div className="field"><label htmlFor="ctg">Telegram</label><input id="ctg" className="inp" placeholder="t.me/yourcoin" value={tgUrl} onChange={(e) => setTgUrl(e.target.value)} /></div>
+                  <div className="field"><label htmlFor="cw">Website</label><input id="cw" className="inp" placeholder="yourcoin.com" value={webUrl} onChange={(e) => setWebUrl(e.target.value)} /></div>
+                </div>
+              </details>
+              <span style={{ fontSize: 11, color: "var(--faint)" }}>Name, ticker, story and links are saved with the coin at launch. The picture can be changed later.</span>
             </div>
           )}
-          <div style={{ height: 1, background: "var(--line)" }} />
-          <Step n={3} t="Launch settings" />
-          <div className="grid2" style={{ gap: 14 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Label t="Chain" sub="pick one" />
-          <div className="grid2 keep" style={{ gap: 8 }}>
-            {CHAINS.map(({ name: n, color: col }) => (
-              <button key={n} type="button" onClick={() => setChain(n)} className="seg" style={{ height: 46, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 700, fontSize: 14, border: chain === n ? `2px solid ${col}` : undefined }}><span className="dot" style={{ width: 10, height: 10, background: col }} />{n}</button>
-            ))}
-          </div>
+
+          {step === 2 && (
+            <div className="card cr-pane">
+              <div className="cr-sum">
+                {pic(44, 12)}
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <b>{name || "Your coin"}</b> <span className="mono dim" style={{ fontSize: 11 }}>${tick || "TICKER"}</span>
+                  <span className="cr-tags"><span>{chain}</span>{lock !== "No lock" && <span className="g">Dev locked {lock.replace("Lock ", "")}</span>}<span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span></span>
+                </span>
+              </div>
+              <div className="cr-set"><div className="cr-lbl">Chain <span>one per coin</span></div>
+                <div className="cr-sg">{CHAINS.map(({ name: n, color: col }) => <button key={n} type="button" className={chain === n ? "on" : ""} onClick={() => setChain(n)}><span className="dot" style={{ width: 8, height: 8, background: col }} />{n}</button>)}</div>
+              </div>
+              <div className="cr-set"><div className="cr-lbl">Creator lock <span>shows buyers you won&apos;t dump</span></div>
+                <div className="cr-sg">{[["No lock", "None"], ["Lock 1h", "1 hour"], ["Lock 24h", "24 hours"]].map(([k, t]) => <button key={k} type="button" className={lock === k ? "on" : ""} onClick={() => setLock(k)}>{t}</button>)}</div>
+              </div>
+              <div className="cr-set"><div className="cr-lbl">Creator fees <span>{fee === "burn" ? "fees buy your coin and burn it" : "fees go to your balance"}</span></div>
+                <div className="cr-sg"><button type="button" className={fee === "you" ? "on" : ""} onClick={() => setFee("you")}>💰 To you</button><button type="button" className={fee === "burn" ? "on" : ""} onClick={() => setFee("burn")}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</button></div>
+              </div>
+              <div className="cr-set"><div className="cr-lbl">Be the first buyer <span>optional</span></div>
+                <div className="cr-chips">{[0, 10, 25, 50, 100].map((v) => <button key={v} type="button" className={first === v && !firstTxt ? "on" : ""} onClick={() => { setFirst(v); setFirstTxt(""); }}>${v}</button>)}</div>
+                <label className="amt-field" htmlFor="first-amt">
+                  <span className="mono dim">$</span>
+                  <input id="first-amt" inputMode="decimal" placeholder="Other amount" value={firstTxt}
+                    onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 8); setFirstTxt(v); setFirst(Math.min(500, Math.round((Number(v) || 0) * 100) / 100)); }} />
+                  <span className="mono dim" style={{ fontSize: 12 }}>USDC</span>
+                </label>
+              </div>
+              <div className="cr-set"><div className="cr-lbl">Boost <span>top of Discover</span></div>
+                <div className="cr-sg cr-boost">
+                  <button type="button" className={boost === "none" ? "on" : ""} onClick={() => setBoost("none")}>No boost</button>
+                  <button type="button" className={boost === "10" ? "on" : ""} onClick={() => setBoost("10")}><em>Most popular</em>6h · $10</button>
+                  <button type="button" className={boost === "20" ? "on" : ""} onClick={() => setBoost("20")}>24h · $20</button>
+                </div>
+              </div>
+              <div className="cr-facts">
+                <span>Starts at <b className="mono">$450</b> · graduates at <b className="mono">$750</b> <span className="dim">(testnet)</span></span>
+                <span>Your USDC on {chain}: <b className="mono">{w.signedIn ? `$${cash.toFixed(2)}` : "—"}</b></span>
+              </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Label t="Creator lock" sub="shows buyers you won't dump" />
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{["No lock", "Lock 1h", "Lock 24h"].map((t) => <button key={t} type="button" className={`seg${lock === t ? " on" : ""}`} onClick={() => setLock(t)}>{t}</button>)}</div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Label t="Creator fees" />
-          <div className="grid2 keep" style={{ gap: 8 }}>
-            <button type="button" onClick={() => setFee("you")} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: fee === "you" ? "1px solid var(--volt)" : "1px solid var(--line2)", background: fee === "you" ? "rgba(212,255,58,0.08)" : "transparent", display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontWeight: 700, fontSize: 14 }}>To you</span><span className="dim" style={{ fontSize: 12, lineHeight: 1.4 }}>Creator fees go to your balance.</span></button>
-            <button type="button" onClick={() => setFee("burn")} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: fee === "burn" ? "1px solid var(--burn)" : "1px solid var(--line2)", background: fee === "burn" ? "rgba(255,138,61,0.08)" : "transparent", display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontWeight: 700, fontSize: 14, display: "flex", gap: 6, alignItems: "center" }}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</span><span className="dim" style={{ fontSize: 12, lineHeight: 1.4 }}>Fees buy your coin and burn it.</span></button>
-          </div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Label t="Boost" sub="optional" />
-          <div className="grid3" style={{ gap: 8, gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
-            {[["none", "No boost", ""], ["10", "$10", "6 hours on top"], ["20", "$20", "24 hours on top"]].map(([k, a, b]) => (
-              <button key={k} type="button" onClick={() => setBoost(k)} className={`seg${boost === k ? " on" : ""}`} style={{ height: 52, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, minWidth: 0 }}><span className={b ? "mono" : ""} style={{ fontWeight: 700, fontSize: b ? 15 : 13 }}>{a}</span>{b && <span className="dim" style={{ fontSize: 11 }}>{b}</span>}</button>
-            ))}
-          </div>
-            </div>
-          </div>
+          )}
         </div>
-        <aside className="side-col" style={{ position: "sticky", top: 90 }}>
-          <div className="card" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
+
+        <aside className="cr-side hide-m">
+          <div className="card" style={{ borderRadius: 20, gap: 12 }}>
             <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>Live preview</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}><span style={{ width: 64, height: 64, borderRadius: 18, overflow: "hidden", flex: "none" }}>{imgPreview ? <img src={imgPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <FrogArt c1={o.c1} c2={o.c2} />}</span><span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}><span style={{ fontWeight: 900, fontSize: 20, overflow: "hidden", textOverflow: "ellipsis" }}>{name || "Your coin"}</span><span className="mono dim" style={{ fontWeight: 600, fontSize: 13 }}>{tick || "TICKER"} · {chain}</span></span></div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {lock !== "No lock" && <span className="pill volt" style={{ background: "rgba(212,255,58,0.10)" }}>Dev locked {lock.replace("Lock ", "")}</span>}
-              <span className="pill" style={{ background: fee === "burn" ? "rgba(255,138,61,0.12)" : "rgba(61,220,151,0.12)", color: fee === "burn" ? "var(--burn)" : "var(--up)" }}>{fee === "burn" ? "Buyback & burn" : "Fees to creator"}</span>
-            </div>
-            {[["Starts at", "$450 market cap (testnet)"], ["Graduates at", "$750 (testnet)"], ["Your USDC on " + chain, w.signedIn ? `$${cash.toFixed(2)}` : "—"]].map(([a, b]) => <div key={a} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">{a}</span><span className="mono">{b}</span></div>)}
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Launch cost</span><span className="mono up">{boost === "none" ? "Free" : `$${boost} boost`}</span></div>
-            <span className="dim" style={{ fontSize: 13 }}>Be the first buyer (optional)</span>
-            <div style={{ display: "flex", gap: 6 }}>{[0, 10, 25, 50, 100].map((v) => <button key={v} type="button" className={`seg mono${first === v ? " on" : ""}`} style={{ height: 38, minWidth: 0 }} onClick={() => { setFirst(v); setFirstTxt(""); }}>${v}</button>)}</div>
-            <label className="amt-field" htmlFor="first-amt">
-              <span className="mono dim">$</span>
-              <input id="first-amt" inputMode="decimal" placeholder="Other amount" value={firstTxt}
-                onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 8); setFirstTxt(v); setFirst(Math.min(500, Math.round((Number(v) || 0) * 100) / 100)); }} />
-              <span className="mono dim" style={{ fontSize: 12 }}>USDC</span>
-            </label>
-            <button type="button" className="btn volt lg hide-m" style={{ fontSize: 17, fontWeight: 900 }} onClick={launchNow} disabled={!!busy}><IRocket size={18} color="#0A0B10" w={2.4} />{busy || (w.signedIn ? `Launch ${name || "coin"}` : "Log in to launch")}</button>
-            <span className="hide-m" style={{ fontSize: 12, color: "var(--faint)", textAlign: "center" }}>You review everything before it goes live.</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>{pic(64, 18)}<span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}><span style={{ fontWeight: 900, fontSize: 20, overflowWrap: "anywhere" }}>{name || "Your coin"}</span><span className="mono dim" style={{ fontSize: 12 }}>${tick || "TICKER"} · {chain}</span></span></div>
+            {desc && <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>{desc}</p>}
+            <div className="cr-tags"><span>{chain}</span>{lock !== "No lock" && <span className="g">Dev locked {lock.replace("Lock ", "")}</span>}<span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span>{boost !== "none" && <span className="g">Boost {boost === "10" ? "6h" : "24h"}</span>}{first > 0 && <span>First buy ${first}</span>}</div>
+            <span style={{ fontSize: 12, color: "var(--faint)" }}>You review everything before it goes live.</span>
           </div>
         </aside>
       </div>
-      <div className="show-m" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(74px + var(--safe-bottom))", zIndex: 25, padding: "10px 16px", background: "var(--bar-bg)", borderTop: "1px solid var(--line)" }}>
-        <button type="button" className="btn volt lg" style={{ width: "100%", fontWeight: 900 }} onClick={launchNow} disabled={!!busy}>{busy || (w.signedIn ? `Launch ${name || "coin"} · ${boost === "none" ? "Free" : `$${boost}`}` : "Log in to launch")}</button>
+
+      <div className="cr-foot">
+        {step > 0 && <button type="button" className="btn cr-back" onClick={() => go(step - 1)} disabled={!!busy}>Back</button>}
+        <button type="button" className="btn volt cr-next" onClick={next} disabled={!!busy || (step === 0 && thinking)}>{step === 2 && !busy && <IRocket size={17} color="#0A0B10" w={2.4} />}{nextLabel}</button>
       </div>
     </div>
   );
