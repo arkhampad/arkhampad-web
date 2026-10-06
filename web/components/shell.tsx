@@ -20,8 +20,8 @@ import { NETS } from "@/lib/chain";
 
 type Ctx = { openLogin: () => void; openFunds: (t: "deposit" | "withdraw") => void; toast: (m: string) => void; loggedIn: boolean };
 const AppCtx = createContext<Ctx>({ openLogin: () => {}, openFunds: () => {}, toast: () => {}, loggedIn: false });
-// real money on any network (mainnet) -> the top strip says we are live
-const LIVE = NETS.some((n) => !n.faucet);
+// a mainnet network in the list (Robinhood Chain, Base or BNB) -> the top strip says we are live
+const LIVE = NETS.some((n) => [4663, 8453, 56].includes(n.id));
 
 export const useApp = () => useContext(AppCtx);
 
@@ -141,6 +141,7 @@ function Footer() {
           <Link href="/learn/">Learn</Link>
           <Link href="/help/">Help</Link>
           <Link href="/help/#fees">Fees</Link>
+          <Link href="/security/">Security</Link>
           <Link href="/terms/">Terms</Link>
           <Link href="/privacy/">Privacy</Link>
           <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer">X</a>
