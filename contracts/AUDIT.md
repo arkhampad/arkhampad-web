@@ -86,4 +86,6 @@ The treasury address given to PadHub and PadPromote (and to PadExtSwap at its de
 - `payer` (the relayer's hot key) can only call `payReferral(to, amount, ref)` — referral rewards in
   the dollar token — and at most `dailyCap` per UTC day in total. A stolen relayer key can take at
   most one day's cap; everything else needs the owner.
-- Deploy env: `TREASURY` = vault owner, `RELAYER` = payer address, `VAULT_DAILY_CAP` = whole dollars (default 500).
+- Deploy env: `TREASURY` = vault owner, `RELAYER` = payer address (required on mainnet; the constructor rejects a zero payer), `VAULT_DAILY_CAP` = whole dollars (default 500). `setPayer(address(0))` later switches payouts off.
+- `DeployExtSwap` reads the vault from `deployments/<chainId>.json`, so PadExtSwap's treasury is always the same vault.
+- Review round 1 (Oct 6, 2026): no critical/high/medium; low (zero payer at deploy) fixed.

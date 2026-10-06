@@ -94,4 +94,11 @@ contract FeeVaultTest is Test {
         assertLe(paid, 500e6);
         assertEq(usd.balanceOf(user), paid);
     }
+
+    function test_constructorRejectsZeroAddresses() public {
+        vm.expectRevert(PadFeeVault.ZeroAddress.selector);
+        new PadFeeVault(IERC20(address(usd)), owner, address(0), 500e6);
+        vm.expectRevert(PadFeeVault.ZeroAddress.selector);
+        new PadFeeVault(IERC20(address(usd)), address(0), payer, 500e6);
+    }
 }

@@ -97,7 +97,11 @@ contract Deploy is Script {
         });
         // All platform fees go to the fee vault: the treasury wallet owns it and withdraws any time;
         // the relayer may only pay referral rewards from it, capped per day.
-        address payer = vm.envOr("RELAYER", address(0));
+        // testnets fall back to the deployer; mainnet must name the relayer explicitly
+        address payer = vm.envOr("RELAYER", deployer);
+        if (block.chainid == 4663 || block.chainid == 8453 || block.chainid == 56) {
+            require(vm.envOr("RELAYER", address(0)) != address(0), "mainnet: set RELAYER (the relayer's address)");
+        }
         uint256 cap = vm.envOr("VAULT_DAILY_CAP", uint256(500)) * dollar;
         PadFeeVault vault = new PadFeeVault(IERC20(v.usdc), treasury, payer, cap);
         uint64 nonce = vm.getNonce(deployer);

@@ -39,7 +39,8 @@ contract PadFeeVault is ReentrancyGuard {
     }
 
     constructor(IERC20 usdc_, address owner_, address payer_, uint256 dailyCap_) {
-        if (address(usdc_) == address(0) || owner_ == address(0)) revert ZeroAddress();
+        // the payer must be set at deploy (it can be switched off later with setPayer(address(0)))
+        if (address(usdc_) == address(0) || owner_ == address(0) || payer_ == address(0)) revert ZeroAddress();
         usdc = usdc_;
         owner = owner_;
         payer = payer_;
