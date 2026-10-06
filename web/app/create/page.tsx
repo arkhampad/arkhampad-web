@@ -34,9 +34,9 @@ function CreateView() {
   const [tick, setTick] = useState(OPTS0[0].tick);
   const [desc, setDesc] = useState(OPTS0[0].desc);
   // networks come from the site config (testnet: Robinhood + Base; mainnet adds more)
-  // Robinhood first: it's the default chain for new coins
-  const CHAINS = [...NETS].sort((a, b) => (a.short === "Robinhood" ? -1 : b.short === "Robinhood" ? 1 : 0)).map((n) => ({ id: n.id, name: n.short, color: n.short === "Robinhood" ? "var(--rh)" : n.short === "Base" ? "var(--base)" : n.short === "BNB" ? "#F0B90B" : "var(--volt)" }));
-  const [chain, setChain] = useState(CHAINS.find((c) => c.name === "Robinhood")?.name ?? CHAINS[0].name);
+  // Base first and the default: the chain most trading apps and wallets already show
+  const CHAINS = [...NETS].sort((a, b) => (a.short === "Base" ? -1 : b.short === "Base" ? 1 : 0)).map((n) => ({ id: n.id, name: n.short, color: n.short === "Robinhood" ? "var(--rh)" : n.short === "Base" ? "var(--base)" : n.short === "BNB" ? "#F0B90B" : "var(--volt)" }));
+  const [chain, setChain] = useState(CHAINS.find((c) => c.name === "Base")?.name ?? CHAINS[0].name);
   // safe, simple defaults: the creator opts in to a lock or to buyback & burn
   const [lock, setLock] = useState("No lock");
   const [fee, setFee] = useState("you");
@@ -300,7 +300,7 @@ function CreateView() {
                   <span className="cr-tags"><span>{chain}</span>{lock !== "No lock" && <span className="g">Dev locked {lock.replace("Lock ", "")}</span>}<span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span></span>
                 </span>
               </div>
-              <div className="cr-set"><div className="cr-lbl">Chain <span>one per coin</span></div>
+              <div className="cr-set"><div className="cr-lbl">Chain <span>{chain === "Base" ? "most apps and wallets support it" : "one per coin"}</span></div>
                 <div className="cr-sg">{CHAINS.map(({ name: n, color: col }) => <button key={n} type="button" className={chain === n ? "on" : ""} onClick={() => setChain(n)}><span className="dot" style={{ width: 8, height: 8, background: col }} />{n}</button>)}</div>
               </div>
               <div className="cr-set"><div className="cr-lbl">Creator lock <span>shows buyers you won&apos;t dump</span></div>
