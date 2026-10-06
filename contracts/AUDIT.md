@@ -1,27 +1,46 @@
 # ArkhamPad contracts: review guide
 
-ArkhamPad is a meme-coin launchpad. Coins start on a bonding curve priced in a dollar token
-(USDC on Base, USDG on Robinhood Chain, USDC with 18 decimals on BNB Chain). When a curve sells
-out, the coin "graduates" into a locked Uniswap v4 pool. Users never hold ETH: they sign EIP-712
-messages and a relayer submits them, taking a small network fee in the dollar token.
+ArkhamPad is a meme-coin launchpad. **Since v2 there is no bonding curve:** every coin opens
+straight into a locked Uniswap v4 coin/dollar pool at launch, so it trades everywhere (DEX
+screeners, aggregators, trading apps) from the first block. The dollar token is USDC on Base,
+USDG on Robinhood Chain, USDC with 18 decimals on BNB Chain. Users never hold ETH: they sign
+EIP-712 messages and a relayer submits them, taking a small network fee in the dollar token.
 
-Solidity 0.8.26, OpenZeppelin 5.1, Uniswap v4 (core + periphery). ~1,600 lines in `src/`.
-Build and run everything: `forge build && forge test` (96 tests; fork tests need RPC env vars,
+Solidity 0.8.26, OpenZeppelin 5.1, Uniswap v4 (core + periphery).
+Build and run everything: `forge build && forge test` (fork tests need RPC env vars,
 see `.github/workflows/contracts.yml`).
+
+## What changed in v2 (please focus the review here)
+
+- `PadCurve.sol` and `PadInitGuard.sol` are gone.
+- `PadHub` mints the 1B supply to the builder and calls `launchPool` in the same transaction.
+- `PadPoolBuilder.launchPool` opens the pool at the launch price (`startMarketCap` for the whole
+  supply, rounded up to the 200-tick grid, so up to ~2% higher) with ONE single-sided position
+  holding every coin, from the launch price to the max tick. The position NFT never leaves the
+  builder (no function removes or moves liquidity). Rounding dust coins are burned.
+- `PadPoolBuilder.launchBuy`: the creator's launch buy, swapped by the builder itself. Every launch must include one of at least `minLaunchBuy` ($5): the pool's first trade happens at launch (so screeners list it at once) and the relayer's gas is always repaid by a funded user.
+- `PadLaunchHook` (mined address, flags: before-initialize + before-swap only):
+  only the builder may initialize a pool with it; every swap gets an override LP fee of
+  30% at launch, falling linearly to 2% over 300 seconds, then 2% forever. Swaps made by the
+  builder (launch buy, buybacks) always pay 2%. No deltas, no funds, no owner.
+- All pool fees accrue to the single locked position; `collectFees` splits them 70% platform /
+  30% coin (creator, or buyback & burn), in both currencies, as before.
+- `PadRouter`: curve `buy`/`sell` removed; `poolBuy`/`poolSell`/`quotePool` work for any coin
+  launched by the hub (`hub.isCoin` + an open position); `launch` returns only the coin.
+- Pause (admin or guardian) now stops new launches; pool trading can never be paused.
 
 ## Contracts in scope
 
 | File | Role |
 |---|---|
-| `PadCoin.sol` | Fixed-supply ERC20 (1B, 18 decimals) with EIP-2612 permit. Optional creator lock. |
-| `PadCurve.sol` | One per coin. Constant-product virtual curve, 1% trade fee (0.7% platform / 0.3% creator or buyback), creator launch buy, graduation trigger. Creator fees settle to the creator or buy back and burn. |
-| `PadHub.sol` | Factory + registry. Creates coin + curve, holds global settings (curve params, treasury, guardian pause), `createCoinFor` callable only by the router. |
-| `PadPoolBuilder.sol` | On graduation: takes the curve's dollars + reserved coins, opens a Uniswap v4 pool at the curve's last price, holds the LP position forever (locked), collects pool fees (70% platform / 30% creator or buyback), runs buybacks in steps of at most $100. |
-| `PadInitGuard.sol` | v4 hook (mined address) that allows pool initialization only by the builder, so nobody can front-run the pool at a bad price. |
-| `PadRouter.sol` | Gasless entry point. Verifies EIP-712 signatures (EOA or ERC-1271), one-time nonces, deadlines. Buy / sell / launch / withdraw / promote on the curve, and buy / sell in graduated coins' pools (`poolBuy`, `poolSell`, `quotePool`). Pays the relayer the signed fee. |
+| `PadCoin.sol` | Fixed-supply ERC20 (1B, 18 decimals) with EIP-2612 permit. Optional creator lock (max 1 day). |
+| `PadHub.sol` | Factory + registry. Creates a coin and its pool in one call, optional creator launch buy, settings (start market cap, treasury, guardian pause), `createCoinFor` callable only by the router. |
+| `PadPoolBuilder.sol` | Opens each coin's v4 pool at launch, holds the single LP position forever (locked), collects pool fees (70% platform / 30% creator or buyback), runs buybacks in steps of at most $100. |
+| `PadLaunchHook.sol` | v4 hook: pool initialization only by the builder; launch fee schedule (30% → 2% over 5 minutes). |
+| `PadRouter.sol` | Gasless entry point. Verifies EIP-712 signatures (EOA or ERC-1271), one-time nonces, deadlines. Launch / withdraw / promote, and buy / sell in coins' pools (`poolBuy`, `poolSell`, `quotePool`). Pays the relayer the signed fee. |
 | `PadPromote.sol` | Paid promotion plans (6h $10, 24h $20, 7d $99, scaled to the token's decimals). |
 | `PadExtSwap.sol` | Gasless trading of coins from other DEXs through an allowlisted aggregator (KyberSwap), 1% fee. |
-| `interfaces.sol` | Shared interfaces. |
+| `PadTypes.sol`, `interfaces.sol` | Shared types and interfaces. |
 
 `TestUSDC.sol` is testnet-only (public faucet mint) and is not deployed on mainnet.
 

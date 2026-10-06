@@ -8,7 +8,7 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {PadHub} from "./PadHub.sol";
-import {PadCurve} from "./PadCurve.sol";
+import {FeeMode} from "./PadTypes.sol";
 import {PadPromote} from "./PadPromote.sol";
 import {PadPoolBuilder} from "./PadPoolBuilder.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -34,10 +34,6 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     using SafeERC20 for IERC20;
 
-    bytes32 public constant BUY_TYPEHASH =
-        keccak256("Buy(address user,address curve,uint256 usdcIn,uint256 minCoinsOut,uint256 fee,uint256 nonce,uint256 deadline)");
-    bytes32 public constant SELL_TYPEHASH =
-        keccak256("Sell(address user,address curve,uint256 coinAmount,uint256 minUsdcOut,uint256 fee,uint256 nonce,uint256 deadline)");
     bytes32 public constant CREATE_TYPEHASH = keccak256(
         "Create(address user,string name,string symbol,string metadataURI,uint256 lockSeconds,uint8 feeMode,uint256 launchUsdc,uint256 minCoinsOut,uint256 fee,uint256 nonce,uint256 deadline)"
     );
@@ -55,7 +51,7 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     PadHub public immutable hub;
     IERC20 public immutable usdc;
     PadPromote public immutable promoter;
-    /// @notice Builds and holds the locked pools of graduated coins (zero: pool trading off).
+    /// @notice Opens and holds every coin's locked pool (zero: pool trading off).
     PadPoolBuilder public immutable builder;
     IPoolManager public immutable poolManager;
     /// @dev Set only while this router itself is inside PoolManager.unlock, so nobody else can
@@ -65,9 +61,7 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     /// @notice user => nonce => used (any order of use, so many open orders can coexist)
     mapping(address => mapping(uint256 => bool)) public nonceUsed;
 
-    event Bought(address indexed user, address indexed curve, uint256 usdcSpent, uint256 coinsOut, uint256 fee, uint256 nonce);
-    event Sold(address indexed user, address indexed curve, uint256 coinAmount, uint256 usdcOut, uint256 fee, uint256 nonce);
-    event Launched(address indexed user, address indexed coin, address indexed curve, uint256 launchUsdc, uint256 fee, uint256 nonce);
+    event Launched(address indexed user, address indexed coin, uint256 launchUsdc, uint256 fee, uint256 nonce);
     event Withdrawn(address indexed user, address indexed to, uint256 amount, uint256 fee, uint256 nonce);
     event Promoted(address indexed user, address indexed coin, uint8 plan, uint256 fee, uint256 nonce);
     event NonceCancelled(address indexed user, uint256 nonce);
@@ -77,11 +71,10 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     error Expired();
     error NonceAlreadyUsed();
     error BadSignature();
-    error NotACurve();
     error FeeTooHigh();
     error Slippage(uint256 got, uint256 minimum);
     error ZeroAddress();
-    error NotGraduated();
+    error NoPool();
     error OnlyPoolManager();
     error Quote(uint256 amountOut);
     error NotUnlocking();
@@ -113,57 +106,12 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
 
     // ---------------------------------------------------------------- trading
 
-    function buy(address user, address curve, uint256 usdcIn, uint256 minCoinsOut, uint256 fee, Sig calldata sig)
-        external
-        nonReentrant
-        returns (uint256 coinsOut)
-    {
-        _use(user, sig, keccak256(abi.encode(BUY_TYPEHASH, user, curve, usdcIn, minCoinsOut, fee, sig.nonce, sig.deadline)));
-        if (!hub.isCurve(curve)) revert NotACurve();
-
-        usdc.safeTransferFrom(user, address(this), usdcIn + fee);
-        if (fee > 0) usdc.safeTransfer(msg.sender, fee);
-
-        uint256 before = usdc.balanceOf(address(this));
-        usdc.forceApprove(curve, usdcIn);
-        coinsOut = PadCurve(curve).buy(usdcIn, minCoinsOut, user);
-        usdc.forceApprove(curve, 0);
-        uint256 spent = before - usdc.balanceOf(address(this));
-        // A buy that fills the curve uses less than usdcIn: return the rest.
-        if (spent < usdcIn) usdc.safeTransfer(user, usdcIn - spent);
-
-        emit Bought(user, curve, spent, coinsOut, fee, sig.nonce);
-    }
-
-    function sell(address user, address curve, uint256 coinAmount, uint256 minUsdcOut, uint256 fee, Sig calldata sig)
-        external
-        nonReentrant
-        returns (uint256 usdcToUser)
-    {
-        _use(user, sig, keccak256(abi.encode(SELL_TYPEHASH, user, curve, coinAmount, minUsdcOut, fee, sig.nonce, sig.deadline)));
-        if (!hub.isCurve(curve)) revert NotACurve();
-        IERC20 coin = IERC20(address(PadCurve(curve).coin()));
-
-        coin.safeTransferFrom(user, address(this), coinAmount);
-        coin.forceApprove(curve, coinAmount);
-        uint256 out = PadCurve(curve).sell(coinAmount, 0, address(this));
-        coin.forceApprove(curve, 0);
-
-        if (out < fee) revert FeeTooHigh();
-        usdcToUser = out - fee;
-        if (usdcToUser < minUsdcOut) revert Slippage(usdcToUser, minUsdcOut);
-        if (fee > 0) usdc.safeTransfer(msg.sender, fee);
-        usdc.safeTransfer(user, usdcToUser);
-
-        emit Sold(user, curve, coinAmount, usdcToUser, fee, sig.nonce);
-    }
-
     struct Launch {
         string name;
         string symbol;
         string metadataURI;
         uint256 lockSeconds;
-        PadCurve.FeeMode feeMode;
+        FeeMode feeMode;
         uint256 launchUsdc;
         uint256 minCoinsOut;
     }
@@ -171,50 +119,30 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     function launch(address user, Launch calldata l, uint256 fee, Sig calldata sig)
         external
         nonReentrant
-        returns (address coin, address curve)
+        returns (address coin)
     {
-        bytes32 h = keccak256(
-            abi.encode(
-                CREATE_TYPEHASH,
-                user,
-                keccak256(bytes(l.name)),
-                keccak256(bytes(l.symbol)),
-                keccak256(bytes(l.metadataURI)),
-                l.lockSeconds,
-                uint8(l.feeMode),
-                l.launchUsdc,
-                l.minCoinsOut,
-                fee,
-                sig.nonce,
-                sig.deadline
-            )
-        );
+        bytes32 h = _launchHash(user, l, fee, sig);
         _use(user, sig, h);
 
         if (l.launchUsdc + fee > 0) usdc.safeTransferFrom(user, address(this), l.launchUsdc + fee);
         if (fee > 0) usdc.safeTransfer(msg.sender, fee);
 
-        uint256 before = usdc.balanceOf(address(this));
-        if (l.launchUsdc > 0) usdc.forceApprove(address(hub), l.launchUsdc);
-        (coin, curve) = hub.createCoinFor(user, l.name, l.symbol, l.metadataURI, l.lockSeconds, l.feeMode, l.launchUsdc, l.minCoinsOut);
-        if (l.launchUsdc > 0) usdc.forceApprove(address(hub), 0);
-        uint256 spent = before - usdc.balanceOf(address(this));
-        if (spent < l.launchUsdc) usdc.safeTransfer(user, l.launchUsdc - spent);
-
-        emit Launched(user, coin, curve, spent, fee, sig.nonce);
+        uint256 spent;
+        (coin, spent) = _createFor(user, l);
+        emit Launched(user, coin, spent, fee, sig.nonce);
     }
 
-    // ---------------------------------------------------------------- graduated coins (locked Uniswap v4 pool)
+    // ---------------------------------------------------------------- trading (each coin's locked Uniswap v4 pool)
 
-    /// @notice Buys a graduated coin in its locked pool with USDC. Same rules as buy():
-    /// signed by the user, fee paid back in USDC, never fills below minCoinsOut.
+    /// @notice Buys a coin in its locked pool with USDC: signed by the user,
+    /// network fee paid back in USDC, never fills below minCoinsOut.
     function poolBuy(address user, address coin, uint256 usdcIn, uint256 minCoinsOut, uint256 fee, Sig calldata sig)
         external
         nonReentrant
         returns (uint256 coinsOut)
     {
         _use(user, sig, keccak256(abi.encode(POOL_BUY_TYPEHASH, user, coin, usdcIn, minCoinsOut, fee, sig.nonce, sig.deadline)));
-        _requireGraduated(coin);
+        _requirePool(coin);
         usdc.safeTransferFrom(user, address(this), usdcIn + fee);
         if (fee > 0) usdc.safeTransfer(msg.sender, fee);
         uint256 paid;
@@ -225,14 +153,14 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
         emit PoolTraded(user, coin, true, usdcIn, coinsOut, fee, sig.nonce);
     }
 
-    /// @notice Sells a graduated coin in its locked pool for USDC (fee taken from the USDC out).
+    /// @notice Sells a coin in its locked pool for USDC (fee taken from the USDC out).
     function poolSell(address user, address coin, uint256 coinAmount, uint256 minUsdcOut, uint256 fee, Sig calldata sig)
         external
         nonReentrant
         returns (uint256 usdcToUser)
     {
         _use(user, sig, keccak256(abi.encode(POOL_SELL_TYPEHASH, user, coin, coinAmount, minUsdcOut, fee, sig.nonce, sig.deadline)));
-        _requireGraduated(coin);
+        _requirePool(coin);
         IERC20(coin).safeTransferFrom(user, address(this), coinAmount);
         (uint256 out, uint256 paid) = _poolSwap(coin, false, coinAmount);
         if (paid < coinAmount) IERC20(coin).safeTransfer(user, coinAmount - paid);
@@ -247,7 +175,7 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
     /// @notice What a pool trade would return right now. Not a view: call it with eth_call.
     /// The swap is simulated inside the pool and undone (it always reverts internally).
     function quotePool(address coin, bool isBuy, uint256 amountIn) external returns (uint256 amountOut) {
-        _requireGraduated(coin);
+        _requirePool(coin);
         _unlocking = true;
         try poolManager.unlock(abi.encode(coin, isBuy, amountIn, true)) {
             _unlocking = false;
@@ -272,10 +200,10 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
         emit Swept(token, to, bal);
     }
 
-    function _requireGraduated(address coin) private view {
-        if (address(poolManager) == address(0)) revert NotGraduated();
-        address curve = hub.curveOf(coin);
-        if (curve == address(0) || PadCurve(curve).phase() != PadCurve.Phase.Graduated) revert NotGraduated();
+    function _requirePool(address coin) private view {
+        if (address(poolManager) == address(0) || !hub.isCoin(coin)) revert NoPool();
+        (uint256 positionId,,) = builder.pools(coin);
+        if (positionId == 0) revert NoPool();
     }
 
     function _poolSwap(address coin, bool usdcIn, uint256 amountIn) private returns (uint256 out, uint256 paid) {
@@ -351,6 +279,32 @@ contract PadRouter is EIP712, ReentrancyGuard, IUnlockCallback {
 
     function domainSeparator() external view returns (bytes32) {
         return _domainSeparatorV4();
+    }
+
+    /// @dev Creates the coin through the hub, paying the launch buy; returns any unspent USDC to the user.
+    function _createFor(address user, Launch calldata l) private returns (address coin, uint256 spent) {
+        uint256 before = usdc.balanceOf(address(this));
+        if (l.launchUsdc > 0) usdc.forceApprove(address(hub), l.launchUsdc);
+        coin = hub.createCoinFor(user, l.name, l.symbol, l.metadataURI, l.lockSeconds, l.feeMode, l.launchUsdc, l.minCoinsOut);
+        if (l.launchUsdc > 0) usdc.forceApprove(address(hub), 0);
+        spent = before - usdc.balanceOf(address(this));
+        if (spent < l.launchUsdc) usdc.safeTransfer(user, l.launchUsdc - spent);
+    }
+
+    /// @dev EIP-712 struct hash of a Create request. abi.encode of fixed-size
+    /// values is plain concatenation, so it is built in two halves (fewer
+    /// values on the stack at once); the result is identical.
+    function _launchHash(address user, Launch calldata l, uint256 fee, Sig calldata sig) private pure returns (bytes32) {
+        bytes memory head = _launchHead(user, l);
+        bytes memory tail = abi.encode(l.lockSeconds, uint8(l.feeMode), l.launchUsdc, l.minCoinsOut, fee, sig.nonce, sig.deadline);
+        return keccak256(bytes.concat(head, tail));
+    }
+
+    function _launchHead(address user, Launch calldata l) private pure returns (bytes memory) {
+        bytes32 n = keccak256(bytes(l.name));
+        bytes32 sy = keccak256(bytes(l.symbol));
+        bytes32 u = keccak256(bytes(l.metadataURI));
+        return abi.encode(CREATE_TYPEHASH, user, n, sy, u);
     }
 
     function _use(address user, Sig calldata sig, bytes32 structHash) private {

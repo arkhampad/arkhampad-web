@@ -13,7 +13,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {PadHub} from "../src/PadHub.sol";
 import {PadPoolBuilder} from "../src/PadPoolBuilder.sol";
 import {PadPromote} from "../src/PadPromote.sol";
-import {PadInitGuard} from "../src/PadInitGuard.sol";
+import {PadLaunchHook} from "../src/PadLaunchHook.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
 import {PadRouter} from "../src/PadRouter.sol";
 import {IPadHub} from "../src/interfaces.sol";
@@ -21,7 +21,7 @@ import {IPadHub} from "../src/interfaces.sol";
 /// @notice Deploys ArkhamPad on the current chain.
 /// Env: PRIVATE_KEY (deployer), ADMIN, TREASURY, GUARDIAN (optional),
 ///      USDC (optional on testnets: a TestUSDC is deployed when empty),
-///      CURVE (optional: "test" = $450 -> $750 graduation, default "main" = $4.5K -> $7.5K).
+///      CURVE (optional: "test" = coins open at a $450 market cap, default "main" = $4.5K).
 contract Deploy is Script {
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
@@ -53,11 +53,11 @@ contract Deploy is Script {
     }
 
     function _mine(address deployer, address pm, address builder) internal pure returns (bytes32 salt) {
-        bytes32 h = keccak256(abi.encodePacked(type(PadInitGuard).creationCode, abi.encode(pm, builder)));
+        bytes32 h = keccak256(abi.encodePacked(type(PadLaunchHook).creationCode, abi.encode(pm, builder)));
         for (uint256 i; i < 2_000_000; ++i) {
             salt = bytes32(i);
             address a = address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), deployer, salt, h)))));
-            if (uint160(a) & Hooks.ALL_HOOK_MASK == Hooks.BEFORE_INITIALIZE_FLAG) return salt;
+            if (uint160(a) & Hooks.ALL_HOOK_MASK == (Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG)) return salt;
         }
         revert("no salt");
     }
@@ -89,12 +89,10 @@ contract Deploy is Script {
             require(block.chainid != 4663 && block.chainid != 8453 && block.chainid != 56, "set USDC on mainnet");
             v.usdc = address(new TestUSDC());
         }
-        // curve sizes in the dollar token's own decimals (6 for USDC/USDG, 18 on BNB)
+        // amounts in the dollar token's own decimals (6 for USDC/USDG, 18 on BNB)
         uint256 dollar = 10 ** IERC20Metadata(v.usdc).decimals();
-        PadHub.CurveParams memory cp = PadHub.CurveParams({
-            vUsdc: (testCurve ? 450 : 4500) * dollar, vCoin: 1e27,
-            coinsForSale: 225403330717033245926072205, coinsReserved: 774596669282966754073927795
-        });
+        // launch market cap for the whole supply ("test" = $450 so testnet money goes further)
+        uint256 startMarketCap = (testCurve ? 450 : 4500) * dollar;
         // All platform fees go to the fee vault: the treasury wallet owns it and withdraws any time;
         // the relayer may only pay referral rewards from it, capped per day.
         // testnets fall back to the deployer; mainnet must name the relayer explicitly
@@ -112,7 +110,9 @@ contract Deploy is Script {
         );
         require(address(builder) == builderAddr, "builder address");
         // The hub starts with the deployer as admin so it can wire things; admin moves below.
-        PadHub hub = new PadHub(IERC20(v.usdc), builder, cp, deployer, address(vault));
+        // every launch includes a creator buy of at least $5 (MIN_LAUNCH_BUY, whole dollars)
+        uint256 minLaunchBuy = vm.envOr("MIN_LAUNCH_BUY", uint256(5)) * dollar;
+        PadHub hub = new PadHub(IERC20(v.usdc), builder, startMarketCap, minLaunchBuy, deployer, address(vault));
         builder.bindHub(IPadHub(address(hub)));
         PadPromote promote = new PadPromote(IERC20(v.usdc), admin, address(vault));
         PadRouter router = new PadRouter(hub, promote, builder);

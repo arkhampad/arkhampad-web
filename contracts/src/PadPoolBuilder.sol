@@ -21,14 +21,21 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {IPadHub, IPadPoolBuilder} from "./interfaces.sol";
-import {PadCurve} from "./PadCurve.sol";
-import {PadInitGuard} from "./PadInitGuard.sol";
+import {FeeMode} from "./PadTypes.sol";
+import {PadLaunchHook} from "./PadLaunchHook.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 /// @title PadPoolBuilder
-/// @notice Turns a graduated ArkhamPad curve into a Uniswap v4 coin/USDC pool
-/// (1% fee) with full-range liquidity that is locked forever: the position
-/// NFT stays in this contract, which has no way to remove liquidity or move it.
+/// @notice Opens every new ArkhamPad coin straight into a Uniswap v4 coin/USDC
+/// pool at launch. The coin's whole supply goes into one liquidity position
+/// that starts at the launch price and reaches every higher price, so the pool
+/// sells coins as people buy, like a bonding curve, but as a normal Uniswap pool
+/// that DEX screeners, aggregators and trading apps see from the first trade.
+/// The position NFT stays in this contract, which has no way to remove
+/// liquidity or move it: the liquidity is locked forever.
 ///
+/// The pool's fee is set by PadLaunchHook: 30% at launch, falling to 2% over
+/// five minutes, then 2% forever. All of it accrues to the locked position.
 /// Pool trading fees can be collected by anyone with `collectFees(coin)`.
 /// They are split 70% to the platform treasury and 30% to the coin:
 ///   - fee mode ToCreator:   paid to the coin's creator,
@@ -38,7 +45,8 @@ import {PadInitGuard} from "./PadInitGuard.sol";
 contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    uint24 public constant POOL_FEE = 10_000; // 1%
+    /// @notice The fee is dynamic: PadLaunchHook sets it on every swap.
+    uint24 public constant POOL_FEE = LPFeeLibrary.DYNAMIC_FEE_FLAG;
     int24 public constant TICK_SPACING = 200;
     uint256 public constant BPS = 10_000;
     uint256 public constant COIN_CUT_BPS = 3_000; // 30% of pool fees to the coin side
@@ -53,7 +61,7 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
     IPositionManager public immutable positionManager;
     IAllowanceTransfer public immutable permit2;
     IERC20 public immutable usdc;
-    PadInitGuard public immutable guard;
+    PadLaunchHook public immutable guard;
     address private immutable _deployer;
 
     IPadHub public hub;
@@ -61,7 +69,7 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
     struct Pool {
         uint256 positionId;
         address creator;
-        PadCurve.FeeMode feeMode;
+        FeeMode feeMode;
     }
 
     mapping(address coin => Pool) public pools;
@@ -81,7 +89,7 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
     error ZeroAddress();
     error NotDeployer();
     error AlreadyBound();
-    error NotACurve();
+    error NotHub();
     error AlreadyBuilt();
     error NotBuilt();
     error NothingToDo();
@@ -89,6 +97,7 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
     error BadGuardAddress(address guard);
     error NotPoolManager();
     error NotUnlocking();
+    error Slippage(uint256 got, uint256 minimum);
 
     constructor(
         IPoolManager poolManager_,
@@ -107,8 +116,8 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
         permit2 = permit2_;
         usdc = usdc_;
         _deployer = msg.sender;
-        guard = new PadInitGuard{salt: guardSalt}(address(poolManager_), address(this));
-        if (uint160(address(guard)) & Hooks.ALL_HOOK_MASK != Hooks.BEFORE_INITIALIZE_FLAG) {
+        guard = new PadLaunchHook{salt: guardSalt}(address(poolManager_), address(this));
+        if (uint160(address(guard)) & Hooks.ALL_HOOK_MASK != (Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG)) {
             revert BadGuardAddress(address(guard));
         }
     }
@@ -140,55 +149,83 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
     }
 
     /// @inheritdoc IPadPoolBuilder
-    /// @dev Called by a graduating curve after it has sent the coins and USDC here.
-    function buildPool(address coin, uint256 coinAmount, uint256 usdcAmount) external nonReentrant {
-        if (address(hub) == address(0) || !hub.isCurve(msg.sender)) revert NotACurve();
-        if (address(PadCurve(msg.sender).coin()) != coin) revert NotACurve();
+    /// @dev Called by the hub right after it minted the coin's supply to this contract.
+    function launchPool(address coin, uint256 coinAmount, uint256 startMarketCap, address creator, FeeMode feeMode)
+        external
+        nonReentrant
+    {
+        if (msg.sender != address(hub) || address(hub) == address(0)) revert NotHub();
         if (pools[coin].positionId != 0) revert AlreadyBuilt();
-        if (coinAmount == 0 || usdcAmount == 0) revert NothingToDo();
-        if (usdc.balanceOf(address(this)) < usdcHeld + usdcAmount) revert NotDelivered();
+        if (coinAmount == 0 || startMarketCap == 0) revert NothingToDo();
         if (IERC20(coin).balanceOf(address(this)) < coinAmount) revert NotDelivered();
 
         PoolKey memory key = poolKeyFor(coin);
         bool u0 = usdcIsCurrency0(coin);
-        uint256 amount0 = u0 ? usdcAmount : coinAmount;
-        uint256 amount1 = u0 ? coinAmount : usdcAmount;
+        uint256 supply = IERC20(coin).totalSupply();
 
-        uint160 sqrtPriceX96 = _sqrtPriceX96(amount0, amount1);
-        poolManager.initialize(key, sqrtPriceX96);
-
-        int24 lower = TickMath.minUsableTick(TICK_SPACING);
-        int24 upper = TickMath.maxUsableTick(TICK_SPACING);
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96, TickMath.getSqrtPriceAtTick(lower), TickMath.getSqrtPriceAtTick(upper), amount0, amount1
-        );
+        // Launch price: startMarketCap USDC for the whole supply. The position
+        // holds only coins and covers every price from the launch price up.
+        int24 lower;
+        int24 upper;
+        uint160 startSqrtPrice;
+        uint128 liquidity;
+        if (!u0) {
+            // coin is currency0, price = USDC per coin: coins sit above the start.
+            int24 t = TickMath.getTickAtSqrtPrice(_sqrtPriceX96(supply, startMarketCap));
+            lower = _roundUp(t);
+            upper = TickMath.maxUsableTick(TICK_SPACING);
+            startSqrtPrice = TickMath.getSqrtPriceAtTick(lower);
+            liquidity = LiquidityAmounts.getLiquidityForAmount0(startSqrtPrice, TickMath.getSqrtPriceAtTick(upper), coinAmount);
+        } else {
+            // coin is currency1, price = coins per USDC: coins sit below the start.
+            int24 t = TickMath.getTickAtSqrtPrice(_sqrtPriceX96(startMarketCap, supply));
+            upper = _roundDown(t);
+            lower = TickMath.minUsableTick(TICK_SPACING);
+            startSqrtPrice = TickMath.getSqrtPriceAtTick(upper);
+            liquidity = LiquidityAmounts.getLiquidityForAmount1(TickMath.getSqrtPriceAtTick(lower), startSqrtPrice, coinAmount);
+        }
         if (liquidity == 0) revert NothingToDo();
+        poolManager.initialize(key, startSqrtPrice);
 
         _approve(coin, coinAmount);
-        _approve(address(usdc), usdcAmount);
-
-        uint256 usdcBefore = usdc.balanceOf(address(this));
         uint256 coinBefore = IERC20(coin).balanceOf(address(this));
         uint256 positionId = positionManager.nextTokenId();
 
         bytes memory actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
         bytes[] memory params = new bytes[](2);
-        params[0] = abi.encode(key, lower, upper, uint256(liquidity), amount0, amount1, address(this), bytes(""));
+        params[0] = abi.encode(
+            key, lower, upper, uint256(liquidity), u0 ? 0 : coinAmount, u0 ? coinAmount : 0, address(this), bytes("")
+        );
         params[1] = abi.encode(key.currency0, key.currency1);
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
-
         _approve(coin, 0);
-        _approve(address(usdc), 0);
 
-        // Rounding dust: coins are burned, USDC stays locked here as dust.
-        uint256 usdcUsed = usdcBefore - usdc.balanceOf(address(this));
+        // Rounding dust is burned: no coin is ever held outside the pool.
         uint256 coinUsed = coinBefore - IERC20(coin).balanceOf(address(this));
         if (coinAmount > coinUsed) IERC20(coin).safeTransfer(BURN, coinAmount - coinUsed);
-        if (usdcAmount > usdcUsed) usdcHeld += usdcAmount - usdcUsed;
 
-        PadCurve curve = PadCurve(msg.sender);
-        pools[coin] = Pool({positionId: positionId, creator: curve.creator(), feeMode: curve.feeMode()});
-        emit PoolBuilt(coin, positionId, usdcUsed, coinUsed, sqrtPriceX96);
+        pools[coin] = Pool({positionId: positionId, creator: creator, feeMode: feeMode});
+        emit PoolBuilt(coin, positionId, 0, coinUsed, startSqrtPrice);
+    }
+
+    /// @inheritdoc IPadPoolBuilder
+    /// @dev The hub sends `usdcAmount` here first. The swap is made by this
+    /// contract, so it pays the normal 2% fee, not the launch fee.
+    function launchBuy(address coin, uint256 usdcAmount, uint256 minCoinsOut, address to)
+        external
+        nonReentrant
+        returns (uint256 coinsOut)
+    {
+        if (msg.sender != address(hub) || address(hub) == address(0)) revert NotHub();
+        if (pools[coin].positionId == 0) revert NotBuilt();
+        if (usdcAmount == 0) revert NothingToDo();
+        if (usdc.balanceOf(address(this)) < usdcHeld + usdcAmount) revert NotDelivered();
+        _unlocking = true;
+        uint256 spent;
+        (coinsOut, spent) = abi.decode(poolManager.unlock(abi.encode(coin, usdcAmount, to)), (uint256, uint256));
+        _unlocking = false;
+        if (coinsOut < minCoinsOut) revert Slippage(coinsOut, minCoinsOut);
+        if (spent < usdcAmount) _payUsdc(to, usdcAmount - spent);
     }
 
     // ---------------------------------------------------------------- fees
@@ -216,7 +253,7 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
         if (usdcFees > 0) {
             uint256 toCoin = (usdcFees * COIN_CUT_BPS) / BPS;
             _payUsdc(treasury, usdcFees - toCoin);
-            if (p.feeMode == PadCurve.FeeMode.BuybackBurn) {
+            if (p.feeMode == FeeMode.BuybackBurn) {
                 buybackFunds[coin] += toCoin;
                 usdcHeld += toCoin;
                 emit BuybackFunded(coin, toCoin);
@@ -227,22 +264,12 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
         if (coinFees > 0) {
             uint256 toCoin = (coinFees * COIN_CUT_BPS) / BPS;
             IERC20(coin).safeTransfer(treasury, coinFees - toCoin);
-            if (p.feeMode == PadCurve.FeeMode.BuybackBurn) {
+            if (p.feeMode == FeeMode.BuybackBurn) {
                 IERC20(coin).safeTransfer(BURN, toCoin);
             } else {
                 _payCoin(coin, p.creator, toCoin);
             }
         }
-    }
-
-    /// @inheritdoc IPadPoolBuilder
-    function fundBuyback(address coin, uint256 usdcAmount) external nonReentrant {
-        if (address(hub) == address(0) || hub.curveOf(coin) != msg.sender) revert NotACurve();
-        if (usdcAmount == 0) return;
-        usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
-        buybackFunds[coin] += usdcAmount;
-        usdcHeld += usdcAmount;
-        emit BuybackFunded(coin, usdcAmount);
     }
 
     /// @notice Spends up to MAX_BUYBACK_STEP of a coin's buyback money in its
@@ -254,16 +281,24 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
         buybackFunds[coin] -= spent;
         usdcHeld -= spent;
         _unlocking = true;
-        burned = abi.decode(poolManager.unlock(abi.encode(coin, spent)), (uint256));
+        uint256 paid;
+        (burned, paid) = abi.decode(poolManager.unlock(abi.encode(coin, spent, BURN)), (uint256, uint256));
         _unlocking = false;
+        // An exact-input swap can stop at the price limit with input left over.
+        if (paid < spent) {
+            buybackFunds[coin] += spent - paid;
+            usdcHeld += spent - paid;
+            spent = paid;
+        }
         emit BuybackDone(coin, spent, burned);
     }
 
-    /// @dev Swap USDC -> coin inside the pool manager's lock; coins go to the burn address.
+    /// @dev Swap USDC -> coin inside the pool manager's lock; coins go to `to`
+    /// (the burn address for buybacks, the creator for a launch buy).
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert NotPoolManager();
-        if (!_unlocking) revert NotUnlocking(); // only our own buyback may run a swap here
-        (address coin, uint256 amountIn) = abi.decode(data, (address, uint256));
+        if (!_unlocking) revert NotUnlocking(); // only our own buyback or launch buy may run a swap here
+        (address coin, uint256 amountIn, address to) = abi.decode(data, (address, uint256, address));
         PoolKey memory key = poolKeyFor(coin);
         bool zeroForOne = usdcIsCurrency0(coin);
         BalanceDelta delta = poolManager.swap(
@@ -284,13 +319,8 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
         poolManager.sync(u);
         usdc.safeTransfer(address(poolManager), pay);
         poolManager.settle();
-        poolManager.take(Currency.wrap(coin), BURN, out);
-        // An exact-input swap can stop at the price limit with input left over.
-        if (pay < amountIn) {
-            buybackFunds[coin] += amountIn - pay;
-            usdcHeld += amountIn - pay;
-        }
-        return abi.encode(out);
+        poolManager.take(Currency.wrap(coin), to, out);
+        return abi.encode(out, pay);
     }
 
     /// @notice Pays out USDC that could not be sent earlier.
@@ -325,6 +355,17 @@ contract PadPoolBuilder is IPadPoolBuilder, IUnlockCallback, ReentrancyGuard {
         if (amount > 0) IERC20(token).forceApprove(address(permit2), type(uint256).max);
         else IERC20(token).forceApprove(address(permit2), 0);
         permit2.approve(token, address(positionManager), uint160(amount), uint48(block.timestamp));
+    }
+
+    function _roundUp(int24 t) private pure returns (int24) {
+        int24 r = _roundDown(t);
+        return r < t ? r + TICK_SPACING : r;
+    }
+
+    function _roundDown(int24 t) private pure returns (int24) {
+        int24 r = (t / TICK_SPACING) * TICK_SPACING;
+        if (t < 0 && r != t) r -= TICK_SPACING;
+        return r;
     }
 
     /// @dev sqrt(amount1 / amount0) in Q64.96, i.e. price of currency0 in currency1.

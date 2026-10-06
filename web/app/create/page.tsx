@@ -22,7 +22,7 @@ function CreateView() {
   const [idea, setIdea] = useState(q.get("idea") || "");
   const [step, setStep] = useState(0);
   const [generated, setGenerated] = useState(false);
-  // AI logos for the three ideas (sasa-style): drawn in parallel, picked with the idea
+  // AI logos for the three ideas: drawn in parallel, picked with the idea
   const [arts, setArts] = useState<(string | null | "loading" | "failed")[]>([null, null, null]);
   const artRun = useRef(0);
   const pickRef = useRef(0);

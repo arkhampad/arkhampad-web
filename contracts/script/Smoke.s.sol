@@ -4,12 +4,13 @@ pragma solidity 0.8.26;
 import {Script, console2} from "forge-std/Script.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PadHub} from "../src/PadHub.sol";
-import {PadCurve} from "../src/PadCurve.sol";
+import {PadPoolBuilder} from "../src/PadPoolBuilder.sol";
+import {FeeMode} from "../src/PadTypes.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
 
-/// @notice Real-network check on a testnet: creates a coin with a $1 launch
-/// buy, buys $1 more, sells half of it back. Reads addresses from
-/// deployments/<chainId>.json. Needs ~2.1 USDC on the deployer (on Robinhood
+/// @notice Real-network check on a testnet: creates a coin with a $5 launch
+/// buy (the minimum), which opens its pool and buys in it. Reads addresses from
+/// deployments/<chainId>.json. Needs ~5 USDC on the deployer (on Robinhood
 /// testnet it mints TestUSDC itself).
 contract Smoke is Script {
     function _key() internal view returns (uint256) {
@@ -27,22 +28,16 @@ contract Smoke is Script {
         IERC20 usdc = IERC20(vm.parseJsonAddress(json, ".usdc"));
 
         vm.startBroadcast(key);
-        if (block.chainid == 46630 && usdc.balanceOf(me) < 3e6) TestUSDC(address(usdc)).mint(me, 10e6);
-        require(usdc.balanceOf(me) >= 21e5, "deployer needs at least 2.1 USDC");
-        usdc.approve(address(hub), 1e6);
-        (address coin, address curveAddr) =
-            hub.createCoin("Smoke Test", "SMOKE", "", 0, PadCurve.FeeMode.ToCreator, 1e6, 0);
-        PadCurve curve = PadCurve(curveAddr);
-        usdc.approve(curveAddr, 1e6);
-        uint256 got = curve.buy(1e6, 0, me);
-        IERC20(coin).approve(curveAddr, got / 2);
-        uint256 back = curve.sell(got / 2, 0, me);
+        uint256 buy = hub.minLaunchBuy();
+        if (block.chainid == 46630 && usdc.balanceOf(me) < buy) TestUSDC(address(usdc)).mint(me, buy * 2);
+        require(usdc.balanceOf(me) >= buy, "deployer needs the minimum launch buy in USDC");
+        usdc.approve(address(hub), buy);
+        address coin = hub.createCoin("Smoke Test", "SMOKE", "", 0, FeeMode.ToCreator, buy, 0);
         vm.stopBroadcast();
 
-        console2.log("coin    ", coin);
-        console2.log("curve   ", curveAddr);
-        console2.log("bought  ", got);
-        console2.log("sold for", back);
-        console2.log("mc (6d) ", curve.marketCap());
+        (uint256 positionId,,) = PadPoolBuilder(address(hub.poolBuilder())).pools(coin);
+        console2.log("coin     ", coin);
+        console2.log("position ", positionId);
+        console2.log("bought   ", IERC20(coin).balanceOf(me));
     }
 }
