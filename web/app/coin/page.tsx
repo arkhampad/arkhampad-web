@@ -120,7 +120,7 @@ function CoinView() {
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}><span className="mono coin-price" style={{ fontWeight: 800, fontSize: 28, letterSpacing: -0.8 }}>{c.price}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 700 }}>{up ? "+" : ""}{c.chg.toFixed(1)}%</span></div>
               {c.own && <Intervals value={iv} onChange={setIv} />}
             </div>
-            {c.own ? <TvChart candles={candles} supply={1e9} empty="No trades yet for a chart." height={mobile ? 250 : undefined} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} height={mobile ? 300 : undefined} />}
+            {c.own ? <TvChart candles={candles} supply={1e9} empty="No trades yet for a chart." height={mobile ? 250 : undefined} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} token={c.address} supply={c.priceNum && c.mcNum ? c.mcNum / c.priceNum : null} height={mobile ? 300 : undefined} />}
           </div>
           <div className="show-m coin-strip">
             <span><i>Vol 24h</i><b className="mono">{c.vol}</b></span>

@@ -152,7 +152,9 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
   let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,spark").in("chain_id", extIds);
   if (opts.q) q = q.or(`name.ilike.*${opts.q}*,symbol.ilike.*${opts.q}*,address.eq.${opts.q.toLowerCase()}`);
   const w = like("name"); if (w) q = q.or(w);
-  if (tab === "Trending") q = q.not("trending_rank", "is", null).order("trending_rank", { ascending: true });
+  // Trending = what is moving right now: most trades in the last 5 minutes, then last hour's volume
+  // (changes every few minutes, like fomo), not a slow daily ranking.
+  if (tab === "Trending") q = q.gte("vol_1h", 2000).gte("liq_usd", 5000).not("txns_5m", "is", null).order("txns_5m", { ascending: false }).order("vol_1h", { ascending: false });
   else if (tab === "New") q = q.not("pool_created", "is", null).order("pool_created", { ascending: false });
   // gainers/losers: real trading only (volume, liquidity), no absurd jumps or dead coins
   else if (tab === "Gainers") q = q.gte("vol_24h", 10000).gte("liq_usd", 5000).not("change_24h", "is", null).lte("change_24h", 5000).order("change_24h", { ascending: false });
