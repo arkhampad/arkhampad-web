@@ -25,8 +25,13 @@ export async function onRequestGet(ctx) {
     const c = await coinInfo(ctx.env, m[1], m[2]);
     if (!c) return res;
     const relayer = ctx.env.NEXT_PUBLIC_RELAYER_URL || RELAYER;
-    const title = `${c.name} ($${c.symbol}) · ArkhamPad`;
-    const desc = `Market cap ${money(c.mc)}. ${c.own ? "Launched on ArkhamPad." : ""} Buy or sell with one tap, no wallet setup.`.replace(/\s+/g, " ").trim();
+    const CHAIN = { 4663: "Robinhood Chain", 46630: "Robinhood Chain testnet", 8453: "Base", 84532: "Base Sepolia", 56: "BNB Chain" };
+    const chain = CHAIN[m[1]] || "on-chain";
+    // search-friendly: what people type ("<name> price", "<ticker> chart", "<ticker> holders")
+    const title = `${c.name} ($${c.symbol}) price, chart and holders · ArkhamPad`;
+    const desc = `Live ${c.name} ($${c.symbol}) price on ${chain}: market cap ${money(c.mc)}, chart, holder map and AI safety check. ${c.own ? "Launched on ArkhamPad." : ""} Buy or sell with one tap.`.replace(/\s+/g, " ").trim();
+    const canonical = `https://arkhampad.com/coin/?c=${id}`;
+    const ld = { "@context": "https://schema.org", "@type": "WebPage", name: title, description: desc, url: canonical, about: { "@type": "Thing", name: `${c.name} (${c.symbol})`, identifier: m[2] }, isPartOf: { "@type": "WebSite", name: "ArkhamPad", url: "https://arkhampad.com/" } };
     const image = `${relayer}/og/coin/${id}.png`;
     const set = (v) => ({ element(e) { e.setAttribute("content", v); } });
     return new HTMLRewriter()
@@ -35,7 +40,8 @@ export async function onRequestGet(ctx) {
       .on('meta[property="og:description"]', set(desc)).on('meta[name="description"]', set(desc)).on('meta[name="twitter:description"]', set(desc))
       .on('meta[property="og:image"]', set(image)).on('meta[name="twitter:image"]', set(image))
       .on('meta[property="og:image:alt"]', set(title))
-      .on('meta[property="og:url"]', set(`https://arkhampad.com/coin/?c=${id}`))
+      .on('meta[property="og:url"]', set(canonical))
+      .on("head", { element(e) { e.append(`<link rel="canonical" href="${canonical}"><script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>`, { html: true }); } })
       .transform(res);
   } catch {
     return res; // never break the page for a preview

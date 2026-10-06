@@ -11,6 +11,7 @@ import { makeRelayer, httpHandler } from "./relayer.mjs";
 import { poolIdOf, poolTrade } from "./poolmath.mjs";
 import { makeNotifier } from "./notify.mjs";
 import { makeOg } from "./og.mjs";
+import { announce as indexNow, coinPath, startIndexNow } from "./indexnow.mjs";
 const relayer = process.env.ONCE ? null : makeRelayer();
 
 const POLL_DEFAULT = process.env.POLL_SECONDS ? Number(process.env.POLL_SECONDS) * 1000 : null;
@@ -260,6 +261,8 @@ async function syncChain(c, client) {
         }
       }
       for (const e of transfers) await saveTransfer(db, c, e);
+      // new coin pages go to search engines right away (IndexNow)
+      for (const e of created) indexNow(coinPath(c.chainId, e.args.coin));
       await db.query("update sync_state set last_block=$2, updated_at=now() where chain_id=$1 and hub=$3", [c.chainId, String(to), c.hub.toLowerCase()]);
       await db.query("commit");
       if (fresh.length) announce(c, fresh).catch((e) => log(`${c.name}: announce error ${e.message}`));
@@ -347,7 +350,7 @@ async function loop(c) {
 
 if (!process.env.DATABASE_URL) { console.error("DATABASE_URL is required"); process.exit(1); }
 if (process.env.PORT) http.createServer(httpHandler(relayer, status)).listen(process.env.PORT);
-if (!process.env.ONCE) startMarkets(pool);
+if (!process.env.ONCE) { startMarkets(pool); startIndexNow(); }
 // Curves that filled while we were down: graduate them now (and re-check every few minutes).
 if (relayer) {
   const sweep = async () => {
