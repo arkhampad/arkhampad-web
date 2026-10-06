@@ -605,6 +605,88 @@ const raw: Raw[] = [
     ],
     faq: [["The exchange doesn't list my network. What now?", "Choose another network that both ArkhamPad and the exchange support."], ["Can a wrong transfer be reversed?", "No. Blockchain transfers are final."]],
   },
+  // ---------------- Long-form research (Oct 2026) ----------------
+  {
+    slug: "robinhood-chain-memecoins", cat: "chains", title: "Robinhood Chain memecoins: the complete guide", desc: "What Robinhood Chain is, how memecoins launch there and how to trade them safely.",
+    short: "Robinhood Chain is Robinhood's own Ethereum Layer 2, built on Arbitrum and live on mainnet since July 1, 2026. It was designed for tokenized stocks and DeFi, and it is also open to anyone, which means memecoins can launch there too. Because the chain is young, the first tokens and communities on it get far more attention than on crowded chains.",
+    sections: [
+      ["What Robinhood Chain is", "Robinhood Chain is a permissionless Ethereum Layer 2 built with Arbitrum technology and operated by Robinhood. Its public testnet opened in February 2026 and its public mainnet went live on July 1, 2026, at Robinhood's event in London. It uses ETH for network fees, has very fast blocks and works with the same tools and wallets as Ethereum. Uniswap deployed on it from day one, which matters for memecoins: once a token graduates from a launchpad, it needs a real DEX pool to trade on."],
+      ["Why memecoins on Robinhood Chain are different", "Most memecoin activity today happens on Solana, Base and BNB Chain, where thousands of tokens launch every day and almost all of them disappear unnoticed. Robinhood Chain is still early. Fewer tokens means each launch is more visible, and the chain is tied to a brand that millions of retail traders already know. Being early on a new chain has historically been one of the few real advantages a small creator can have."],
+      ["How a memecoin launches there", "On ArkhamPad, a token starts on a bonding curve: its price rises as people buy and falls as they sell, with the curve itself holding the liquidity, so there is no need for the creator to add a pool. When enough has been bought, the token graduates: the remaining coins and the collected dollars move into a locked Uniswap pool, where it trades like any other token on the chain. Every price on ArkhamPad is in dollars, using the chain's dollar stablecoin."],
+      ["How to trade Robinhood Chain memecoins safely", "Young chains attract quick launches, and not all of them are honest. Before buying any new token, check three things: how much the top 10 wallets hold, whether the creator's wallet is locked, and whether many holders were funded from the same address. ArkhamPad shows all three on every token page, together with a holder map that groups linked wallets, so you can see in seconds whether a token is spread across real buyers or controlled by one person."],
+      ["Getting started", "You don't need a Robinhood account to use Robinhood Chain tokens on ArkhamPad. Log in with Google, email, X or a wallet, add dollars, and you can browse, buy and sell. Creators can describe a token in one sentence and launch it on Robinhood Chain or Base in under a minute."],
+    ],
+    faq: [
+      ["When did Robinhood Chain launch?", "The public testnet opened in February 2026 and the public mainnet went live on July 1, 2026."],
+      ["Is Robinhood Chain built on Arbitrum?", "Yes. It is an Ethereum Layer 2 built with Arbitrum technology and operated by Robinhood."],
+      ["Can anyone launch a memecoin on Robinhood Chain?", "Yes. The chain is permissionless. On ArkhamPad you can launch one by describing it in a sentence."],
+      ["Do I need a Robinhood account?", "No. You only need an ArkhamPad account and dollars in your balance."],
+    ],
+  },
+  {
+    slug: "how-to-read-a-holder-map", cat: "safety", title: "How to read a holder map: spot linked wallets before you buy", desc: "A step-by-step guide to bubble maps, clusters and what they say about a token.",
+    short: "A holder map shows every large holder of a token as a bubble, sized by how much they hold. Wallets that sent tokens to each other or bought together at launch are grouped and coloured, so you can see at a glance whether a token is spread across many real buyers or controlled by a few linked wallets.",
+    sections: [
+      ["Why a normal holder list is not enough", "A holder list shows wallets one by one. A team that wants to hide a large position simply splits it across 10 or 20 wallets, each holding 1-2%. In a list they look like independent buyers. On a map, the links between them become visible."],
+      ["What the bubbles mean", "Each bubble is a wallet. Bigger bubbles hold more of the supply. The pool in the middle holds the tokens that are still for sale or locked in liquidity. Grey bubbles are independent holders with no detected links. Coloured groups are wallets that are connected to each other."],
+      ["The three kinds of clusters", "Creator group: the creator's wallet and any wallets that received tokens from it or sent tokens to it. Linked by transfers: wallets that moved this token between each other, a common sign of one person using several wallets. Same-block buyers: three or more wallets that bought in the same block within the first minute after launch, which usually means bots or a coordinated group."],
+      ["How to judge what you see", "Look at the largest cluster's share of supply. Under 5% is normal noise. Between 5% and 15% deserves attention: check whether those wallets are still buying or have started selling. Above 15% means one group can move the price sharply on its own. A healthy token shows a wide spread of grey bubbles with no single colour dominating."],
+      ["Putting it together", "A holder map does not predict price. It tells you who you are trading with. Combine it with the creator lock, the top 10 share and liquidity depth, and you will avoid most of the tokens that are designed to fall. On ArkhamPad, the holder map and a table of who bought, when and how much are on every token page."],
+    ],
+    faq: [
+      ["What is a bubble map in crypto?", "A visual map of a token's holders where each wallet is a bubble sized by its share, with connected wallets grouped together."],
+      ["What are linked wallets?", "Wallets that sent the token to each other, were funded by the same address, or bought together at launch. They often belong to one person or group."],
+      ["Is a large cluster always a scam?", "No. But it means a small group can move the price, so size your position carefully and watch whether they sell."],
+    ],
+  },
+  {
+    slug: "rug-pull-patterns", cat: "safety", title: "Anatomy of a rug pull: 5 patterns and how to spot them", desc: "The five on-chain patterns behind most rug pulls, explained with what to check.",
+    short: "Most rug pulls follow one of five patterns: hidden supply in linked wallets, an unlocked creator dump, sniper bots that sell into real buyers, thin liquidity that traps sellers, and contracts with hidden powers. Each one leaves clues on-chain that you can check before buying.",
+    sections: [
+      ["1. The hidden supply", "The team buys a large share at launch across many fresh wallets, so the holder list looks spread out. The chart climbs as real buyers arrive, then the linked wallets sell together and the price collapses in minutes. What to check: clusters on the holder map, and wallets funded from the same source."],
+      ["2. The creator dump", "The creator holds a large share and nothing stops them from selling. A token can look healthy for hours until the creator decides to exit. What to check: the creator's share, whether their wallet is locked and for how long, and whether they have already sold."],
+      ["3. The sniper exit", "Bots buy in the very first block, then sell into the wave of people who arrive after the token is shared. The first real buyers effectively pay the snipers' profit. What to check: how many wallets bought in the first block and how much they still hold."],
+      ["4. The liquidity trap", "A token with a large market cap but a small pool looks valuable, but there is little real money behind it. When people try to sell, the price drops much more than they expect. What to check: liquidity compared to market cap. Under 5% is a warning sign."],
+      ["5. The contract trap", "Some contracts let the owner mint new tokens, block wallets from selling or raise the sell tax at any time. The chart can look perfect while selling is quietly impossible. What to check: whether supply is fixed and whether anyone can change transfer rules. Tokens launched on ArkhamPad use a fixed-supply contract with no owner controls."],
+      ["The habit that protects you", "Before every buy, spend thirty seconds on the holders, the creator lock, the first buyers, liquidity and the contract. No check is perfect, but together they filter out most of the tokens designed to fall."],
+    ],
+    faq: [
+      ["What is a rug pull?", "When the people behind a token remove liquidity or sell a hidden supply, leaving other buyers with a token worth much less."],
+      ["Can a token with a locked creator still rug?", "Yes, through linked wallets or snipers. A creator lock removes one risk, not all of them."],
+      ["How can I check a token quickly?", "Look at the top holders, the creator lock, first-block buyers, liquidity and contract rights. ArkhamPad shows these on every token page."],
+    ],
+  },
+  {
+    slug: "why-we-built-arkhampad", cat: "getting-started", title: "Why we built ArkhamPad", desc: "Transparency, AI and dollars: the ideas behind ArkhamPad.",
+    short: "We built ArkhamPad because launching and trading new tokens should be simple, priced in dollars and transparent by default. AI handles the hard parts, and every token shows who really holds it.",
+    sections: [
+      ["The problem we saw", "Most new tokens are created in minutes and abandoned in hours. Buyers rarely know who holds the supply, and creators who mean well have no tools to show they can be trusted. Meanwhile, getting started still means buying a gas token, bridging and juggling wallets."],
+      ["Transparency by default", "Every token on ArkhamPad comes with a safety check, the creator's lock status, a live holder map of linked wallets and a table of who bought, when and how much. Information that usually takes a block explorer and an hour of work is visible on the token page in seconds."],
+      ["AI where it saves time", "Describe a token in one sentence in any language, and AI writes the name, ticker and story and draws the logo. AI also explains every token's risks in plain English, translates comments and filters spam."],
+      ["Dollars, not gas tokens", "You see one balance in dollars. You trade in dollars and the network fee is taken from your balance, so you never need to buy ETH or bridge. Log in with Google, email, X or a wallet."],
+      ["Where we are going", "ArkhamPad runs on Robinhood Chain and Base, with more chains to follow. Our goal is simple: make new tokens easier to create, easier to understand and harder to abuse."],
+    ],
+    faq: [
+      ["Who is ArkhamPad for?", "Creators who want to launch a token without code, and traders who want to see who holds a token before they buy."],
+      ["Which chains does ArkhamPad support?", "Robinhood Chain and Base, with more planned."],
+    ],
+  },
+  {
+    slug: "bonding-curve-to-graduation", cat: "trading", title: "From launch to graduation: how a bonding curve token grows", desc: "A clear walkthrough of how a token's price moves on a bonding curve and what happens at graduation.",
+    short: "A bonding curve sets a token's price automatically: every buy pushes the price up a little and every sell pulls it down. When a set amount has been bought, the token graduates and its liquidity moves into a locked DEX pool, where it trades freely.",
+    sections: [
+      ["Why launchpads use a curve", "A new token has no market yet. Instead of asking the creator to add money to a pool, the curve itself acts as the market maker. Anyone can buy or sell at any time, and the price always reflects how much has been bought so far."],
+      ["How the price moves", "Early buyers pay the lowest prices because the curve starts low. As more people buy, each purchase costs a bit more. When someone sells, the price moves back down along the same curve. There are no order books and no counterparties to wait for."],
+      ["What graduation means", "When the tokens set aside for the curve are sold, the token is full. It then graduates: the remaining tokens and the collected dollars are moved into a Uniswap pool, and that liquidity is locked so nobody can withdraw it. From that moment, the token trades on the open market and appears on tools like DexScreener."],
+      ["What this means for buyers", "Buying early on a curve means a lower entry price but more risk, because most tokens never graduate. Buying close to graduation means a higher price, but the token is about to get a permanent, locked pool. Watch the progress bar and the holder spread, not only the price."],
+      ["How it works on ArkhamPad", "Every token starts on its own curve, priced in dollars. You can see the graduation progress on the token page and in the Almost graduating list on the homepage. After graduation, trading continues on the same page without any extra steps."],
+    ],
+    faq: [
+      ["What is a bonding curve?", "A formula that sets a token's price from how much has been bought, so it can be traded from the first second without a separate pool."],
+      ["What happens when a token graduates?", "Its remaining tokens and collected dollars move into a locked DEX pool, and it trades on the open market."],
+      ["Can the liquidity be removed after graduation?", "On ArkhamPad, no. The pool position is locked in the contract."],
+    ],
+  },
 ];
 
 const words = (g: Raw) => [g.short, ...g.sections.flat(), ...g.faq.flat()].join(" ").split(/\s+/).length;

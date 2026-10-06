@@ -1,0 +1,25 @@
+# ArkhamPad
+
+> ArkhamPad is an AI-powered token launchpad and trading platform on Robinhood Chain and Base. Create a token by describing it in one sentence, trade with a single dollar balance (no gas token needed), and see who really holds every token through AI safety checks and a live holder map of linked wallets.
+
+## Key pages
+- [Markets](https://arkhampad.com/): live tokens on Robinhood Chain, Base and BNB, with trending, new and graduating lists
+- [Create a token](https://arkhampad.com/create/): AI writes the name, ticker, story and logo from one sentence
+- [Terminal](https://arkhampad.com/terminal/): fast trading view with charts, orders and live trades
+- [Learn](https://arkhampad.com/learn/): guides on launching, trading and staying safe
+
+## Guides
+- [Robinhood Chain memecoins: the complete guide](https://arkhampad.com/learn/robinhood-chain-memecoins/)
+- [How to read a holder map](https://arkhampad.com/learn/how-to-read-a-holder-map/)
+- [Anatomy of a rug pull: 5 patterns](https://arkhampad.com/learn/rug-pull-patterns/)
+- [From launch to graduation: how a bonding curve token grows](https://arkhampad.com/learn/bonding-curve-to-graduation/)
+- [Why we built ArkhamPad](https://arkhampad.com/learn/why-we-built-arkhampad/)
+- [What is Robinhood Chain?](https://arkhampad.com/learn/what-is-robinhood-chain/)
+- [How to spot a rug pull](https://arkhampad.com/learn/spot-a-rug-pull/)
+- [Create a coin with AI](https://arkhampad.com/learn/create-a-coin-with-ai/)
+
+## Facts
+- Chains: Robinhood Chain (Ethereum L2 on Arbitrum, mainnet since July 1, 2026) and Base
+- Balance and prices in dollars; network fees are taken from the balance
+- Login: Google, email, X or a wallet
+- Contact: team@arkhampad.com
