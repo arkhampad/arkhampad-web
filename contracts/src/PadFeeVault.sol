@@ -32,6 +32,7 @@ contract PadFeeVault is ReentrancyGuard {
     error NotPayer();
     error ZeroAddress();
     error OverDailyCap(uint256 wanted, uint256 left);
+    error ZeroAmount();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -62,6 +63,7 @@ contract PadFeeVault is ReentrancyGuard {
     function payReferral(address to, uint256 amount, bytes32 ref) external nonReentrant {
         if (msg.sender != payer) revert NotPayer();
         if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
         uint256 day = block.timestamp / 1 days;
         if (day != spentDay) { spentDay = day; spentToday = 0; }
         uint256 left = dailyCap > spentToday ? dailyCap - spentToday : 0;
@@ -74,6 +76,7 @@ contract PadFeeVault is ReentrancyGuard {
     /// @notice The owner takes any token out (dollars, or coins from pool fees), any time.
     function withdraw(IERC20 token, address to, uint256 amount) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
         emit Withdrawn(address(token), to, amount);
         token.safeTransfer(to, amount);
     }

@@ -90,6 +90,7 @@ contract FeeVaultTest is Test {
         uint256 paid;
         try vault.payReferral(user, a, bytes32("x")) { paid += a; } catch {}
         try vault.payReferral(user, b, bytes32("y")) { paid += b; } catch {}
+        // zero amounts are rejected (no empty payout records)
         vm.stopPrank();
         assertLe(paid, 500e6);
         assertEq(usd.balanceOf(user), paid);
@@ -100,5 +101,14 @@ contract FeeVaultTest is Test {
         new PadFeeVault(IERC20(address(usd)), owner, address(0), 500e6);
         vm.expectRevert(PadFeeVault.ZeroAddress.selector);
         new PadFeeVault(IERC20(address(usd)), address(0), payer, 500e6);
+    }
+
+    function test_zeroAmountsRejected() public {
+        vm.expectRevert(PadFeeVault.ZeroAmount.selector);
+        vm.prank(payer);
+        vault.payReferral(user, 0, bytes32(0));
+        vm.expectRevert(PadFeeVault.ZeroAmount.selector);
+        vm.prank(owner);
+        vault.withdraw(IERC20(address(usd)), owner, 0);
     }
 }

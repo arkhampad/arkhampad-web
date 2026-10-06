@@ -88,4 +88,5 @@ The treasury address given to PadHub and PadPromote (and to PadExtSwap at its de
   most one day's cap; everything else needs the owner.
 - Deploy env: `TREASURY` = vault owner, `RELAYER` = payer address (required on mainnet; the constructor rejects a zero payer), `VAULT_DAILY_CAP` = whole dollars (default 500). `setPayer(address(0))` later switches payouts off.
 - `DeployExtSwap` reads the vault from `deployments/<chainId>.json`, so PadExtSwap's treasury is always the same vault.
-- Review round 1 (Oct 6, 2026): no critical/high/medium; low (zero payer at deploy) fixed.
+- Review rounds 1 and 2 (Oct 6, 2026): no critical/high/medium; lows fixed (zero payer at deploy, zero-amount payouts/withdrawals now revert).
+- After every deploy run `script/Verify.s.sol` (read-only): asserts Hub/Promote/ExtSwap treasury == vault, vault owner == TREASURY, payer == RELAYER, cap > 0, router and admin wiring.
