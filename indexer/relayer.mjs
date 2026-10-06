@@ -43,6 +43,18 @@ const UPKEEP_ABI = [
   { type: "function", name: "buyback", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
   { type: "function", name: "isCurve", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] },
 ];
+// Automatic fee collection and referral payouts (see sweepFees).
+const SWEEP_ABI = [
+  { type: "function", name: "platformFees", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "creatorFees", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "claimPlatformFees", stateMutability: "nonpayable", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "settleCreatorFees", stateMutability: "nonpayable", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "collectFees", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
+];
+const VAULT_ABI = [
+  { type: "function", name: "leftToday", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "payReferral", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }, { name: "ref", type: "bytes32" }], outputs: [] },
+];
 const MINT_ABI = [{ type: "function", name: "mint", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [] }];
 
 // What each error means for the person using the site.
@@ -594,13 +606,21 @@ export function makeRelayer() {
         if (due < 1) throw err("You can claim from $1.00.");
         const amount = BigInt(Math.floor(due * 1e6)) * 10n ** BigInt(DEC(n) - 6);
         const usdc = getAddress(n.c.usdc);
-        const bal = await n.pub.readContract({ address: usdc, abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }], functionName: "balanceOf", args: [account.address] });
-        if (bal < amount) throw err("Payouts are being topped up. Please try again later.", 503);
+        // with a fee vault, rewards come straight from the vault (within its daily limit)
+        const vault = n.c.vault ? getAddress(n.c.vault) : null;
+        if (vault) {
+          const left = await n.pub.readContract({ address: vault, abi: VAULT_ABI, functionName: "leftToday" });
+          if (left < amount) throw err("Today's payouts are done. Your reward is paid automatically tomorrow.", 503);
+        } else {
+          const bal = await n.pub.readContract({ address: usdc, abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }], functionName: "balanceOf", args: [account.address] });
+          if (bal < amount) throw err("Payouts are being topped up. Please try again later.", 503);
+        }
         // record first (so a double tap can't pay twice), then send
         const ins = await db.query(`insert into ref_payouts (referrer, chain_id, amount) values ($1,$2,$3) returning id`, [user, n.c.chainId, Number(amount) / 10 ** DEC(n)]);
         try {
-          const data = encodeFunctionData({ abi: [{ type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] }], functionName: "transfer", args: [getAddress(user), amount] });
-          const hash = await send(n, usdc, data, 120_000n);
+          const hash = vault
+            ? await send(n, vault, encodeFunctionData({ abi: VAULT_ABI, functionName: "payReferral", args: [getAddress(user), amount, `0x${BigInt(ins.rows[0].id).toString(16).padStart(64, "0")}`] }))
+            : await send(n, usdc, encodeFunctionData({ abi: [{ type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] }], functionName: "transfer", args: [getAddress(user), amount] }), 120_000n);
           await n.pub.waitForTransactionReceipt({ hash, timeout: 60_000 });
           await db.query("update ref_payouts set tx_hash=$2 where id=$1", [ins.rows[0].id, hash]);
           log(`${n.c.name} referral payout ${user} $${(Number(amount) / 10 ** DEC(n)).toFixed(2)} ${hash}`);
@@ -724,7 +744,76 @@ export function makeRelayer() {
   function config() {
     return { relayer: account.address, minFee: String(MIN_FEE), vapidPublicKey: notifier?.publicKey ?? null, chains: [...nets.values()].map((n) => ({ chainId: n.c.chainId, name: n.c.name, router: n.router, usdc: n.c.usdc, usdDecimals: DEC(n), minFee: String(minFeeOf(n)), approvals: n.c.approvals ?? "permit", faucet: !!n.faucet })) };
   }
-  return { handle, config, feeQuote, health, graduate, saveImage, saveAvatar, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, session, tokenUser, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
+  /**
+   * Every 30 minutes: move platform fees from every coin into the fee vault, pay creators their
+   * share (or run their buyback), collect graduated pools' fees, and pay referral rewards from the
+   * vault. Only amounts above a small minimum are touched, so gas never costs more than it moves.
+   */
+  let sweepRound = 0;
+  async function sweepFees() {
+    if (!db) return;
+    sweepRound += 1;
+    for (const n of nets.values()) {
+      const one = 10n ** BigInt(DEC(n));
+      const MIN_PLATFORM = 2n * one, MIN_CREATOR = one, MIN_POOL = 2n * one;
+      // coins traded in the last 2 days every round; every coin once every 12 rounds (~6 h)
+      const rows = (await db.query(
+        sweepRound % 12 === 1
+          ? "select address, curve, phase from coins where chain_id=$1"
+          : "select c.address, c.curve, c.phase from coins c where c.chain_id=$1 and (exists (select 1 from trades t where t.chain_id=c.chain_id and t.coin=c.address and t.ts > now() - interval '2 days') or c.graduated_at > now() - interval '2 days')",
+        [n.c.chainId],
+      )).rows;
+      let moved = 0;
+      for (const r of rows) {
+        try {
+          const curve = getAddress(r.curve);
+          const [plat, cre] = await Promise.all([
+            n.pub.readContract({ address: curve, abi: SWEEP_ABI, functionName: "platformFees" }),
+            n.pub.readContract({ address: curve, abi: SWEEP_ABI, functionName: "creatorFees" }),
+          ]);
+          if (plat >= MIN_PLATFORM) { await send(n, curve, encodeFunctionData({ abi: SWEEP_ABI, functionName: "claimPlatformFees" })); moved += 1; }
+          if (cre >= MIN_CREATOR) { await send(n, curve, encodeFunctionData({ abi: SWEEP_ABI, functionName: "settleCreatorFees" })); moved += 1; }
+          if (Number(r.phase) === 2 && n.c.poolBuilder) {
+            const pb = getAddress(n.c.poolBuilder), coin = getAddress(r.address);
+            const sim = await n.pub.simulateContract({ account: account.address, address: pb, abi: SWEEP_ABI, functionName: "collectFees", args: [coin] }).catch(() => null);
+            if (sim && sim.result?.[0] >= MIN_POOL) { await send(n, pb, encodeFunctionData({ abi: SWEEP_ABI, functionName: "collectFees", args: [coin] })); moved += 1; }
+          }
+        } catch (e) { log(`${n.c.name} sweep ${r.address}: ${e.message}`); }
+      }
+      if (moved) log(`${n.c.name}: fee sweep sent ${moved} transaction(s)`);
+      await payReferrals(n).catch((e) => log(`${n.c.name} referral payouts: ${e.message}`));
+    }
+  }
+
+  /** Referral rewards go out automatically from the fee vault ($1 minimum, vault's daily limit). */
+  async function payReferrals(n) {
+    if (!n.c.vault || !db) return;
+    const vault = getAddress(n.c.vault);
+    let left = await n.pub.readContract({ address: vault, abi: VAULT_ABI, functionName: "leftToday" });
+    const refs = (await db.query("select distinct referrer from referrals")).rows.map((x) => x.referrer);
+    for (const ref of refs) {
+      const row = (await db.query("select earned, paid from ref_earnings($1) where chain_id=$2", [ref, n.c.chainId])).rows[0];
+      const due = row ? Number(row.earned) - Number(row.paid) : 0;
+      if (due < 1) continue;
+      const amount = BigInt(Math.floor(due * 1e6)) * 10n ** BigInt(DEC(n) - 6);
+      if (amount > left) { log(`${n.c.name}: referral payouts paused until tomorrow (vault daily limit)`); break; }
+      // record first (a crash can't pay twice), then send
+      const ins = await db.query("insert into ref_payouts (referrer, chain_id, amount) values ($1,$2,$3) returning id", [ref, n.c.chainId, Number(amount) / 10 ** DEC(n)]);
+      try {
+        const id = ins.rows[0].id;
+        const hash = await send(n, vault, encodeFunctionData({ abi: VAULT_ABI, functionName: "payReferral", args: [getAddress(ref), amount, `0x${BigInt(id).toString(16).padStart(64, "0")}`] }));
+        await n.pub.waitForTransactionReceipt({ hash, timeout: 60_000 });
+        await db.query("update ref_payouts set tx_hash=$2 where id=$1", [id, hash]);
+        left -= amount;
+        log(`${n.c.name} referral paid ${ref} $${(Number(amount) / 10 ** DEC(n)).toFixed(2)} ${hash}`);
+      } catch (e) {
+        await db.query("delete from ref_payouts where id=$1", [ins.rows[0].id]);
+        throw e;
+      }
+    }
+  }
+
+  return { handle, config, feeQuote, health, graduate, saveImage, saveAvatar, sweepFees, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, session, tokenUser, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)

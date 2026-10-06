@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {PadFeeVault} from "../src/PadFeeVault.sol";
 import {Script, console2} from "forge-std/Script.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -94,6 +95,11 @@ contract Deploy is Script {
             vUsdc: (testCurve ? 450 : 4500) * dollar, vCoin: 1e27,
             coinsForSale: 225403330717033245926072205, coinsReserved: 774596669282966754073927795
         });
+        // All platform fees go to the fee vault: the treasury wallet owns it and withdraws any time;
+        // the relayer may only pay referral rewards from it, capped per day.
+        address payer = vm.envOr("RELAYER", address(0));
+        uint256 cap = vm.envOr("VAULT_DAILY_CAP", uint256(500)) * dollar;
+        PadFeeVault vault = new PadFeeVault(IERC20(v.usdc), treasury, payer, cap);
         uint64 nonce = vm.getNonce(deployer);
         address builderAddr = vm.computeCreateAddress(deployer, nonce);
         bytes32 salt = _mine(builderAddr, v.poolManager, builderAddr);
@@ -102,9 +108,9 @@ contract Deploy is Script {
         );
         require(address(builder) == builderAddr, "builder address");
         // The hub starts with the deployer as admin so it can wire things; admin moves below.
-        PadHub hub = new PadHub(IERC20(v.usdc), builder, cp, deployer, treasury);
+        PadHub hub = new PadHub(IERC20(v.usdc), builder, cp, deployer, address(vault));
         builder.bindHub(IPadHub(address(hub)));
-        PadPromote promote = new PadPromote(IERC20(v.usdc), admin, treasury);
+        PadPromote promote = new PadPromote(IERC20(v.usdc), admin, address(vault));
         PadRouter router = new PadRouter(hub, promote, builder);
         hub.setRouter(address(router));
         if (guardian != address(0)) hub.setGuardian(guardian);
@@ -133,9 +139,11 @@ contract Deploy is Script {
         vm.serializeAddress(o, "poolManager", v.poolManager);
         vm.serializeAddress(o, "positionManager", v.positionManager);
         vm.serializeAddress(o, "treasury", treasury);
+        vm.serializeAddress(o, "vault", address(vault));
         string memory json = vm.serializeAddress(o, "admin", admin);
         vm.writeJson(json, string.concat("./deployments/", vm.toString(block.chainid), ".json"));
 
+        console2.log("vault      ", address(vault));
         console2.log("hub        ", address(hub));
         console2.log("poolBuilder", address(builder));
         console2.log("promote    ", address(promote));

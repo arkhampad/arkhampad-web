@@ -351,6 +351,12 @@ async function loop(c) {
 if (!process.env.DATABASE_URL) { console.error("DATABASE_URL is required"); process.exit(1); }
 if (process.env.PORT) http.createServer(httpHandler(relayer, status)).listen(process.env.PORT);
 if (!process.env.ONCE) { startMarkets(pool); startIndexNow(); }
+// platform fees into the vault, creator payouts, pool fees and referral rewards: every 30 minutes
+if (relayer) {
+  const sweep = () => relayer.sweepFees().catch((e) => console.log(new Date().toISOString(), `fee sweep: ${e.message}`));
+  setTimeout(sweep, 90_000);
+  setInterval(sweep, Number(process.env.SWEEP_MINUTES || 30) * 60_000);
+}
 // Curves that filled while we were down: graduate them now (and re-check every few minutes).
 if (relayer) {
   const sweep = async () => {

@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PadExtSwap} from "../src/PadExtSwap.sol";
 
 /// Deploys PadExtSwap on a mainnet (Base for now), allowlists the KyberSwap router and hands
-/// admin to ADMIN. Env: PRIVATE_KEY, ADMIN, TREASURY.
+/// admin to ADMIN. Env: PRIVATE_KEY, ADMIN, TREASURY (use the chain's fee vault address from deployments/<chainId>.json).
 contract DeployExtSwap is Script {
     address constant KYBER_ROUTER = 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5; // MetaAggregationRouterV2 (same on every chain)
 

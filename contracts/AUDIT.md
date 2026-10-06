@@ -77,3 +77,13 @@ Thank you! Findings can be sent as a simple list (severity, file:line, descripti
 | 5 | Builder: coin fee transfer to the treasury could revert for blacklisting / fee-on-transfer coins | Medium (general) | **Not applicable**: pool coins are always our own `PadCoin` (no blacklist, no transfer fee; the creator lock only blocks transfers *from* the creator). |
 | 6 | Rounding dust USDC stays in the builder at graduation | Info | By design (tracked in `usdcHeld`, tiny); documented. |
 | 7 | Pool price slightly above the curve price after graduation (floor on coins) | Info | By design, economically negligible; graduation tests check pool price vs curve price for both token orders and 6/18 decimals. |
+
+## PadFeeVault (added Oct 6, 2026)
+The treasury address given to PadHub and PadPromote (and to PadExtSwap at its deploy) is a
+`PadFeeVault`. All platform fees land there.
+- `owner` (the treasury wallet) can `withdraw(token, to, amount)` any token, any amount, any time;
+  can change the payer and the daily cap; ownership moves in two steps (`proposeOwner` / `acceptOwner`).
+- `payer` (the relayer's hot key) can only call `payReferral(to, amount, ref)` — referral rewards in
+  the dollar token — and at most `dailyCap` per UTC day in total. A stolen relayer key can take at
+  most one day's cap; everything else needs the owner.
+- Deploy env: `TREASURY` = vault owner, `RELAYER` = payer address, `VAULT_DAILY_CAP` = whole dollars (default 500).
