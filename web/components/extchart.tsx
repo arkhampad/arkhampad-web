@@ -17,11 +17,20 @@ async function gtCandles(network: string, pool: string, token: string | undefine
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < 20_000) return hit.c;
   const q = `aggregate=${agg}&limit=300&currency=usd${token ? `&token=${token}` : ""}`;
-  const r = await fetch(`https://api.geckoterminal.com/api/v2/networks/${network}/pools/${pool}/ohlcv/${tf}?${q}`, { headers: { accept: "application/json" } });
+  // give up after 8 s (then the page falls back to the DEX's own chart instead of "loading" forever)
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  const r = await fetch(`https://api.geckoterminal.com/api/v2/networks/${network}/pools/${pool}/ohlcv/${tf}?${q}`, { headers: { accept: "application/json" }, signal: ctl.signal }).finally(() => clearTimeout(timer));
   if (!r.ok) throw new Error(String(r.status));
   const j = await r.json();
   const list: number[][] = j?.data?.attributes?.ohlcv_list ?? [];
-  const c = list.map(([t, o, h, l, cl, v]) => ({ t, o, h, l, c: cl, v })).sort((a, b) => a.t - b.t);
+  // GeckoTerminal gives seconds; our chart works in milliseconds. One candle per time, numbers only.
+  const seen = new Set<number>();
+  const c = list
+    .map(([t, o, h, l, cl, v]) => ({ t: Number(t) * 1000, o: Number(o), h: Number(h), l: Number(l), c: Number(cl), v: Number(v) || 0 }))
+    .filter((x) => Number.isFinite(x.t) && x.t > 0 && [x.o, x.h, x.l, x.c].every((n) => Number.isFinite(n) && n > 0))
+    .sort((a, b) => a.t - b.t)
+    .filter((x) => (seen.has(x.t) ? false : (seen.add(x.t), true)));
   cache.set(key, { at: Date.now(), c });
   return c;
 }
@@ -42,7 +51,7 @@ export default function ExtChart({ network, pool, token, supply, height = 420 }:
     if (!network || !pool) return;
     let alive = true;
     setCandles(null); setFailed(false);
-    const load = () => gtCandles(network, pool, token, iv).then((c) => { if (alive) { setCandles(c); setFailed(c.length === 0); } }).catch(() => { if (alive) setFailed(true); });
+    const load = () => gtCandles(network, pool, token, iv).then((c) => { if (alive) { setCandles(c); setFailed(c.length < 2); } }).catch(() => { if (alive) setFailed(true); });
     load();
     const t = setInterval(load, 30_000);
     return () => { alive = false; clearInterval(t); };
