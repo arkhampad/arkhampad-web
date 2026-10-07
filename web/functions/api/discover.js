@@ -6,9 +6,9 @@ const SYSTEM = `You turn a trader's request into JSON filters for a meme coin li
 Reply with ONE JSON object only, no other text. Use only the keys you need from:
 {"source":"all|here|other","chain":"Base|Robinhood|BNB|Arc","topic":"AI|Animals|Gaming|Culture","text":"words in the coin name or ticker",
 "maxAgeMin":number,"minAgeMin":number,"minMc":number,"maxMc":number,"minChange":number,"maxChange":number,"minVol":number,
-"nearGrad":true,"graduated":true,"locked":true,"sort":"trending|new|gainers|losers|volume|mc|graduation"}
+"locked":true,"sort":"trending|new|gainers|losers|volume|mc"}
 Meaning: source "here" = launched on ArkhamPad, "other" = from other DEXs. Ages in minutes, money in US dollars, change in percent over 24h.
-nearGrad = launched here and close to graduating; graduated = launched here and already graduated; locked = creator lock still running.
+Every coin launched here trades in its own locked Uniswap pool from launch (there is no graduation). locked = creator lock still running.
 "new" or "fresh" without a time means maxAgeMin 1440. "Rising volume" or "active" means sort "volume". "Pumping" or "gainers" means sort "gainers" and minChange 20.
 Never add filters the request didn't ask for.`;
 

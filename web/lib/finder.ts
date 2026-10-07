@@ -38,8 +38,7 @@ export function cleanFinder(o: Record<string, unknown> | null | undefined): Find
   const minCh = n(o.minChange, -100, 100000); if (minCh !== undefined) f.minChange = minCh;
   const maxCh = n(o.maxChange, -100, 100000); if (maxCh !== undefined) f.maxChange = maxCh;
   const minVol = n(o.minVol, 0, 1e12); if (minVol) f.minVol = minVol;
-  if (o.nearGrad === true) f.nearGrad = true;
-  if (o.graduated === true) f.graduated = true;
+  // v2: coins open in their pool at launch, there is no graduation to filter on
   if (o.locked === true) f.locked = true;
   const so = pick(o.sort, SORTS); if (so) f.sort = so;
   // ArkhamPad-only ideas imply coins launched here

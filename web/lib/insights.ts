@@ -20,7 +20,10 @@ export type RecapCoin = { chain_id: number; coin: string; symbol: string; name: 
 export type Recap = { day: string; volume: number; trades: number; traders: number; launches: number; graduations: number; fastest_grad_s: number | null; gainer: RecapCoin | null; top_volume: RecapCoin | null; biggest_trade: { trader: string; usdc: number; is_buy: boolean; symbol: string; chain_id: number; coin: string } | null; top: RecapCoin[] };
 export async function dayRecap(day?: string): Promise<Recap | null> {
   const { data } = await db().rpc("day_recap", { p_day: day ?? null });
-  return (data as Recap) ?? null;
+  const raw = (Array.isArray(data) ? data[0] : data) as Partial<Recap> | null | undefined;
+  if (!raw || typeof raw !== "object") return null;
+  // a quiet day can come back with empty fields: show zeros, never "undefined"
+  return { ...raw, trades: Number(raw.trades ?? 0), volume: Number(raw.volume ?? 0), traders: Number(raw.traders ?? 0), launches: Number(raw.launches ?? 0), top: Array.isArray(raw.top) ? raw.top : [], gainer: raw.gainer ?? null, top_volume: raw.top_volume ?? null, biggest_trade: raw.biggest_trade ?? null } as Recap;
 }
 
 export type RefRow = { chain_id: number; friends: number; volume: number; earned: number; paid: number };

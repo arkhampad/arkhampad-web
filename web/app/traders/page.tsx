@@ -80,7 +80,7 @@ export default function Traders() {
           <div className="card" style={{ gap: 10 }}>
             <span style={{ fontWeight: 700 }}>Copy in one tap</span>
             <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>When someone you follow buys, you get an alert with a Copy button. Pick how much each copy buys:</span>
-            <div style={{ display: "flex", gap: 6 }}>{[10, 25, 50, 100].map((v) => <button key={v} type="button" className={`seg mono${amt === v ? " on" : ""}`} onClick={() => { setAmt(v); setCopyAmount(v); }}>${v}</button>)}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{[10, 25, 50, 100].map((v) => <button key={v} type="button" className={`seg mono${amt === v ? " on" : ""}`} style={{ minWidth: 0 }} onClick={() => { setAmt(v); setCopyAmount(v); }}>${v}</button>)}</div>
             <span style={{ fontSize: 11, color: "var(--faint)" }}>Testnet · copies use test USDC</span>
           </div>
         </aside>
