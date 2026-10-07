@@ -17,6 +17,7 @@
 - [What is Robinhood Chain?](https://arkhampad.com/learn/what-is-robinhood-chain/)
 - [How to spot a rug pull](https://arkhampad.com/learn/spot-a-rug-pull/)
 - [Security: how ArkhamPad protects your funds](https://arkhampad.com/security/)
+- [Token list: every coin launched on ArkhamPad (tokenlists.org format)](https://arkhampad.com/tokens.json)
 - [Create a coin with AI](https://arkhampad.com/learn/create-a-coin-with-ai/)
 
 ## Facts

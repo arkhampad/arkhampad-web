@@ -142,6 +142,7 @@ function Footer() {
           <Link href="/help/">Help</Link>
           <Link href="/help/#fees">Fees</Link>
           <Link href="/security/">Security</Link>
+          <a href="/tokens.json">Token list</a>
           <Link href="/terms/">Terms</Link>
           <Link href="/privacy/">Privacy</Link>
           <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer">X</a>
