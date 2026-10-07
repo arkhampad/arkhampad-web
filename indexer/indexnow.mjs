@@ -2,7 +2,7 @@
 // waiting for them to re-read the sitemap. Google doesn't use IndexNow; it reads /sitemap-coins.xml.
 // Env (optional): INDEXNOW_KEY (must match web/public/<key>.txt), SITE_URL.
 const SITE = (process.env.SITE_URL || "https://arkhampad.com").replace(/\/$/, "");
-const KEY = process.env.INDEXNOW_KEY || "8c057307504f7af573cb41b5d80bcbc4";
+const KEY = process.env.INDEXNOW_KEY || "3ddc1bd04f4161fe2559c6c8ff2e21d9";
 const queue = new Set();
 let timer = null;
 
@@ -15,7 +15,9 @@ async function send(urls) {
       headers: { "content-type": "application/json; charset=utf-8" },
       body: JSON.stringify({ host, key: KEY, keyLocation: `${SITE}/${KEY}.txt`, urlList: urls.slice(0, 10000) }),
     });
-    console.log(`${new Date().toISOString()} indexnow: ${urls.length} url(s) -> ${r.status}`);
+    // 200/202 = accepted. On an error, log IndexNow's own explanation too.
+    const why = r.status >= 400 ? ` ${(await r.text().catch(() => "")).slice(0, 200)}` : "";
+    console.log(`${new Date().toISOString()} indexnow: ${urls.length} url(s) -> ${r.status}${why}`);
   } catch (e) { console.log(`indexnow: ${e.message}`); }
 }
 
