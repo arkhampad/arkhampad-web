@@ -53,6 +53,7 @@ abstract contract LaunchForkBase is LaunchFlow {
     function test_gasless() public { if (on) _flow_gasless(); }
     function test_onlyOurCoins() public { if (on) _flow_onlyOurCoins(); }
     function test_minLaunchBuy() public { if (on) _flow_minLaunchBuy(); }
+    function test_hardening() public { if (on) _flow_hardening(); }
     function test_callbacksLocked() public { if (on) _flow_callbacksLocked(); }
     function test_pause() public { if (on) _flow_pause(); }
     function test_creatorLock() public { if (on) _flow_creatorLock(); }

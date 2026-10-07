@@ -42,6 +42,7 @@ abstract contract LaunchLocalBase is LaunchFlow, DeployPermit2 {
     function test_gasless() public { _flow_gasless(); }
     function test_onlyOurCoins() public { _flow_onlyOurCoins(); }
     function test_minLaunchBuy() public { _flow_minLaunchBuy(); }
+    function test_hardening() public { _flow_hardening(); }
     function test_callbacksLocked() public { _flow_callbacksLocked(); }
     function test_pause() public { _flow_pause(); }
     function test_creatorLock() public { _flow_creatorLock(); }

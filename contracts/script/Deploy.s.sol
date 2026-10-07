@@ -112,6 +112,8 @@ contract Deploy is Script {
         // The hub starts with the deployer as admin so it can wire things; admin moves below.
         // every launch includes a creator buy of at least $5 (MIN_LAUNCH_BUY, whole dollars)
         uint256 minLaunchBuy = vm.envOr("MIN_LAUNCH_BUY", uint256(5)) * dollar;
+        // review L-01: never deploy with a first buy under $5
+        require(minLaunchBuy >= 5 * dollar, "MIN_LAUNCH_BUY must be at least 5 (dollars)");
         PadHub hub = new PadHub(IERC20(v.usdc), builder, startMarketCap, minLaunchBuy, deployer, address(vault));
         builder.bindHub(IPadHub(address(hub)));
         PadPromote promote = new PadPromote(IERC20(v.usdc), admin, address(vault));

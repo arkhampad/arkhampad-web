@@ -81,6 +81,8 @@ contract PadHub is ReentrancyGuard {
         usdc = usdc_;
         poolBuilder = poolBuilder_;
         if (startMarketCap_ == 0) revert BadName();
+        // review L-01: a zero minimum would let launches skip the first buy
+        if (minLaunchBuy_ == 0) revert LaunchBuyTooSmall(0);
         startMarketCap = startMarketCap_;
         minLaunchBuy = minLaunchBuy_;
         admin = admin_;

@@ -348,6 +348,17 @@ abstract contract LaunchFlow is Test {
         assertGt(IERC20(c).balanceOf(creator), 0);
     }
 
+    /// Review hardening: a hub can't be deployed without a minimum first buy, and the
+    /// fee for a time before the launch is the launch fee (no underflow).
+    function _flow_hardening() internal {
+        vm.expectRevert(abi.encodeWithSelector(PadHub.LaunchBuyTooSmall.selector, 0));
+        new PadHub(usdc, builder, 4500 * D, 0, admin, treasury);
+        assertEq(hook.feeAt(1000, 999), 300_000);
+        assertEq(hook.feeAt(1000, 0), 300_000);
+        assertGt(hook.feeAt(1000, 1299), 20_000, "still above 2% at 299s");
+        assertEq(hook.feeAt(1000, 1300), 20_000);
+    }
+
     /// The router only trades coins launched on ArkhamPad.
     function _flow_onlyOurCoins() internal {
         vm.expectRevert(PadRouter.NoPool.selector);

@@ -29,6 +29,20 @@ see `.github/workflows/contracts.yml`).
   launched by the hub (`hub.isCoin` + an open position); `launch` returns only the coin.
 - Pause (admin or guardian) now stops new launches; pool trading can never be paused.
 
+## v2 review results (October 2026, commit c9d9dd1)
+
+Two independent reviews of v2: **Critical 0 · High 0 · Medium 0.**
+
+| ID | Finding | Status |
+|---|---|---|
+| L-01 | A hub deployed with `minLaunchBuy = 0` would allow launches without a first buy | Fixed: the hub constructor rejects 0, and Deploy.s.sol requires at least $5 |
+| L-1 | `collectFees` sends coin fees to the treasury with a plain transfer; a revert would stop the collect | Accepted: PadCoin has no blacklist or transfer fee, and the treasury is our vault |
+| L-2 | Unspent launch-buy USDC is refunded to the creator | Accepted and documented: through the router the creator is the payer |
+| I-01 | `feeAt(start, now)` underflowed for a time before the launch | Fixed: returns the launch fee (30%) |
+| I-1 | Launch price rounds up to the tick grid (up to ~2%) | By design |
+| I-2 | Builder swaps (launch buy, buyback) always pay 2% | By design |
+| I-3 | `startMarketCap` / `minLaunchBuy` are deploy parameters in the dollar token's decimals | Checked in Deploy.s.sol |
+
 ## Contracts in scope
 
 | File | Role |

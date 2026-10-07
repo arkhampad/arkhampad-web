@@ -47,6 +47,7 @@ contract PadLaunchHook {
 
     /// @notice The fee a swap would pay right now, for a pool launched at `start`.
     function feeAt(uint256 start, uint256 nowTs) public pure returns (uint24) {
+        if (nowTs <= start) return START_FEE; // review I-01: a time before the launch is the launch fee
         if (nowTs >= start + DECAY_SECONDS) return BASE_FEE;
         uint256 elapsed = nowTs - start;
         return uint24(START_FEE - ((uint256(START_FEE - BASE_FEE) * elapsed) / DECAY_SECONDS));
