@@ -53,7 +53,17 @@ export default function TvChart({ candles, supply, height = 380, empty = "No tra
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
       kineticScroll: { touch: true, mouse: false },
     });
-    candle.current = c.addSeries(CandlestickSeries, { upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down, priceLineVisible: false, lastValueVisible: true });
+    candle.current = c.addSeries(CandlestickSeries, { upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down, priceLineVisible: false, lastValueVisible: true,
+      // one trade (or a flat price) has no range: give the scale ±5% so its labels differ
+      autoscaleInfoProvider: (orig: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
+        const r = orig();
+        if (!r || !r.priceRange) return r;
+        const { minValue, maxValue } = r.priceRange;
+        const mid = (minValue + maxValue) / 2;
+        if (maxValue - minValue >= Math.abs(mid) * 0.02) return r;
+        const pad = Math.abs(mid) * 0.05 || 1e-12;
+        return { ...r, priceRange: { minValue: mid - pad, maxValue: mid + pad } };
+      } });
     volume.current = c.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
     c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 }, visible: false });
     chart.current = c;

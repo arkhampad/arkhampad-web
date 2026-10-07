@@ -1,4 +1,5 @@
 "use client";
+import { initials } from "./util";
 // Sharing: a clean branded card image + tidy text, opened in the X app on phones.
 
 export type ShareCoin = { name: string; tick: string; chain: string; mc: string; mcIsFdv?: boolean; chg: number; address: string; id: string; image?: string | null; c1: string; c2: string; own?: boolean };
@@ -95,7 +96,7 @@ async function drawCard(c: ShareCoin): Promise<Blob | null> {
     g.addColorStop(0, c.c1); g.addColorStop(1, c.c2);
     ctx.fillStyle = g; ctx.fillRect(ax, ay, as, as);
     ctx.fillStyle = "#fff"; ctx.font = `900 56px ${sans}`; ctx.textAlign = "center";
-    ctx.fillText(c.tick.slice(0, 2).toUpperCase(), ax + as / 2, ay + as / 2 + 2);
+    ctx.fillText(initials(c.name), ax + as / 2, ay + as / 2 + 2);
     ctx.textAlign = "left";
   }
   ctx.restore();
@@ -190,7 +191,7 @@ export async function pnlCard(p: Pnl): Promise<Blob | null> {
   const pic = p.image ? await loadImage(p.image) : null;
   ctx.save(); rounded(ctx, 64, 170, 96, 96, 24); ctx.clip();
   if (pic) ctx.drawImage(pic, 64, 170, 96, 96);
-  else { const g = ctx.createLinearGradient(64, 170, 160, 266); g.addColorStop(0, p.c1); g.addColorStop(1, p.c2); ctx.fillStyle = g; ctx.fillRect(64, 170, 96, 96); ctx.fillStyle = "#fff"; ctx.font = `900 36px ${sans}`; ctx.textAlign = "center"; ctx.fillText(p.tick.slice(0, 2).toUpperCase(), 112, 220); ctx.textAlign = "left"; }
+  else { const g = ctx.createLinearGradient(64, 170, 160, 266); g.addColorStop(0, p.c1); g.addColorStop(1, p.c2); ctx.fillStyle = g; ctx.fillRect(64, 170, 96, 96); ctx.fillStyle = "#fff"; ctx.font = `900 36px ${sans}`; ctx.textAlign = "center"; ctx.fillText(initials(p.name), 112, 220); ctx.textAlign = "left"; }
   ctx.restore();
   ctx.fillStyle = "#F2F3F5"; ctx.font = `900 48px ${sans}`; ctx.fillText(p.name.length > 22 ? p.name.slice(0, 21) + "…" : p.name, 186, 202);
   ctx.fillStyle = "#8A909C"; ctx.font = `700 26px ${mono}`; ctx.fillText(`$${p.tick} · ${p.chain}`, 188, 248);
