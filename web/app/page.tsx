@@ -70,6 +70,8 @@ export default function Discover() {
   const [hotAt, setHotAt] = useState(0);
   useEffect(() => { const t = setInterval(() => setHotAt((i) => i + 3), 45_000); return () => clearInterval(t); }, []);
   const hotList = pool.data ?? null;
+  // every coin launched here gets the spotlight for its first 30 minutes
+  const fresh = useLive(async () => (await listCoins("Launched here", { limit: 30 })).filter((c) => c.createdAt && Date.now() - Date.parse(c.createdAt) < 30 * 60_000).slice(0, 8), [], 30_000);
   const hot = { data: hotList && hotList.length ? [0, 1, 2].map((k) => hotList[(hotAt + k) % hotList.length]).filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i) : hotList };
   const total = useLive(totalCoins, [], 120_000);
   const promoted = useLive(listPromoted, [], 60_000);
@@ -125,6 +127,13 @@ export default function Discover() {
               </Link>
             ))}
           </div>
+        </section>
+      )}
+
+      {fresh.data && fresh.data.length > 0 && (
+        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="feat-head"><h2>Just launched</h2><span className="dim" style={{ fontSize: 12 }}>last 30 minutes</span></div>
+          <div className="feat-row">{fresh.data.map((c) => <HotCard key={c.id} c={c} />)}</div>
         </section>
       )}
 

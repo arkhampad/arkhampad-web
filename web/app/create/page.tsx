@@ -37,8 +37,7 @@ function CreateView() {
   // Base first and the default: the chain most trading apps and wallets already show
   const CHAINS = [...NETS].sort((a, b) => (a.short === "Base" ? -1 : b.short === "Base" ? 1 : 0)).map((n) => ({ id: n.id, name: n.short, color: n.short === "Robinhood" ? "var(--rh)" : n.short === "Base" ? "var(--base)" : n.short === "BNB" ? "#F0B90B" : "var(--volt)" }));
   const [chain, setChain] = useState(CHAINS.find((c) => c.name === "Base")?.name ?? CHAINS[0].name);
-  // safe, simple defaults: the creator opts in to a lock or to buyback & burn
-  const [lock, setLock] = useState("No lock");
+  // safe, simple defaults: fees to the creator unless they pick buyback & burn
   const [fee, setFee] = useState("you");
   const [boost, setBoost] = useState("none");
   const [first, setFirst] = useState(5); // every launch includes a first buy of at least $5
@@ -113,9 +112,12 @@ function CreateView() {
   const autoRan = useRef(false);
   useEffect(() => { if (!autoRan.current && q.get("idea")) { autoRan.current = true; generate(q.get("idea") || ""); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const ca = done?.coin ?? "";
-  const coinUrl = done ? `https://arkhampad.com/coin/?c=${done.chainId}-${done.coin}` : "";
+  // the creator's own invite rides along: everyone who comes from their posts earns them a share
+  const me = w.address?.toLowerCase() ?? "";
+  const coinUrl = done ? `https://arkhampad.com/coin/?c=${done.chainId}-${done.coin}${me ? `&ref=${me}` : ""}` : "";
+  const dexUrl = done && DEX_SLUG[done.chainId] ? `https://dexscreener.com/${DEX_SLUG[done.chainId]}/${done.coin}` : "";
   const shareObj: ShareCoin = { name, tick, chain, mc: "$450", chg: 0, address: ca, id: done ? `${done.chainId}-${done.coin.toLowerCase()}` : "", c1: o.c1, c2: o.c2, own: true };
-  const post = coinText(shareObj, { launched: true }).replace(/\nMarket cap.*\n/, "\n") + (desc ? `\n\n${desc.trim().slice(0, 140)}` : "");
+  const post = coinText(shareObj, { launched: true }).replace(/\nMarket cap.*\n/, "\n") + (desc ? `\n\n${desc.trim().slice(0, 140)}` : "") + (dexUrl ? `\n\nChart: ${dexUrl}` : "");
   const [cardUrl, setCardUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!done) return;
@@ -137,7 +139,7 @@ function CreateView() {
     const metadataURI = `data:application/json;base64,${btoa(unescape(encodeURIComponent(meta)))}`;
     try {
       setBusy("Launching…");
-      const lockSeconds = lock === "Lock 24h" ? 86400 : lock === "Lock 1h" ? 3600 : 0;
+      const lockSeconds = 0; // creators can always sell: no creator lock on ArkhamPad
       const r = await launch(chainId, { name: nm, symbol: tk, metadataURI, lockSeconds, feeMode: fee === "burn" ? 1 : 0, launchUsdc: toUsdc(first) }, w.signer);
       if (imgFile) {
         setBusy("Adding image…");
@@ -298,15 +300,13 @@ function CreateView() {
                 {pic(44, 12)}
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <b>{name || "Your coin"}</b> <span className="mono dim" style={{ fontSize: 11 }}>${tick || "TICKER"}</span>
-                  <span className="cr-tags"><span>{chain}</span>{lock !== "No lock" && <span className="g">Dev locked {lock.replace("Lock ", "")}</span>}<span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span></span>
+                  <span className="cr-tags"><span>{chain}</span><span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span></span>
                 </span>
               </div>
               <div className="cr-set"><div className="cr-lbl">Chain <span>{chain === "Base" ? "most apps and wallets support it" : "one per coin"}</span></div>
                 <div className="cr-sg">{CHAINS.map(({ name: n, color: col }) => <button key={n} type="button" className={chain === n ? "on" : ""} onClick={() => setChain(n)}><span className="dot" style={{ width: 8, height: 8, background: col }} />{n}</button>)}</div>
               </div>
-              <div className="cr-set"><div className="cr-lbl">Creator lock <span>shows buyers you won&apos;t dump</span></div>
-                <div className="cr-sg">{[["No lock", "None"], ["Lock 1h", "1 hour"], ["Lock 24h", "24 hours"]].map(([k, t]) => <button key={k} type="button" className={lock === k ? "on" : ""} onClick={() => setLock(k)}>{t}</button>)}</div>
-              </div>
+
               <div className="cr-set"><div className="cr-lbl">Your 30% of trading fees <span>{fee === "burn" ? "buys your coin back and burns it" : "from every trade, in any app"}</span></div>
                 <div className="cr-sg"><button type="button" className={fee === "you" ? "on" : ""} onClick={() => setFee("you")}>To you</button><button type="button" className={fee === "burn" ? "on" : ""} onClick={() => setFee("burn")}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</button></div>
               </div>
@@ -343,7 +343,7 @@ function CreateView() {
             <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>Live preview</span>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>{pic(64, 18)}<span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}><span style={{ fontWeight: 900, fontSize: 20, overflowWrap: "anywhere" }}>{name || "Your coin"}</span><span className="mono dim" style={{ fontSize: 12 }}>${tick || "TICKER"} · {chain}</span></span></div>
             {desc && <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>{desc}</p>}
-            <div className="cr-tags"><span>{chain}</span>{lock !== "No lock" && <span className="g">Dev locked {lock.replace("Lock ", "")}</span>}<span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span>{boost !== "none" && <span className="g">Boost {boost === "10" ? "6h" : "24h"}</span>}{first > 0 && <span>First buy ${first}</span>}</div>
+            <div className="cr-tags"><span>{chain}</span><span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span>{boost !== "none" && <span className="g">Boost {boost === "10" ? "6h" : "24h"}</span>}{first > 0 && <span>First buy ${first}</span>}</div>
             <span style={{ fontSize: 12, color: "var(--faint)" }}>You review everything before it goes live.</span>
           </div>
         </aside>
@@ -356,4 +356,7 @@ function CreateView() {
     </div>
   );
 }
+
+/** DexScreener chain slugs for the chains ArkhamPad runs on (mainnets only; testnets aren't listed). */
+const DEX_SLUG: Record<number, string> = { 8453: "base", 4663: "robinhood", 56: "bsc" };
 export default function CreatePage() { return <Suspense fallback={<div className="wrap page" />}><CreateView /></Suspense>; }

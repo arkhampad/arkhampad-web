@@ -10,6 +10,7 @@ import pg from "pg";
 import { createPublicClient, http as viemHttp, parseAbiItem, getAddress } from "viem";
 import { startMarkets } from "./markets.mjs";
 import { startQuality } from "./quality.mjs";
+import { startDexWatch } from "./dexwatch.mjs";
 import { makeRelayer, httpHandler } from "./relayer.mjs";
 import { poolIdOf, poolTrade } from "./poolmath.mjs";
 import { makeNotifier } from "./notify.mjs";
@@ -308,7 +309,7 @@ async function loop(c) {
 
 if (!process.env.DATABASE_URL) { console.error("DATABASE_URL is required"); process.exit(1); }
 if (process.env.PORT) http.createServer(httpHandler(relayer, status)).listen(process.env.PORT);
-if (!process.env.ONCE) { startMarkets(pool); startQuality(pool); startIndexNow(); }
+if (!process.env.ONCE) { startMarkets(pool); startQuality(pool); startIndexNow(); startDexWatch(pool, { log, notifier }); }
 // platform fees into the vault, creator payouts, pool fees and referral rewards: every 30 minutes
 if (relayer) {
   const sweep = () => relayer.sweepFees().catch((e) => console.log(new Date().toISOString(), `fee sweep: ${e.message}`));

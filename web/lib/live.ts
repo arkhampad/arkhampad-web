@@ -70,6 +70,8 @@ export type LiveCoin = Coin & {
   about?: { description?: string; x?: string; telegram?: string; website?: string }; feeMode?: number;
   /** v2: the coin's 30% share of pool fees so far (paid to the creator, or its buyback fund). */
   creatorFees?: number;
+  /** When DexScreener first listed the coin (mainnet coins only). */
+  dexListedAt?: string | null;
 };
 
 /** Creator-written details stored with the coin (description and links). */
@@ -83,7 +85,7 @@ export function parseMeta(uri: string | null | undefined): LiveCoin["about"] {
 }
 
 type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null };
-type OwnRow = { creator_fees_usd?: number | null; pool_usd?: number | null; image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
+type OwnRow = { dex_listed_at?: string | null; creator_fees_usd?: number | null; pool_usd?: number | null; image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
 
 /** Names with no Latin letters or digits, or placeholder "?" names, are spam in lists (search still finds them). */
 // Fake market caps (hundreds of billions on a day-old token) never show either.
@@ -120,6 +122,7 @@ export function fromOwn(r: OwnRow): LiveCoin {
     phase: r.phase, startMc: start, creator: r.creator, curve: r.curve, createdAt: r.created_at,
     about: parseMeta(r.metadata_uri), feeMode: r.fee_mode, lockSeconds: Number(r.lock_seconds ?? 0),
     creatorFees: Number(r.creator_fees_usd ?? 0),
+    dexListedAt: r.dex_listed_at ?? null,
   };
 }
 

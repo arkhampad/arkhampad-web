@@ -17,7 +17,9 @@ const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, load
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
 import { ICopy, IShare } from "@/components/icons";
 import { useApp } from "@/components/shell";
-import { LaunchFeeCard, PoolCard } from "@/components/v2";
+import { DexListed, LaunchFeeCard, PoolCard } from "@/components/v2";
+
+const IS_MAINNET_CHAIN = (id: number) => id === 8453 || id === 4663 || id === 56;
 
 
 function Stat({ k, v, cls }: { k: string; v: string; cls?: string }) {
@@ -97,7 +99,7 @@ function CoinView() {
             <h1 className="coin-h1" style={{ margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: -0.8, overflowWrap: "anywhere" }}>{c.name}</h1>
             <span className="mono dim" style={{ fontWeight: 600 }}>{c.tick}</span>
             <span className="pill" style={{ background: "var(--raise)", color: "var(--text2)" }}><ChainTag chain={c.chain} /></span>
-            {c.own ? <><span className="pill live-pill">Live on Uniswap</span><span className="pill" style={{ background: "var(--raise)", color: "var(--muted)" }}>Testnet</span></> : <span className="pill" style={{ background: "var(--raise)", color: "var(--muted)" }}>{c.dex ? c.dex.replace(/[-_]/g, " ") : "Other DEX"}</span>}
+            {c.own ? <><span className="pill live-pill">Live on Uniswap</span><DexListed c={c} />{!IS_MAINNET_CHAIN(c.chainId) && <span className="pill" style={{ background: "var(--raise)", color: "var(--muted)" }}>Testnet</span>}</> : <span className="pill" style={{ background: "var(--raise)", color: "var(--muted)" }}>{c.dex ? c.dex.replace(/[-_]/g, " ") : "Other DEX"}</span>}
           </div>
           <div className="mono dim" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, flexWrap: "wrap" }}>
             {short(c.address)}

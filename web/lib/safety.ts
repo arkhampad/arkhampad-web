@@ -24,8 +24,7 @@ export function assess(f: Facts): { level: Level; checks: Check[]; warn: string 
   let score = 0;
   const checks: Check[] = [{ ok: "ok", label: "Fixed supply, nobody can mint more", value: "" }];
   const locked = f.lockLeftSec > 0;
-  checks.push({ ok: locked ? "ok" : f.creatorPct > 5 ? "bad" : "warn", label: "Creator lock", value: locked ? "locked" : f.lockChosen ? "ended" : "none" });
-  if (!locked && f.creatorPct > 5) score += 1;
+  // ArkhamPad has no creator lock: creators can always sell, so the creator's share is what matters
   const cBad = f.creatorPct > 20, cWarn = f.creatorPct > 10;
   checks.push({ ok: cBad ? "bad" : cWarn ? "warn" : "ok", label: "Creator holds", value: pct(f.creatorPct) });
   score += cBad ? 2 : cWarn ? 1 : 0;
@@ -48,18 +47,17 @@ export function assess(f: Facts): { level: Level; checks: Check[]; warn: string 
 
   // the pre-buy warning names the two biggest reasons, in plain words
   const reasons: string[] = [];
-  if (cBad && !locked) reasons.push(`the creator holds ${pct(f.creatorPct)} of the supply with no lock`);
+  if (cBad && !locked) reasons.push(`the creator holds ${pct(f.creatorPct)} of the supply and can sell at any time`);
   else if (cBad) reasons.push(`the creator holds ${pct(f.creatorPct)} of the supply`);
   if (f.trades >= 5 && f.topBuyersPct > 70) reasons.push("most buys came from 3 wallets");
   if (f.holders > 0 && f.top10Pct > 60) reasons.push(`the top 10 wallets hold ${pct(f.top10Pct)}`);
-  if (!locked && !cBad && f.creatorPct > 5) reasons.push("the creator didn't lock their coins");
   if (f.ageMin < 30) reasons.push(`this coin is ${age(f.ageMin)} old`);
   const r2 = reasons.slice(0, 2);
   const joined = r2.length === 2 ? `${r2[0]}, and ${r2[1]}` : r2[0] ?? "";
   const warn = level >= 1 && joined ? `${joined[0].toUpperCase()}${joined.slice(1)}. Only buy what you can afford to lose.` : null;
 
   const summary = f.trades === 0
-    ? `No trades yet. ${locked ? "The creator is locked" : f.lockChosen ? "The creator lock has ended" : "The creator chose no lock"} and holds ${pct(f.creatorPct)}.`
+    ? `No trades yet. The creator holds ${pct(f.creatorPct)}.`
     : level === 0
     ? `${locked ? "The creator is locked and" : "The creator"} holds ${pct(f.creatorPct)}. ${f.buyers} different wallets have bought${f.holders ? ` and the top 10 hold ${pct(f.top10Pct)}` : ""}.`
     : `${joined ? `${joined[0].toUpperCase()}${joined.slice(1)}.` : "A few signs need care."} ${level === 2 ? "One big sell could move the price sharply." : "Early prices can swing hard."}`;

@@ -85,6 +85,7 @@ export function PoolCard({ c }: { c: LiveCoin }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <span className="pill live-pill">Live on Uniswap</span>
         <span className="pill" style={{ background: "var(--raise)", color: "var(--text2)" }}>Liquidity locked forever</span>
+        <DexListed c={c} />
       </div>
       <div className="pool-stats">
         <span><i>In pool</i><b className="mono">{c.liq}</b></span>
@@ -132,4 +133,12 @@ export function StatusBar() {
       <span className="sb-ok">All systems normal</span>
     </div>
   );
+}
+
+/** "Live on DexScreener ✓": proof the coin is listed, with how fast it happened after launch. */
+export function DexListed({ c }: { c: LiveCoin }) {
+  if (!c.dexListedAt) return null;
+  const secs = c.createdAt ? Math.max(1, Math.round((Date.parse(c.dexListedAt) - Date.parse(c.createdAt)) / 1000)) : null;
+  const when = secs === null ? "" : secs < 120 ? ` · ${secs}s after launch` : ` · ${Math.round(secs / 60)} min after launch`;
+  return <span className="pill" style={{ background: "rgba(46,189,133,0.14)", color: "var(--up)" }}>Live on DexScreener ✓{when}</span>;
 }
