@@ -26,7 +26,7 @@ export async function onRequestGet({ env }) {
   try {
     [own, ext] = await Promise.all([
       rows(env, "coins?select=chain_id,address,created_at&order=created_at.desc", MAX_OWN),
-      rows(env, "ext_tokens?select=chain_id,address,updated_at&order=vol_24h.desc.nullslast", MAX_EXT),
+      rows(env, "ext_tokens?select=chain_id,address,updated_at&listed=eq.true&order=vol_24h.desc.nullslast", MAX_EXT),
     ]);
   } catch { /* serve whatever we have */ }
   const seen = new Set();

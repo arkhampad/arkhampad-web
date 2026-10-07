@@ -150,6 +150,8 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
   }
 
   let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,spark").in("chain_id", extIds);
+  // Lists show only checked, active coins (see indexer/quality.mjs); a pasted address still finds any coin.
+  if (!isAddress(opts.q) && (await listedReady())) q = q.eq("listed", true);
   if (opts.q) q = q.or(`name.ilike.*${opts.q}*,symbol.ilike.*${opts.q}*,address.eq.${opts.q.toLowerCase()}`);
   const w = like("name"); if (w) q = q.or(w);
   // Trending = what is moving right now: most trades in the last 5 minutes, then last hour's volume
@@ -205,6 +207,7 @@ export async function findCoins(f: import("./finder").Finder, limit = 60): Promi
     const ids = f.chain === "Base" ? [8453] : f.chain === "Robinhood" ? [4663] : f.chain === "BNB" ? [56] : f.chain === "Arc" ? [5042] : [8453, 4663, 56, 5042];
     jobs.push((async () => {
       let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,spark,trending_rank").in("chain_id", ids);
+      if (await listedReady()) q = q.eq("listed", true);
       const young = sinceIso(f.maxAgeMin), old = sinceIso(f.minAgeMin);
       if (young) q = q.gte("pool_created", young);
       if (old) q = q.lte("pool_created", old);
@@ -431,6 +434,19 @@ export function shareCoin(c: LiveCoin) {
   return shareCoinCard(c);
 }
 
+const isAddress = (v?: string) => !!v && /^0x[0-9a-fA-F]{40}$/.test(v.trim());
+
+/** True once the quality list exists (db/013 run and the indexer has listed coins).
+ * Until then lists fall back to every coin, so the site never shows empty lists. */
+let listedCache: { at: number; ok: boolean } | null = null;
+async function listedReady(): Promise<boolean> {
+  if (listedCache && Date.now() - listedCache.at < 5 * 60_000) return listedCache.ok;
+  const { count, error } = await db().from("ext_tokens").select("address", { count: "exact", head: true }).eq("listed", true);
+  const ok = !error && (count ?? 0) >= 100;
+  listedCache = { at: Date.now(), ok };
+  return ok;
+}
+
 /** Finds a coin by contract address on any chain we list. */
 export async function findByAddress(address: string): Promise<LiveCoin | null> {
   const a = address.trim().toLowerCase();
@@ -445,7 +461,7 @@ export async function findByAddress(address: string): Promise<LiveCoin | null> {
 /** How many coins the site lists (launched here + other DEXs). */
 export async function totalCoins(): Promise<number> {
   const [a, b] = await Promise.all([
-    db().from("ext_tokens").select("address", { count: "exact", head: true }),
+    (await listedReady()) ? db().from("ext_tokens").select("address", { count: "exact", head: true }).eq("listed", true) : db().from("ext_tokens").select("address", { count: "exact", head: true }),
     db().from("coins").select("address", { count: "exact", head: true }),
   ]);
   return (a.count ?? 0) + (b.count ?? 0);
