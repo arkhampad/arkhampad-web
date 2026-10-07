@@ -11,7 +11,9 @@ contract DeployExtSwap is Script {
     address constant KYBER_ROUTER = 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5; // MetaAggregationRouterV2 (same on every chain)
 
     function run() external {
-        uint256 pk = vm.envUint("PRIVATE_KEY");
+        // the key may be stored with or without the 0x prefix (same as Deploy.s.sol)
+        string memory raw = vm.envString("PRIVATE_KEY");
+        uint256 pk = vm.parseUint(bytes(raw).length == 64 ? string.concat("0x", raw) : raw);
         address admin = vm.envAddress("ADMIN");
         // Fees go to the chain's fee vault: read it from the main deploy so the two can't drift apart.
         string memory path = string.concat("./deployments/", vm.toString(block.chainid), ".json");

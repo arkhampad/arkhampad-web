@@ -21,7 +21,8 @@ import {IPadHub} from "../src/interfaces.sol";
 /// @notice Deploys ArkhamPad on the current chain.
 /// Env: PRIVATE_KEY (deployer), ADMIN, TREASURY, GUARDIAN (optional),
 ///      USDC (optional on testnets: a TestUSDC is deployed when empty),
-///      CURVE (optional: "test" = coins open at a $450 market cap, default "main" = $4.5K).
+///      CURVE (optional: "test" = coins open at a $450 market cap, default "main" = START_MC).
+///      START_MC (optional, whole dollars: the launch market cap on "main", default 2000).
 contract Deploy is Script {
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
@@ -92,7 +93,10 @@ contract Deploy is Script {
         // amounts in the dollar token's own decimals (6 for USDC/USDG, 18 on BNB)
         uint256 dollar = 10 ** IERC20Metadata(v.usdc).decimals();
         // launch market cap for the whole supply ("test" = $450 so testnet money goes further)
-        uint256 startMarketCap = (testCurve ? 450 : 4500) * dollar;
+        // Launch market cap in whole dollars: START_MC (mainnet default $2,000), $450 on test curves
+        uint256 startUsd = testCurve ? 450 : vm.envOr("START_MC", uint256(2000));
+        require(startUsd >= 450 && startUsd <= 100_000, "START_MC must be between 450 and 100000 (dollars)");
+        uint256 startMarketCap = startUsd * dollar;
         // All platform fees go to the fee vault: the treasury wallet owns it and withdraws any time;
         // the relayer may only pay referral rewards from it, capped per day.
         // testnets fall back to the deployer; mainnet must name the relayer explicitly
