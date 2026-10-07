@@ -6,10 +6,9 @@ export const CONTACT_EMAIL = "team@arkhampad.com";
 
 export const fees: { what: string; fee: string; note: string }[] = [
   { what: "Creating a coin", fee: "Free", note: "No platform fee to launch." },
-  { what: "Buying or selling on the bonding curve", fee: "1%", note: "Of the trade amount. 30% of this fee goes to the coin: to its creator or into buyback and burn, as chosen at launch." },
-  { what: "Creator's own buy at launch", fee: "1%", note: "Goes to ArkhamPad in full." },
-  { what: "Graduation", fee: "2%", note: "Of the USDC in the bonding curve when the coin moves to its locked pool. Traders don't pay this directly." },
-  { what: "Trading a graduated coin", fee: "1%", note: "Pool fee. 30% goes to the coin: to its creator or into buyback and burn." },
+  { what: "Trading a coin launched on ArkhamPad", fee: "2%", note: "Pool fee on every trade, in any app. 30% goes to the coin: to its creator or into buyback and burn, as chosen at launch." },
+  { what: "A coin's first five minutes", fee: "30% → 2%", note: "Launch fee against sniping bots: starts at 30% and falls in a straight line to 2% over five minutes. Same 70/30 split." },
+  { what: "Creator's own buy at launch", fee: "2%", note: "At least $5, always at the normal 2% (never the launch fee)." },
   { what: "Trading coins from other DEXs", fee: "1%", note: "Of the trade amount, on top of the other DEX's own pool fee." },
   { what: "Deposits from other chains", fee: "0.25%", note: "Only when you deposit from a chain ArkhamPad doesn't trade on directly." },
   { what: "Network costs", fee: "Varies", note: "The blockchain's own cost for your transaction, paid from your USDC balance. You never need ETH or another gas token." },
@@ -59,8 +58,9 @@ export const help: HelpTopic[] = [
       ["How do I create a coin?", "Open Create, describe your idea in any language, pick one of the AI suggestions, choose a chain and tap Launch."],
       ["Can I change the name, ticker, description or links later?", "No. They're saved with the coin at launch. The creator can change the coin image later from the coin page."],
       ["What is a creator lock?", "An optional 1 hour or 24 hour period when the creator can't sell their own coins. It's enforced by the contract and can't be ended early."],
-      ["How do I claim creator fees?", "Open your coin's page while logged in as its creator. Claim from the creator card, and the USDC goes to your cash balance."],
-      ["When does a coin graduate?", "When its market cap reaches $7.5K. Its USDC then moves into a trading pool that is locked forever."],
+      ["How do I get creator fees?", "Automatically. Pool fees are collected every 30 minutes and your 30% goes to your cash balance (or to buyback and burn). Your coin's page shows what you've earned."],
+      ["Does a coin graduate?", "No. Every ArkhamPad coin opens straight into a Uniswap pool at launch, with its liquidity locked forever."],
+      ["Why do I need to buy at least $5 when I launch?", "Your first buy is the pool's first trade, which lets DEX screeners see the coin right away. It also keeps out empty spam launches."],
     ],
   },
   {

@@ -12,7 +12,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 function summary(r: Recap) {
   if (!r.trades) return "A quiet day on ArkhamPad. No trades yet.";
   const parts = [`${r.trades} trades and ${usd(r.volume)} in volume from ${r.traders} traders.`];
-  if (r.launches) parts.push(`${r.launches} new coin${r.launches === 1 ? "" : "s"} launched${r.graduations ? `, ${r.graduations} graduated` : ""}.`);
+  if (r.launches) parts.push(`${r.launches} new coin${r.launches === 1 ? "" : "s"} launched.`);
   if (r.gainer && (r.gainer.change ?? 0) > 0) parts.push(`Top gainer: $${r.gainer.symbol} (+${r.gainer.change}%).`);
   return parts.join(" ");
 }
@@ -59,7 +59,7 @@ export default function Daily() {
             <Card k="Top gainer" title={r.gainer ? r.gainer.name : "—"} v={r.gainer ? `${(r.gainer.change ?? 0) >= 0 ? "+" : ""}${r.gainer.change ?? 0}%` : "—"} cls={(r.gainer?.change ?? 0) >= 0 ? "up" : "down"} c={r.gainer} />
             <Card k="Most volume" title={r.top_volume ? r.top_volume.name : "—"} v={r.top_volume ? usd(r.top_volume.vol ?? 0) : "—"} c={r.top_volume} />
             <Card k="Biggest trade" title={r.biggest_trade ? `${short(r.biggest_trade.trader)} ${r.biggest_trade.is_buy ? "bought" : "sold"} $${r.biggest_trade.symbol}` : "—"} v={r.biggest_trade ? usd(r.biggest_trade.usdc, 2) : "—"} />
-            <Card k="Launched / graduated" title={r.fastest_grad_s ? `Fastest graduation ${Math.round(r.fastest_grad_s / 60)}m` : "New coins"} v={`${r.launches} / ${r.graduations}`} />
+            <Card k="Launched" title="New coins" v={`${r.launches}`} />
           </div>
           <div className="card" style={{ gap: 10 }}>
             <b>Share today&apos;s recap</b>

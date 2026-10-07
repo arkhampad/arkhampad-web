@@ -4,6 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Coin } from "@/lib/types";
 import { Avatar, ChainTag, Chg, Spark } from "./bits";
+import type { LiveCoin } from "@/lib/live";
+import { usd } from "@/lib/live";
+import { FeeChip } from "./v2";
 
 const href = (c: Coin) => `/coin/?c=${c.id}`;
 
@@ -28,7 +31,7 @@ export function HotCard({ c, grad = false }: { c: Coin; grad?: boolean }) {
           <span className="hc-spark"><Spark vals={c.spark} up={c.chg >= 0} w={120} h={34} height={34} empty={null} /></span>
         </span>
       )}
-      <span className="hc-meta"><span>Vol <b className="mono">{c.vol}</b></span><span>{c.own ? "In curve" : "Liq"} <b className="mono">{c.liq}</b></span><span className="hide-m">Trades <b className="mono">{c.trades}</b></span></span>
+      <span className="hc-meta"><span>Vol <b className="mono">{c.vol}</b></span><span>{c.own ? "In pool" : "Liq"} <b className="mono">{c.liq}</b></span><span className="hide-m">Trades <b className="mono">{c.trades}</b></span></span>
     </Link>
   );
 }
@@ -108,6 +111,33 @@ export function CoinRows({ list }: { list: Coin[] }) {
           <span className="arow-r">
             <b className="mono">{c.price}</b>
             <span className={`mono ${c.chg >= 0 ? "up" : "down"}`}>{c.chg >= 0 ? "▲" : "▼"} {Math.abs(c.chg).toFixed(2)}%</span>
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Discover list: ticket cards (picture left, name and price line in the middle, numbers right).
+ * Coins launched here show the creator's earnings and their pool fee. */
+export function CoinTickets({ list }: { list: LiveCoin[] }) {
+  return (
+    <div className="tk-grid">
+      {list.map((c) => (
+        <Link key={c.id} href={href(c)} className="tk">
+          <span className="tk-av"><Avatar name={c.name} c1={c.c1} c2={c.c2} size={60} img={c.image} round={false} /></span>
+          <span className="tk-mid">
+            <span className="tk-name"><b>{c.name}</b>{c.own && <FeeChip c={c} />}</span>
+            <span className="tk-meta mono">
+              <span>{c.tick}</span><span>·</span><span>{c.age}</span>
+              {c.own ? <span className="tk-here">Launched here</span> : <ChainTag chain={c.chain} />}
+            </span>
+            <span className="tk-spark"><Spark vals={c.spark} up={c.chg >= 0} w={160} h={22} height={22} fill={false} stroke={1.6} empty={<span className="tk-flat" />} /></span>
+          </span>
+          <span className="tk-r">
+            <b className="mono">{c.mc}</b>
+            <Chg n={c.chg} />
+            <small className="mono">{c.own ? <>Earned {usd(c.creatorFees ?? 0)}</> : <>Vol {c.vol}</>}</small>
           </span>
         </Link>
       ))}

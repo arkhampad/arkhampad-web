@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Security",
-  description: "How ArkhamPad's smart contracts protect your funds, and the results of two independent security reviews: 0 critical, 0 high, 0 medium findings.",
+  description: "How ArkhamPad's smart contracts protect your funds: locked Uniswap pools from launch, signed trades, fixed-supply coins and limited admin powers.",
   alternates: { canonical: "https://arkhampad.com/security/" },
 };
 
@@ -12,8 +12,9 @@ const SUMMARY: [string, string][] = [["Critical", "0"], ["High", "0"], ["Medium"
 const GUARANTEES: [string, string][] = [
   ["You sign the exact terms", "Every trade, launch and withdrawal is an EIP-712 message with the amount, minimum received, fee and deadline inside it. The relayer that submits it cannot change any of them, and each signature works only once, on one chain."],
   ["No custody between trades", "The router finishes every trade in a single transaction and holds nothing afterwards. Unused money is refunded in the same transaction."],
-  ["Liquidity is locked forever", "When a coin graduates, its liquidity moves into a Uniswap v4 pool position held by the contract. There is no function that can withdraw or transfer it."],
-  ["Graduation can't be front-run", "A dedicated hook lets only ArkhamPad's pool builder open a coin's pool, at the price set by the bonding curve."],
+  ["Liquidity is locked forever", "Every coin opens at launch into a Uniswap v4 pool position held by the contract. There is no function that can withdraw or transfer it."],
+  ["Nobody can open a coin's pool early", "A dedicated hook lets only ArkhamPad's pool builder open a coin's pool, at the launch price."],
+  ["Anti-sniper launch fee", "The same hook sets the pool fee: 30% at launch, falling to 2% over five minutes. It never changes swap amounts and holds no funds."],
   ["Creator locks are enforced on-chain", "If a creator locks their coins, the coin contract itself blocks every transfer out of their wallet until the lock ends."],
   ["Fixed-supply coins", "Coins launched on ArkhamPad have a fixed supply and no owner controls: nobody can mint more, block sellers or add a tax."],
   ["Limited admin powers", "Admin rights cover settings such as pausing new buys in an emergency. They cannot move user funds or locked liquidity, and selling is never paused."],
@@ -23,8 +24,8 @@ const GUARANTEES: [string, string][] = [
 const AREAS = [
   "EIP-712 signatures, nonces and replay protection",
   "Gasless relayer permissions",
-  "Bonding curve pricing, rounding and the final fill",
-  "Graduation accounting and Uniswap v4 pool creation",
+  "Pool creation at launch and the single locked position",
+  "The launch fee hook (30% to 2% over five minutes)",
   "Pool trading, quotes and callback authorization",
   "Creator token locks",
   "Fees, buyback and treasury accounting",
@@ -47,11 +48,11 @@ export default function Page() {
       <header style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <span className="mono" style={{ fontSize: 12, letterSpacing: 2, color: "var(--faint)" }}>SECURITY</span>
         <h1 className="h-title" style={{ fontSize: "clamp(32px, 5vw, 44px)" }}>How ArkhamPad protects your funds</h1>
-        <p style={{ fontSize: 17, color: "var(--note)", maxWidth: 680 }}>ArkhamPad&apos;s smart contracts went through two independent security reviews covering every contract, plus an automated scan with 102 detectors. Every issue found along the way was fixed and covered by tests.</p>
+        <p style={{ fontSize: 17, color: "var(--note)", maxWidth: 680 }}>The first version of ArkhamPad&apos;s contracts went through two independent security reviews covering every contract, plus an automated scan with 102 detectors. The current version, where every coin opens straight into a locked Uniswap pool, is tested on every change (more than 160 unit, fuzz and real-network fork tests) and is being independently reviewed now. Results will be published here.</p>
       </header>
 
       <section className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <span style={{ fontWeight: 700 }}>Final review result</span>
+        <span style={{ fontWeight: 700 }}>Review result (first version)</span>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
           {SUMMARY.map(([k, v]) => (
             <div key={k} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
@@ -60,7 +61,7 @@ export default function Page() {
             </div>
           ))}
         </div>
-        <span style={{ fontSize: 13, color: "var(--dim)" }}>Two independent reviews, October 2026 · Solidity 0.8.26, OpenZeppelin 5.1, Uniswap v4 · Automated scan: 0 confirmed issues</span>
+        <span style={{ fontSize: 13, color: "var(--dim)" }}>Two independent reviews of the first version, October 2026 · current version under review · Solidity 0.8.26, OpenZeppelin 5.1, Uniswap v4 · Automated scan: 0 confirmed issues</span>
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -77,7 +78,7 @@ export default function Page() {
 
       <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h2 style={{ fontSize: 22 }}>What was reviewed</h2>
-        <p style={{ color: "var(--dim)" }}>All nine contracts: PadCoin, PadCurve, PadHub, PadRouter, PadPoolBuilder, PadInitGuard, PadPromote, PadExtSwap and PadFeeVault. The reviews focused on:</p>
+        <p style={{ color: "var(--dim)" }}>Current contracts: PadCoin, PadHub, PadRouter, PadPoolBuilder, PadLaunchHook, PadPromote, PadExtSwap and PadFeeVault. The reviews focused on:</p>
         <p style={{ color: "var(--dim)", lineHeight: 1.7 }}>{AREAS.join(" · ")}</p>
       </section>
 
@@ -93,12 +94,12 @@ export default function Page() {
             </tbody>
           </table>
         </div>
-        <p style={{ fontSize: 14, color: "var(--dim)" }}>Two informational notes remain by design: a tiny amount of rounding dust can stay in the pool builder after graduation, and the pool&apos;s opening price can differ from the curve&apos;s final price by a negligible amount. Both are tested.</p>
+        <p style={{ fontSize: 14, color: "var(--dim)" }}>By design, a tiny amount of rounding dust coins is burned when a coin&apos;s pool opens, and the pool&apos;s opening price is rounded to the pool&apos;s price grid, up to about 2% above the target launch price. Both are tested.</p>
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h2 style={{ fontSize: 22 }}>Tests</h2>
-        <p style={{ color: "var(--dim)" }}>The contracts run more than 100 unit and fuzz tests on every change, plus fork tests against real networks (Base, Robinhood Chain and BNB Chain) covering the full path: launch, trade, graduation, pool trading and buyback, with both token orderings and 6- and 18-decimal dollars.</p>
+        <p style={{ color: "var(--dim)" }}>The contracts run more than 160 unit and fuzz tests on every change, plus fork tests against real networks (Base, Robinhood Chain and BNB Chain) covering the full path: launch, the launch fee, trades from our app and from other apps, fee splits, buyback and the pool lock, with both token orderings and 6- and 18-decimal dollars.</p>
       </section>
 
       <section className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>

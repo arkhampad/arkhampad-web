@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { findCoins, type LiveCoin } from "@/lib/live";
 import { finderChips, ruleFinder, type Finder } from "@/lib/finder";
-import { CoinRows, CoinTable } from "./market";
+import { CoinTickets } from "./market";
 import { ISpark, IX } from "./icons";
 
-const SUGGEST = ["Coins about to graduate", "New Base coins under 1 hour", "Top gainers with locked creators", "Most traded AI coins today"];
+const SUGGEST = ["New Base coins under 1 hour", "Coins launched here today", "Top gainers with locked creators", "Most traded AI coins today"];
 
 export function useFinder() {
   const [filters, setFilters] = useState<Finder | null>(null);
@@ -52,7 +52,7 @@ export function FinderBar({ fx }: { fx: ReturnType<typeof useFinder> }) {
       <form className="ask-field" onSubmit={(e) => { e.preventDefault(); fx.ask(q); }} role="search">
         <ISpark size={18} color="var(--volt-ink)" />
         <label htmlFor="find-q" className="sr">Ask AI to find coins</label>
-        <input id="find-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask AI: new Base coins about to graduate…" autoComplete="off" enterKeyHint="search" maxLength={200} />
+        <input id="find-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask AI: new Base coins under 1 hour…" autoComplete="off" enterKeyHint="search" maxLength={200} />
         {fx.active && <button type="button" className="icon-btn" aria-label="Clear AI search" onClick={() => { setQ(""); fx.clear(); }} style={{ width: 40, height: 40, border: 0, background: "transparent" }}><IX size={15} /></button>}
         <button type="submit" className="btn volt" disabled={fx.thinking || q.trim().length < 2}>{fx.thinking ? "Thinking…" : "Ask AI"}</button>
       </form>
@@ -89,8 +89,7 @@ export function FinderResults({ fx }: { fx: ReturnType<typeof useFinder> }) {
         </div>
       ) : (
         <>
-          <div className="hide-m"><CoinTable list={fx.list} /></div>
-          <div className="show-m" style={{ margin: "0 -16px" }}><CoinRows list={fx.list} /></div>
+          <CoinTickets list={fx.list} />
         </>
       ))}
     </div>

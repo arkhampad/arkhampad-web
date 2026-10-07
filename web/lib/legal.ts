@@ -10,7 +10,7 @@ export const terms: LegalDoc = {
   intro: "These terms apply when you use arkhampad.com and its apps and services (\"ArkhamPad\", \"we\", \"us\"). By using ArkhamPad you agree to them. If you don't agree, please don't use ArkhamPad.",
   sections: [
     { id: "service", h: "1. What ArkhamPad is", p: [
-      "ArkhamPad is software that lets you create crypto tokens (\"coins\") on a bonding curve, trade coins with USDC, and use tools such as alerts, automatic orders, copy alerts and AI helpers. Coins launched on ArkhamPad trade on a bonding curve and, after graduation, in a public liquidity pool that is locked.",
+      "ArkhamPad is software that lets you create crypto tokens (\"coins\") that open in a locked Uniswap pool, trade coins with USDC, and use tools such as alerts, automatic orders, copy alerts and AI helpers. Coins launched on ArkhamPad trade in a public Uniswap liquidity pool from launch, with the pool's liquidity locked forever that is locked.",
       "ArkhamPad does not hold your funds. Your USDC and coins are kept in a blockchain wallet controlled through your login or your own connected wallet. Trades, withdrawals and orders are carried out by smart contracts after you approve them.",
       "ArkhamPad is not a bank, broker, exchange, investment adviser or money transmitter, and nothing on ArkhamPad is an offer to sell or a solicitation to buy any investment.",
     ] },

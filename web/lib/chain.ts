@@ -17,8 +17,8 @@ export type Net = { id: number; name: string; short: string; rpc: string; hub: A
 
 // Contract addresses come from contracts/deployments/<chainId>.json.
 const DEFAULT_NETS: Net[] = [
-  { id: 84532, name: "Base Sepolia", short: "Base", rpc: "https://sepolia.base.org", hub: "0x9987E66B818ED246cB1687D651e975E952101E4a", router: "0xcB2dC6690bb3556a718Cbe2281017DC66F5A1A7E", usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", faucet: false, faucetUrl: "https://faucet.circle.com" },
-  { id: 46630, name: "Robinhood Testnet", short: "Robinhood", rpc: "https://rpc.testnet.chain.robinhood.com", hub: "0xA8c03CFB5aE340fdCE22F94CE83100daef33DEF0", router: "0xEFbd358D0120AEbAA77De2805294FAE31d9D7D2D", usdc: "0x47AfD49069EAbEcfb153926f1f652249fFb61b57", faucet: true },
+  { id: 84532, name: "Base Sepolia", short: "Base", rpc: "https://sepolia.base.org", hub: "0x47C6A09e89294203962dF909eE36cA3Ea0189cC4", router: "0x0557fA969D81508C3E23568512C965c58Bd41637", usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", faucet: false, faucetUrl: "https://faucet.circle.com" },
+  { id: 46630, name: "Robinhood Testnet", short: "Robinhood", rpc: "https://rpc.testnet.chain.robinhood.com", hub: "0x3f49Ab48d9e04bd12D9D5613d2d879Eb754a5CA9", router: "0xD8cAF98C955D8c1071807d4884BB04Ea2Ac55a49", usdc: "0x47AfD49069EAbEcfb153926f1f652249fFb61b57", faucet: true },
 ];
 // Local test builds can point everything at a local chain.
 export const NETS: Net[] = process.env.NEXT_PUBLIC_NETS ? JSON.parse(process.env.NEXT_PUBLIC_NETS) : DEFAULT_NETS;
@@ -59,9 +59,12 @@ export const CURVE = parseAbi([
   "function feeMode() view returns (uint8)",
   "event Trade(address indexed trader, bool indexed isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 fee, uint256 vUsdcAfter, uint256 vCoinAfter)",
 ]);
+// v2: every coin opens straight into its locked Uniswap v4 pool at launch (no bonding curve).
 export const HUB = parseAbi([
-  "function curveOf(address) view returns (address)",
-  "event CoinCreated(address indexed coin, address indexed curve, address indexed creator, string name, string symbol, string metadataURI, uint256 lockSeconds, uint8 feeMode)",
+  "function isCoin(address) view returns (bool)",
+  "function startMarketCap() view returns (uint256)",
+  "function minLaunchBuy() view returns (uint256)",
+  "event CoinCreated(address indexed coin, address indexed creator, string name, string symbol, string metadataURI, uint256 lockSeconds, uint8 feeMode)",
 ]);
 export const PROMOTE = parseAbi(["function plans(uint8) view returns (uint64 seconds_, uint128 price, bool active)", "function promoter() view returns (address)"]);
 const ROUTER_VIEW = parseAbi(["function promoter() view returns (address)", "function quotePool(address coin, bool isBuy, uint256 amountIn) returns (uint256)"]);
@@ -239,14 +242,12 @@ export async function usdcBalance(chainId: number, who: Address) {
 export async function tokenBalance(chainId: number, token: Address, who: Address) {
   return client(chainId).readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [who] });
 }
+/** v2 has no curve: quotes come from the coin's pool. `curve` is kept for old callers and holds the coin. */
 export async function quoteBuy(chainId: number, curve: Address, usdcIn: bigint) {
-  const n = netOf(chainId);
-  return client(chainId).readContract({ address: curve, abi: CURVE, functionName: "quoteBuy", args: [n ? up(n, usdcIn) : usdcIn] });
+  return quotePool(chainId, curve, true, usdcIn);
 }
 export async function quoteSell(chainId: number, curve: Address, coins: bigint) {
-  const n = netOf(chainId);
-  const raw = await client(chainId).readContract({ address: curve, abi: CURVE, functionName: "quoteSell", args: [coins] });
-  return n ? down(n, raw) : raw;
+  return quotePool(chainId, curve, false, coins);
 }
 
 export type LocalTrade = { chainId: number; coin: Address; curve: Address; trader: Address; isBuy: boolean; usdc: number; coins: number; price: number; mc: number; hash: Hex; at: number };
@@ -268,42 +269,16 @@ const emit = (t: LocalTrade | null) => { if (t) listeners.forEach((f) => f(t)); 
 // ---------------------------------------------------------------- actions
 const SLIPPAGE_BPS = 300n; // 3%
 
-export async function buy(chainId: number, curve: Address, coin: Address, usdcIn: bigint, s: Signer) {
-  const n = netOf(chainId);
-  if (!n) throw new TradeError("Unknown network");
-  if (usdcIn <= 0n) throw new TradeError("Enter an amount.");
-  const fee = await netFee(chainId, "buy");
-  const [bal, quote] = await Promise.all([usdcBalance(chainId, s.address), quoteBuy(chainId, curve, usdcIn), ensureAllowance(n, s, n.usdc, up(n, usdcIn + fee))]);
-  if (bal < usdcIn + fee) throw new TradeError("Not enough USDC on this network.");
-  if (quote === 0n) throw new TradeError("Amount is too small.");
-  const minOut = (quote * (10_000n - SLIPPAGE_BPS)) / 10_000n;
-  const nonce = randomNonce(), dl = deadline();
-  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Buy: TYPES.Buy }, primaryType: "Buy", message: { user: s.address, curve, usdcIn: up(n, usdcIn), minCoinsOut: minOut, fee: up(n, fee), nonce, deadline: dl } });
-  const rc = await confirm(n, await relay({ chainId: n.id, kind: "buy", user: s.address, curve, usdcIn: S(up(n, usdcIn)), minCoinsOut: S(minOut), fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
-  const t = tradeFrom(n, rc as never, curve, coin, s.address);
-  emit(t);
-  prepareSell(n, s, coin);
-  return t;
+/** v2: every coin trades in its pool. Kept with the old signature so older callers keep working. */
+export async function buy(chainId: number, _curve: Address, coin: Address, usdcIn: bigint, s: Signer) {
+  return poolBuy(chainId, coin, usdcIn, s);
 }
 
-export async function sell(chainId: number, curve: Address, coin: Address, coinAmount: bigint, s: Signer) {
-  const n = netOf(chainId);
-  if (!n) throw new TradeError("Unknown network");
-  if (coinAmount <= 0n) throw new TradeError("Enter an amount.");
-  const [held, quote, fee] = await Promise.all([tokenBalance(chainId, coin, s.address), quoteSell(chainId, curve, coinAmount), netFee(chainId, "sell"), ensureAllowance(n, s, coin, coinAmount)]);
-  if (held < coinAmount) throw new TradeError("You don't hold that many.");
-  if (quote <= fee) throw new TradeError("This sale is too small to cover the network fee.");
-  const net = quote - fee;
-  const minOut = (net * (10_000n - SLIPPAGE_BPS)) / 10_000n;
-  const nonce = randomNonce(), dl = deadline();
-  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Sell: TYPES.Sell }, primaryType: "Sell", message: { user: s.address, curve, coinAmount, minUsdcOut: up(n, minOut), fee: up(n, fee), nonce, deadline: dl } });
-  const rc = await confirm(n, await relay({ chainId: n.id, kind: "sell", user: s.address, curve, coinAmount: S(coinAmount), minUsdcOut: S(up(n, minOut)), fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
-  const t = tradeFrom(n, rc as never, curve, coin, s.address);
-  emit(t);
-  return t;
+export async function sell(chainId: number, _curve: Address, coin: Address, coinAmount: bigint, s: Signer) {
+  return poolSell(chainId, coin, coinAmount, s);
 }
 
-/** Graduated coins: what a pool trade gives right now (simulated on-chain, exact). */
+/** What a trade in a coin's pool gives right now (simulated on-chain, exact, after the pool fee). */
 export async function quotePool(chainId: number, coin: Address, isBuy: boolean, amountIn: bigint) {
   const n = netOf(chainId);
   if (!n) return 0n;
@@ -355,9 +330,13 @@ export async function poolSell(chainId: number, coin: Address, coinAmount: bigin
 }
 
 export type LaunchInput = { name: string; symbol: string; metadataURI: string; lockSeconds: number; feeMode: 0 | 1; launchUsdc: bigint };
+/** Smallest first buy a launch must include (the dollar token's units: 6 decimals on the site). */
+export const MIN_LAUNCH_BUY = 5_000_000n;
+
 export async function launch(chainId: number, l: LaunchInput, s: Signer): Promise<{ coin: Address; curve: Address }> {
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
+  if (l.launchUsdc < MIN_LAUNCH_BUY) throw new TradeError("Your first buy must be at least $5.");
   const fee = await netFee(chainId, "launch");
   const need = l.launchUsdc + fee;
   const bal = await usdcBalance(chainId, s.address);
@@ -369,9 +348,9 @@ export async function launch(chainId: number, l: LaunchInput, s: Signer): Promis
   const rc = await confirm(n, await relay({ chainId: n.id, kind: "launch", user: s.address, launch: { name: l.name, symbol: l.symbol, metadataURI: l.metadataURI, lockSeconds: String(l.lockSeconds), feeMode: l.feeMode, launchUsdc: S(up(n, l.launchUsdc)), minCoinsOut: "0" }, fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }));
   const ev = parseEventLogs({ abi: HUB, logs: rc.logs as never, eventName: "CoinCreated" })[0];
   if (!ev) throw new TradeError("Launch went through but the coin wasn't found. Check your profile.");
-  const a = ev.args as { coin: Address; curve: Address };
-  if (l.launchUsdc > 0n) emit(tradeFrom(n, rc as never, a.curve, a.coin, s.address));
-  return { coin: a.coin, curve: a.curve };
+  const a = ev.args as { coin: Address };
+  // the launch buy shows up from the indexer within seconds (it has no router event to read here)
+  return { coin: a.coin, curve: a.coin };
 }
 
 export async function withdraw(chainId: number, to: Address, amount: bigint, s: Signer) {
@@ -411,21 +390,17 @@ export async function coinFromChain(chainId: number, coin: Address) {
   const n = netOf(chainId);
   if (!n) return null;
   const c = client(chainId);
-  const curve = await c.readContract({ address: n.hub, abi: HUB, functionName: "curveOf", args: [coin] });
-  if (!curve || /^0x0+$/.test(curve)) return null;
-  const [name, symbol, creator, vUsdc, vCoin, reserve, phase] = await Promise.all([
+  const ok = await c.readContract({ address: n.hub, abi: HUB, functionName: "isCoin", args: [coin] });
+  if (!ok) return null;
+  const [name, symbol, startMc] = await Promise.all([
     c.readContract({ address: coin, abi: ERC20, functionName: "name" }),
     c.readContract({ address: coin, abi: ERC20, functionName: "symbol" }),
-    c.readContract({ address: curve, abi: CURVE, functionName: "creator" }),
-    c.readContract({ address: curve, abi: CURVE, functionName: "vUsdc" }),
-    c.readContract({ address: curve, abi: CURVE, functionName: "vCoin" }),
-    c.readContract({ address: curve, abi: CURVE, functionName: "usdcReserve" }),
-    c.readContract({ address: curve, abi: CURVE, functionName: "phase" }),
+    c.readContract({ address: n.hub, abi: HUB, functionName: "startMarketCap" }),
   ]);
-  const price = fromUsdc(down(n, vUsdc)) / fromCoin(vCoin);
-  return { chain_id: chainId, address: coin.toLowerCase(), curve: curve.toLowerCase(), creator: creator.toLowerCase(), name, symbol, phase: Number(phase), price_usd: price, mc_usd: price * 1e9, start_mc_usd: chainId === 84532 || chainId === 46630 ? 450 : 4500, usdc_reserve: fromUsdc(down(n, reserve)), trades_count: 0, created_at: new Date().toISOString(), volume_24h: 0, change_24h_pct: null, buyers: 0, metadata_uri: "" };
+  const mc = fromUsdc(down(n, startMc));
+  const now = new Date().toISOString();
+  return { chain_id: chainId, address: coin.toLowerCase(), curve: coin.toLowerCase(), creator: "", name, symbol, phase: 2, price_usd: mc / 1e9, mc_usd: mc, start_mc_usd: mc, usdc_reserve: 0, trades_count: 0, created_at: now, volume_24h: 0, change_24h_pct: null, buyers: 0, metadata_uri: "", creator_fees_usd: 0, pool_usd: 0 };
 }
-
 
 // ---------------------------------------------------------------- creator tools & upkeep
 

@@ -1,4 +1,5 @@
 "use client";
+import { StatusBar } from "./v2";
 import { BrandMark } from "./bits";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,7 +10,6 @@ import { listCoins, recentTrades, useLive, useTradeFeed, type LiveCoin, type Liv
 import { IBell, IChart, IHome, IPlus, ISearch, IUser } from "./icons";
 import { FundsModal, WelcomeModal } from "./modals";
 import { WalletProvider, useWallet } from "./wallet";
-import { Celebrate } from "./celebrate";
 import { OrderWatcher } from "./orders";
 import { CopyAlerts } from "./social";
 import { useInbox } from "./alerts";
@@ -234,6 +234,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       </header>
       <main id="main">{children}</main>
       {!isOn(path, "/terminal/") && <Footer />}
+      <StatusBar />
       <nav className="bnav show-m" aria-label="Bottom">
         <Link href="/" className={path === "/" ? "on" : ""}><IHome size={22} />Discover</Link>
         <Link href="/terminal/" className={isOn(path, "/terminal/") ? "on" : ""}><IChart size={22} />Terminal</Link>
@@ -243,7 +244,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       </nav>
       {welcome && <WelcomeModal onClose={closeWelcome} />}
       {funds && <FundsModal tab={funds} setTab={setFunds} onClose={() => setFunds(null)} />}
-      <Celebrate toast={toast} />
       {w.signedIn && <OrderWatcher />}
       {w.signedIn && <CopyAlerts />}
       <RefLinker />

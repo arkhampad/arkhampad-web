@@ -1,4 +1,5 @@
 "use client";
+import { useLaunchFee } from "@/components/v2";
 import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -12,7 +13,7 @@ import { getCoin, listCoins, useCoinMarket, useLive, ago, short, shareCoin, prep
 
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 300, borderRadius: 12 }} /> });
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 300, borderRadius: 12 }} /> });
-const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
+const TABS: Tab[] = ["Trending", "New", "Launched here", "Gainers", "Top volume", "Losers"];
 
 function CoinList({ tab, q, sel, onPick }: { tab: Tab; q: string; sel: string | null; onPick: (c: LiveCoin) => void }) {
   const list = useLive(() => listCoins(tab, { limit: 60, q: q || undefined }), [tab, q], 30_000);
@@ -71,6 +72,7 @@ function TerminalView() {
   useEffect(() => { if (!picker) return; const prev = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = prev; }; }, [picker]);
 
   const m = useCoinMarket(c, iv, setC);
+  const fee = useLaunchFee(c);
   const pick = (x: LiveCoin) => { setPicker(false); router.replace(`/terminal/?c=${x.id}`, { scroll: false }); setC(x); window.scrollTo({ top: 0 }); };
 
   const side = (
@@ -81,7 +83,7 @@ function TerminalView() {
     </>
   );
   const up = (c?.chg ?? 0) >= 0;
-  const stats: [string, string, string][] = c ? [["Price", c.price, ""], ["MC", c.mc, ""], ["24h", `${up ? "+" : ""}${c.chg.toFixed(1)}%`, up ? "up" : "down"], ["Vol", c.vol, ""], [c.own ? "In curve" : "Liq", c.liq, ""]] : [];
+  const stats: [string, string, string][] = c ? [["Price", c.price, ""], ["MC", c.mc, ""], ["24h", `${up ? "+" : ""}${c.chg.toFixed(1)}%`, up ? "up" : "down"], ["Vol", c.vol, ""], [c.own ? "In pool" : "Liq", c.liq, ""], ...(c.own && fee.live && fee.fee !== null ? [["Fee now", `${fee.fee.toFixed(1)}%`, "burn"] as [string, string, string]] : [])] : [];
 
   const trades = (
     <div className="panel trades-few" style={{ padding: 12, gap: 6 }}>

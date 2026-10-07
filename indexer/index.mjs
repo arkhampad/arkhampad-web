@@ -1,5 +1,7 @@
-// ArkhamPad indexer: reads coin launches, curve trades, graduations and
+// ArkhamPad indexer: reads coin launches, pool trades (from every app) and
 // promotions from every configured chain and writes them to Postgres (Supabase).
+// v2: every coin opens straight into its locked Uniswap v4 pool at launch; there is
+// no bonding curve. coins.curve holds the coin's pool id, coins.phase is always 2.
 // Env: DATABASE_URL, one RPC URL per chain (see chains.json -> rpcEnv),
 //      optional CHAINS_FILE, POLL_SECONDS (overrides chains.json pollSeconds), BLOCK_RANGE (overrides chains.json blockRange).
 import fs from "node:fs";
@@ -21,14 +23,9 @@ const CHAINS = JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./
 const SUPPLY = 1_000_000_000; // every coin has a fixed 1B supply
 
 const EV = {
-  created: parseAbiItem("event CoinCreated(address indexed coin, address indexed curve, address indexed creator, string name, string symbol, string metadataURI, uint256 lockSeconds, uint8 feeMode)"),
-  trade: parseAbiItem("event Trade(address indexed trader, bool indexed isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 fee, uint256 vUsdcAfter, uint256 vCoinAfter)"),
-  full: parseAbiItem("event CurveFull(uint256 usdcReserve)"),
-  graduated: parseAbiItem("event Graduated(uint256 usdcToPool, uint256 coinsToPool, uint256 coinsBurned, uint256 graduationFee)"),
+  created: parseAbiItem("event CoinCreated(address indexed coin, address indexed creator, string name, string symbol, string metadataURI, uint256 lockSeconds, uint8 feeMode)"),
   promoted: parseAbiItem("event Promoted(address indexed coin, uint256 indexed chainId, address indexed payer, uint8 plan, uint256 seconds_, uint256 price)"),
   // router events name the real user behind a gasless trade
-  bought: parseAbiItem("event Bought(address indexed user, address indexed curve, uint256 usdcSpent, uint256 coinsOut, uint256 fee, uint256 nonce)"),
-  sold: parseAbiItem("event Sold(address indexed user, address indexed curve, uint256 coinAmount, uint256 usdcOut, uint256 fee, uint256 nonce)"),
   rpromoted: parseAbiItem("event Promoted(address indexed user, address indexed coin, uint8 plan, uint256 fee, uint256 nonce)"),
   ptraded: parseAbiItem("event PoolTraded(address indexed user, address indexed coin, bool isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 fee, uint256 nonce)"),
   // Uniswap v4 PoolManager: amounts are from the swapper's side (negative = paid in)
@@ -49,9 +46,11 @@ const pool = new pg.Pool({
   max: 4,
 });
 const notifier = makeNotifier(pool);
+const BURN = "0x000000000000000000000000000000000000dead";
+const HUB_ABI = [{ type: "function", name: "startMarketCap", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }];
 if (relayer) { relayer.setDb(pool); relayer.setNotifier(notifier); relayer.setOg(makeOg(pool)); }
 
-// After each indexed batch: tell followers about fresh buys and creators about graduations.
+// After each indexed batch: tell followers about fresh buys.
 async function announce(c, fresh) {
   for (const f of fresh) {
     if (Date.now() - f.at.getTime() > 10 * 60_000) continue; // catching up on old blocks: stay quiet
@@ -60,9 +59,6 @@ async function announce(c, fresh) {
       if (!rows.length) continue;
       const sym = (await pool.query("select symbol from coins where chain_id=$1 and address=$2", [c.chainId, f.coin])).rows[0]?.symbol ?? "a coin";
       await notifier.notifyMany(rows.map((r) => r.follower), { kind: "follow", title: `${f.trader.slice(0, 6)}…${f.trader.slice(-4)} bought ${sym}`, body: `$${f.usdc.toFixed(2)} of ${sym}. Tap to see it and copy.`, url: `/coin/?c=${c.chainId}-${f.coin}` });
-    } else if (f.type === "graduated") {
-      const row = (await pool.query("select symbol, creator from coins where chain_id=$1 and address=$2", [c.chainId, f.coin])).rows[0];
-      if (row) await notifier.notify(row.creator, { kind: "graduated", title: `🎓 ${row.symbol} graduated!`, body: `Your coin moved to its locked pool. Trading continues there.`, url: `/coin/?c=${c.chainId}-${f.coin}` });
     }
   }
 }
@@ -116,35 +112,24 @@ async function syncChain(c, client) {
         }
       }
     };
-    // One getLogs call for everything we watch (hub + promote + our curves), which
-    // keeps RPC usage low. Curves created inside this range get a second call.
-    const ALL = [EV.created, EV.trade, EV.full, EV.graduated, EV.promoted, EV.transfer];
-    const CURVE_EVENTS = [EV.trade, EV.full, EV.graduated];
-    const knownRows = (await pool.query("select curve, address from coins where chain_id=$1", [c.chainId])).rows;
-    const known = knownRows.map((r) => getAddress(r.curve));
-    // token contracts too, for their Transfer events (the holder map)
+    // One getLogs call for everything we watch (hub + promote + our coins' Transfer
+    // events for the holder map), which keeps RPC usage low.
+    const ALL = [EV.created, EV.promoted, EV.transfer];
+    const knownRows = (await pool.query("select address from coins where chain_id=$1", [c.chainId])).rows;
     const tokens = knownRows.map((r) => getAddress(r.address));
-    const watched = [c.hub, ...(c.promote ? [c.promote] : []), ...known, ...tokens];
+    const watched = [c.hub, ...(c.promote ? [c.promote] : []), ...tokens];
     let logs = [];
     for (let i = 0; i < watched.length; i += 500) {
       const address = watched.slice(i, i + 500);
       logs = logs.concat(await call("getLogs", () => client.getLogs({ address, events: ALL, fromBlock: from, toBlock: to })));
     }
-    const routerLogs = c.router ? await call("getLogs router", () => client.getLogs({ address: c.router, events: [EV.bought, EV.sold, EV.rpromoted, EV.ptraded], fromBlock: from, toBlock: to })) : [];
-    // tx hash + curve -> the user who signed a gasless trade
-    const viaRouter = new Map();
-    for (const e of routerLogs) if (e.eventName === "Bought" || e.eventName === "Sold") viaRouter.set(`${e.transactionHash}:${lc(e.args.curve)}`, lc(e.args.user));
+    const routerLogs = c.router ? await call("getLogs router", () => client.getLogs({ address: c.router, events: [EV.rpromoted, EV.ptraded], fromBlock: from, toBlock: to })) : [];
     const isHub = (e) => lc(e.address) === lc(c.hub);
     const created = logs.filter((e) => e.eventName === "CoinCreated" && isHub(e));
-    const fresh = created.map((e) => getAddress(e.args.curve)).filter((a) => !known.includes(a));
-    if (fresh.length) logs = logs.concat(await call("getLogs new curves", () => client.getLogs({ address: fresh, events: CURVE_EVENTS, fromBlock: from, toBlock: to })));
     const freshTokens = created.map((e) => getAddress(e.args.coin)).filter((a) => !tokens.includes(a));
     if (freshTokens.length) logs = logs.concat(await call("getLogs new tokens", () => client.getLogs({ address: freshTokens, event: EV.transfer, fromBlock: from, toBlock: to })));
     const tokenSet = new Set([...tokens, ...freshTokens].map(lc));
     const transfers = logs.filter((e) => e.eventName === "Transfer" && tokenSet.has(lc(e.address)));
-    const trades = logs.filter((e) => e.eventName === "Trade");
-    const fulls = logs.filter((e) => e.eventName === "CurveFull");
-    const grads = logs.filter((e) => e.eventName === "Graduated");
     const promos = c.promote ? logs.filter((e) => e.eventName === "Promoted" && lc(e.address) === lc(c.promote)) : [];
     const promoPayer = new Map();
     for (const e of routerLogs) if (e.eventName === "Promoted") promoPayer.set(e.transactionHash, lc(e.args.user));
@@ -156,68 +141,21 @@ async function syncChain(c, client) {
     const db = await pool.connect();
     try {
       await db.query("begin");
+      // The launch market cap is the same for every coin on a hub: read it once.
+      if (created.length && c.startMc === undefined) c.startMc = usd(await call("startMarketCap", () => client.readContract({ address: c.hub, abi: HUB_ABI, functionName: "startMarketCap" })));
       for (const e of created) {
         const a = e.args;
-        await db.query(
-          `insert into coins (chain_id, address, curve, creator, name, symbol, metadata_uri, lock_seconds, fee_mode, created_block, created_tx, created_at)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) on conflict (chain_id, address) do nothing`,
-          [c.chainId, lc(a.coin), lc(a.curve), lc(a.creator), a.name, a.symbol, a.metadataURI, Number(a.lockSeconds), Number(a.feeMode), String(e.blockNumber), e.transactionHash, await ts(e.blockNumber)],
-        );
-        // starting price from the curve's fixed starting reserves (not the end-of-block state,
-        // which already includes a launch buy made in the same transaction)
-        const abi = [{ type: "function", name: "startVUsdc", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
-                     { type: "function", name: "startVCoin", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }];
-        const [vu, vc] = await Promise.all([
-          client.readContract({ address: a.curve, abi, functionName: "startVUsdc" }),
-          client.readContract({ address: a.curve, abi, functionName: "startVCoin" }),
-        ]);
-        const price = usd(vu) / tok(vc);
-        await db.query("update coins set v_usdc=$3, v_coin=$4, price_usd=$5, mc_usd=$6, start_mc_usd=$6 where chain_id=$1 and address=$2 and trades_count=0",
-          [c.chainId, lc(a.coin), usd(vu), tok(vc), price, price * SUPPLY]);
-      }
-      const curves = new Map();
-      for (const r of (await db.query("select curve, address, creator from coins where chain_id=$1", [c.chainId])).rows) curves.set(r.curve, r);
-      const fresh = []; // buys and graduations to announce once this batch is saved
-      const ordered = [...trades.map((e) => ["t", e]), ...fulls.map((e) => ["f", e]), ...grads.map((e) => ["g", e])]
-        .sort((x, y) => (x[1].blockNumber === y[1].blockNumber ? x[1].logIndex - y[1].logIndex : x[1].blockNumber < y[1].blockNumber ? -1 : 1));
-      for (const [kind, e] of ordered) {
-        const info = curves.get(lc(e.address));
-        if (!info) continue; // not one of our curves
-        const coin = info.address;
         const at = await ts(e.blockNumber);
-        if (kind === "t") {
-          const a = e.args;
-          const price = usd(a.vUsdcAfter) / tok(a.vCoinAfter);
-          // The creator's launch buy is sent by the hub; credit it to the creator.
-          // Buyback-and-burn buys are sent from the burn address.
-          let trader = lc(a.trader);
-          if (trader === lc(c.hub)) trader = info.creator;
-          else if (c.router && trader === lc(c.router)) trader = viaRouter.get(`${e.transactionHash}:${lc(e.address)}`) ?? trader;
-          const r = await db.query(
-            `insert into trades (chain_id, tx_hash, log_index, coin, trader, is_buy, usdc, coins, fee, price_usd, mc_usd, block, ts)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict do nothing`,
-            [c.chainId, e.transactionHash, e.logIndex, coin, trader, a.isBuy, usd(a.usdcAmount), tok(a.coinAmount), usd(a.fee), price, price * SUPPLY, String(e.blockNumber), at],
-          );
-          if (r.rowCount && a.isBuy) fresh.push({ type: "buy", trader, coin, usdc: usd(a.usdcAmount), at });
-          if (r.rowCount) {
-            await db.query(
-              `update coins set v_usdc=$3, v_coin=$4, price_usd=$5, mc_usd=$6, trades_count=trades_count+1, volume_usd=volume_usd+$7, last_trade_at=$8,
-                 usdc_reserve = greatest(0, usdc_reserve + case when $9 then $7 - $10 else -($7 + $10) end)
-               where chain_id=$1 and address=$2`,
-              [c.chainId, coin, usd(a.vUsdcAfter), tok(a.vCoinAfter), price, price * SUPPLY, usd(a.usdcAmount), at, a.isBuy, usd(a.fee)],
-            );
-          }
-        } else if (kind === "f") {
-          // A full curve graduates right away: the relayer sends graduate() (gas paid by ArkhamPad).
-          await db.query("update coins set phase = greatest(phase, 1) where chain_id=$1 and address=$2", [c.chainId, coin]);
-          if (relayer) relayer.graduate(c.chainId, e.address).catch((err) => console.log(new Date().toISOString(), `${c.name}: graduate ${e.address} failed: ${err.message}`));
-        } else {
-          const a = e.args;
-          await db.query("update coins set phase=2, usdc_reserve=0, graduated_at=$3, pool_usdc=$4, pool_coins=$5 where chain_id=$1 and address=$2",
-            [c.chainId, coin, at, usd(a.usdcToPool), tok(a.coinsToPool)]);
-          fresh.push({ type: "graduated", coin, at });
-        }
+        const id = c.usdc && c.guard ? poolIdOf(c.usdc, a.coin, c.guard) : a.coin; // pool id (unique per coin)
+        await db.query(
+          `insert into coins (chain_id, address, curve, creator, name, symbol, metadata_uri, lock_seconds, fee_mode, phase, price_usd, mc_usd, start_mc_usd,
+                              created_block, created_tx, created_at, graduated_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,2,$10,$11,$11,$12,$13,$14,$14) on conflict (chain_id, address) do nothing`,
+          [c.chainId, lc(a.coin), lc(id), lc(a.creator), a.name, a.symbol, a.metadataURI, Number(a.lockSeconds), Number(a.feeMode),
+           c.startMc / SUPPLY, c.startMc, String(e.blockNumber), e.transactionHash, at],
+        );
       }
+      const fresh = []; // buys to announce once this batch is saved
       for (const e of promos) {
         const a = e.args;
         const at = await ts(e.blockNumber);
@@ -227,31 +165,48 @@ async function syncChain(c, client) {
           [c.chainId, e.transactionHash, e.logIndex, lc(a.coin), String(a.chainId), promoPayer.get(e.transactionHash) ?? lc(a.payer), Number(a.plan), Number(a.seconds_), usd(a.price), at, new Date(at.getTime() + Number(a.seconds_) * 1000)],
         );
       }
-      // Trades in the locked Uniswap pools of graduated coins (from any app, not only ours).
+      // Trades in every coin's locked Uniswap pool, from any app (ArkhamPad, aggregators, bots).
       let poolTrades = 0;
       if (c.poolManager && c.guard && c.usdc) {
-        const grad = (await db.query("select address, creator from coins where chain_id=$1 and phase=2", [c.chainId])).rows;
-        if (grad.length) {
-          const byId = new Map(grad.map((r) => [poolIdOf(c.usdc, r.address, c.guard), r]));
+        const all = (await db.query("select address, creator, created_tx from coins where chain_id=$1", [c.chainId])).rows;
+        if (all.length) {
+          const byId = new Map(all.map((r) => [lc(poolIdOf(c.usdc, r.address, c.guard)), r]));
           const ids = [...byId.keys()];
           const viaPool = new Map();
           for (const e of routerLogs) if (e.eventName === "PoolTraded") viaPool.set(`${e.transactionHash}:${lc(e.args.coin)}`, lc(e.args.user));
+          const txFrom = new Map(); // other apps: the wallet that sent the transaction
           for (let i = 0; i < ids.length; i += 100) {
             const swaps = await call("getLogs pools", () => client.getLogs({ address: c.poolManager, event: EV.swap, args: { id: ids.slice(i, i + 100) }, fromBlock: from, toBlock: to }));
             for (const e of swaps) {
-              const r = byId.get(e.args.id);
+              const r = byId.get(lc(e.args.id));
               if (!r) continue;
               const usdcIs0 = BigInt(c.usdc) < BigInt(r.address);
               const t = poolTrade(e.args, usdcIs0, c.usdDecimals ?? 6);
-              let trader = lc(e.args.sender);
-              if (c.router && trader === lc(c.router)) trader = viaPool.get(`${e.transactionHash}:${r.address}`) ?? trader;
+              const sender = lc(e.args.sender);
+              let trader, via;
+              if (c.router && sender === lc(c.router)) {
+                trader = viaPool.get(`${e.transactionHash}:${r.address}`) ?? sender;
+                via = "arkhampad";
+              } else if (c.poolBuilder && sender === lc(c.poolBuilder)) {
+                // the builder swaps for two reasons: the creator's launch buy and buybacks
+                const launch = lc(e.transactionHash) === lc(r.created_tx);
+                trader = launch ? r.creator : BURN;
+                via = launch ? "launch" : "buyback";
+              } else {
+                if (!txFrom.has(e.transactionHash)) {
+                  const tx = await call("getTransaction", () => client.getTransaction({ hash: e.transactionHash }));
+                  txFrom.set(e.transactionHash, lc(tx.from));
+                }
+                trader = txFrom.get(e.transactionHash);
+                via = "external";
+              }
               const at = await ts(e.blockNumber);
               const ins = await db.query(
-                `insert into trades (chain_id, tx_hash, log_index, coin, trader, is_buy, usdc, coins, fee, price_usd, mc_usd, block, ts)
-                 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict do nothing`,
-                [c.chainId, e.transactionHash, e.logIndex, r.address, trader, t.isBuy, t.usdc, t.coins, t.fee, t.price, t.price * SUPPLY, String(e.blockNumber), at],
+                `insert into trades (chain_id, tx_hash, log_index, coin, trader, is_buy, usdc, coins, fee, price_usd, mc_usd, block, ts, via)
+                 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) on conflict do nothing`,
+                [c.chainId, e.transactionHash, e.logIndex, r.address, trader, t.isBuy, t.usdc, t.coins, t.fee, t.price, t.price * SUPPLY, String(e.blockNumber), at, via],
               );
-              if (ins.rowCount && t.isBuy) fresh.push({ type: "buy", trader, coin: r.address, usdc: t.usdc, at });
+              if (ins.rowCount && t.isBuy && via !== "buyback") fresh.push({ type: "buy", trader, coin: r.address, usdc: t.usdc, at });
               if (ins.rowCount) {
                 poolTrades++;
                 await db.query("update coins set price_usd=$3, mc_usd=$4, trades_count=trades_count+1, volume_usd=volume_usd+$5, last_trade_at=$6 where chain_id=$1 and address=$2",
@@ -267,8 +222,8 @@ async function syncChain(c, client) {
       await db.query("update sync_state set last_block=$2, updated_at=now() where chain_id=$1 and hub=$3", [c.chainId, String(to), c.hub.toLowerCase()]);
       await db.query("commit");
       if (fresh.length) announce(c, fresh).catch((e) => log(`${c.name}: announce error ${e.message}`));
-      if (created.length || trades.length || grads.length || promos.length || poolTrades)
-        log(`${c.name}: blocks ${from}-${to} coins+${created.length} trades+${trades.length} pool+${poolTrades} grads+${grads.length} promos+${promos.length}`);
+      if (created.length || promos.length || poolTrades)
+        log(`${c.name}: blocks ${from}-${to} coins+${created.length} trades+${poolTrades} promos+${promos.length}`);
     } catch (err) {
       await db.query("rollback");
       throw err;
@@ -333,6 +288,8 @@ async function loop(c) {
   if (c.promote) c.promote = getAddress(c.promote);
   if (c.router) c.router = getAddress(c.router);
   if (c.poolManager) c.poolManager = getAddress(c.poolManager);
+  if (c.poolBuilder) c.poolBuilder = getAddress(c.poolBuilder);
+  if (!c.poolManager || !c.guard || !c.usdc) log(`${c.name}: poolManager, guard (the launch hook) and usdc are needed to read trades`);
   log(`${c.name}: indexing from block ${c.startBlock}`);
   for (;;) {
     try {
@@ -357,17 +314,6 @@ if (relayer) {
   const sweep = () => relayer.sweepFees().catch((e) => console.log(new Date().toISOString(), `fee sweep: ${e.message}`));
   setTimeout(sweep, 90_000);
   setInterval(sweep, Number(process.env.SWEEP_MINUTES || 30) * 60_000);
-}
-// Curves that filled while we were down: graduate them now (and re-check every few minutes).
-if (relayer) {
-  const sweep = async () => {
-    try {
-      const { rows } = await pool.query("select chain_id, curve from coins where phase = 1");
-      for (const r of rows) await relayer.graduate(r.chain_id, r.curve).catch((e) => console.log(new Date().toISOString(), `graduate ${r.curve} failed: ${e.message}`));
-    } catch (e) { console.log(new Date().toISOString(), `graduate sweep error: ${e.message}`); }
-  };
-  setTimeout(sweep, 5_000);
-  setInterval(sweep, 300_000);
 }
 await Promise.all(CHAINS.map(loop));
 if (process.env.ONCE) await pool.end();

@@ -40,8 +40,9 @@ export function assess(f: Facts): { level: Level; checks: Check[]; warn: string 
   } else {
     checks.push({ ok: f.buyers >= 10 ? "ok" : "warn", label: "Different wallets buying", value: String(f.buyers) });
   }
-  if (f.graduated) checks.push({ ok: "ok", label: "Graduated, pool locked forever", value: "" });
-  else if (f.ageMin < 60) { checks.push({ ok: "warn", label: f.ageMin < 30 ? "Very young coin" : "Young coin, prices move fast", value: age(f.ageMin) }); if (f.ageMin < 30) score += 1; }
+  // v2: every coin's pool is locked from launch; youth is still a real risk
+  checks.push({ ok: "ok", label: "Liquidity locked forever", value: "" });
+  if (f.ageMin < 60) { checks.push({ ok: "warn", label: f.ageMin < 30 ? "Very young coin" : "Young coin, prices move fast", value: age(f.ageMin) }); if (f.ageMin < 30) score += 1; }
   else checks.push({ ok: "ok", label: "Coin age", value: age(f.ageMin) });
   const level: Level = score >= 4 ? 2 : score >= 2 ? 1 : 0;
 
@@ -52,7 +53,7 @@ export function assess(f: Facts): { level: Level; checks: Check[]; warn: string 
   if (f.trades >= 5 && f.topBuyersPct > 70) reasons.push("most buys came from 3 wallets");
   if (f.holders > 0 && f.top10Pct > 60) reasons.push(`the top 10 wallets hold ${pct(f.top10Pct)}`);
   if (!locked && !cBad && f.creatorPct > 5) reasons.push("the creator didn't lock their coins");
-  if (f.ageMin < 30 && !f.graduated) reasons.push(`this coin is ${age(f.ageMin)} old`);
+  if (f.ageMin < 30) reasons.push(`this coin is ${age(f.ageMin)} old`);
   const r2 = reasons.slice(0, 2);
   const joined = r2.length === 2 ? `${r2[0]}, and ${r2[1]}` : r2[0] ?? "";
   const warn = level >= 1 && joined ? `${joined[0].toUpperCase()}${joined.slice(1)}. Only buy what you can afford to lose.` : null;

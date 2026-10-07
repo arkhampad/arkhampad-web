@@ -19,7 +19,7 @@ const ROUTER_ABI = [
   { type: "function", name: "permit", stateMutability: "nonpayable", inputs: [{ name: "token", type: "address" }, { name: "owner", type: "address" }, { name: "value", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" }], outputs: [] },
   { type: "function", name: "buy", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "curve", type: "address" }, { name: "usdcIn", type: "uint256" }, { name: "minCoinsOut", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "sell", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "curve", type: "address" }, { name: "coinAmount", type: "uint256" }, { name: "minUsdcOut", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [{ type: "uint256" }] },
-  { type: "function", name: "launch", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "l", type: "tuple", components: [{ name: "name", type: "string" }, { name: "symbol", type: "string" }, { name: "metadataURI", type: "string" }, { name: "lockSeconds", type: "uint256" }, { name: "feeMode", type: "uint8" }, { name: "launchUsdc", type: "uint256" }, { name: "minCoinsOut", type: "uint256" }] }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [{ type: "address" }, { type: "address" }] },
+  { type: "function", name: "launch", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "l", type: "tuple", components: [{ name: "name", type: "string" }, { name: "symbol", type: "string" }, { name: "metadataURI", type: "string" }, { name: "lockSeconds", type: "uint256" }, { name: "feeMode", type: "uint8" }, { name: "launchUsdc", type: "uint256" }, { name: "minCoinsOut", type: "uint256" }] }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [{ type: "address" }] },
   { type: "function", name: "withdraw", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "to", type: "address" }, { name: "amount", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [] },
   { type: "function", name: "promote", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "coin", type: "address" }, { name: "coinChainId", type: "uint256" }, { name: "plan", type: "uint8" }, { name: "maxPrice", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [] },
   { type: "function", name: "poolBuy", stateMutability: "nonpayable", inputs: [{ name: "user", type: "address" }, { name: "coin", type: "address" }, { name: "usdcIn", type: "uint256" }, { name: "minCoinsOut", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "sig", type: "tuple", components: [{ name: "deadline", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "signature", type: "bytes" }] }], outputs: [{ type: "uint256" }] },
@@ -34,6 +34,8 @@ const ROUTER_ABI = [
   { type: "error", name: "CreatorLocked", inputs: [{ type: "uint256" }] }, { type: "error", name: "BadName", inputs: [] }, { type: "error", name: "NotAllowed", inputs: [] },
   { type: "error", name: "ERC20InsufficientBalance", inputs: [{ type: "address" }, { type: "uint256" }, { type: "uint256" }] },
   { type: "error", name: "ERC20InsufficientAllowance", inputs: [{ type: "address" }, { type: "uint256" }, { type: "uint256" }] },
+  // v2 (instant pools)
+  { type: "error", name: "NoPool", inputs: [] }, { type: "error", name: "LaunchBuyTooSmall", inputs: [{ type: "uint256" }] },
 ];
 // Permissionless upkeep calls (no user signature; the relayer pays the gas).
 const UPKEEP_ABI = [
@@ -42,6 +44,7 @@ const UPKEEP_ABI = [
   { type: "function", name: "collectFees", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
   { type: "function", name: "buyback", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
   { type: "function", name: "isCurve", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "isCoin", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] },
 ];
 // Automatic fee collection and referral payouts (see sweepFees).
 const SWEEP_ABI = [
@@ -74,6 +77,8 @@ const FRIENDLY = {
   BadName: "Name or ticker is not valid.",
   NotAllowed: "Not allowed right now.",
   NotGraduated: "This coin trades on its bonding curve, not in the pool yet.",
+  NoPool: "This coin wasn't launched on ArkhamPad.",
+  LaunchBuyTooSmall: "The first buy must be at least $5.",
   ERC20InsufficientBalance: "Not enough balance.",
   ERC20InsufficientAllowance: "Approval missing. Please try again.",
 };
@@ -244,6 +249,10 @@ export function makeRelayer() {
       const target = addr(kind === "settle" ? body.curve : body.coin, kind === "settle" ? "curve" : "coin");
       const key = `${n.c.chainId}:${kind}:${target}`;
       if (Date.now() - (upkeepLast.get(key) ?? 0) < 60_000) { const e = new Error("Already done a moment ago."); e.status = 429; throw e; }
+      if (kind === "settle" && n.c.v2) {
+        // v2 has no curve: the creator's share of pool fees is paid out by collect.
+        const e = new Error("Creator fees are paid automatically when pool fees are collected."); e.status = 400; throw e;
+      }
       if (kind === "settle") {
         const ok = await n.pub.readContract({ address: getAddress(n.c.hub), abi: UPKEEP_ABI, functionName: "isCurve", args: [target] });
         if (!ok) { const e = new Error("Unknown coin."); e.status = 400; throw e; }
@@ -766,13 +775,16 @@ export function makeRelayer() {
       let moved = 0;
       for (const r of rows) {
         try {
-          const curve = getAddress(r.curve);
-          const [plat, cre] = await Promise.all([
-            n.pub.readContract({ address: curve, abi: SWEEP_ABI, functionName: "platformFees" }),
-            n.pub.readContract({ address: curve, abi: SWEEP_ABI, functionName: "creatorFees" }),
-          ]);
-          if (plat >= MIN_PLATFORM) { await send(n, curve, encodeFunctionData({ abi: SWEEP_ABI, functionName: "claimPlatformFees" })); moved += 1; }
-          if (cre >= MIN_CREATOR) { await send(n, curve, encodeFunctionData({ abi: SWEEP_ABI, functionName: "settleCreatorFees" })); moved += 1; }
+          // v1 coins had a bonding curve with its own fees; v2 coins store their pool id here instead
+          if (/^0x[0-9a-fA-F]{40}$/.test(r.curve)) {
+            const curve = getAddress(r.curve);
+            const [plat, cre] = await Promise.all([
+              n.pub.readContract({ address: curve, abi: SWEEP_ABI, functionName: "platformFees" }),
+              n.pub.readContract({ address: curve, abi: SWEEP_ABI, functionName: "creatorFees" }),
+            ]);
+            if (plat >= MIN_PLATFORM) { await send(n, curve, encodeFunctionData({ abi: SWEEP_ABI, functionName: "claimPlatformFees" })); moved += 1; }
+            if (cre >= MIN_CREATOR) { await send(n, curve, encodeFunctionData({ abi: SWEEP_ABI, functionName: "settleCreatorFees" })); moved += 1; }
+          }
           if (Number(r.phase) === 2 && n.c.poolBuilder) {
             const pb = getAddress(n.c.poolBuilder), coin = getAddress(r.address);
             const sim = await n.pub.simulateContract({ account: account.address, address: pb, abi: SWEEP_ABI, functionName: "collectFees", args: [coin] }).catch(() => null);

@@ -647,3 +647,44 @@ body { font-size: 14px; letter-spacing: -0.1px; }
   .hm-legend { flex-direction: row; flex-wrap: wrap; top: auto; bottom: 8px; left: 8px; right: 8px; gap: 4px 10px; }
 }
 .hm-grid.stacked .hm-map svg { max-height: 540px; width: auto; max-width: 100%; margin: 0 auto; }
+
+/* ---------------------------------------------------------------- v2: instant pools */
+.launch-fee { gap: 8px; border-color: rgba(240,138,60,0.32); background: rgba(240,138,60,0.07); }
+.launch-fee .lf-v { color: var(--burn); font-size: 16px; }
+.lf-bar { display: block; height: 5px; border-radius: 3px; background: var(--raise2); overflow: hidden; }
+.lf-bar i { display: block; height: 100%; background: var(--burn); border-radius: 3px; transition: width 1s linear; }
+.chip-fee { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 600; background: var(--raise); color: var(--muted); white-space: nowrap; flex: none; }
+.chip-fee.hot { background: rgba(240,138,60,0.14); color: var(--burn); }
+.live-pill { background: rgba(198,240,28,0.12); color: var(--volt-ink); }
+.pool-stats { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; }
+.pool-stats span { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 10px; background: var(--raise); min-width: 0; }
+.pool-stats i { font-style: normal; font-size: 11.5px; color: var(--faint); }
+.pool-stats b { font-size: 15px; }
+/* Discover ticket cards */
+.tk-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+@media (min-width: 640px) { .tk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1180px) { .tk-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.tk { display: grid; grid-template-columns: 60px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); transition: border-color 0.15s; min-width: 0; }
+@media (hover: hover) { .tk:hover { border-color: var(--line2); } }
+.tk:active { border-color: var(--line3); }
+.tk-av { width: 60px; height: 60px; display: block; }
+.tk-mid { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.tk-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tk-name b { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tk-meta { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; min-width: 0; }
+.tk-here { font-family: var(--sans); font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 5px; background: rgba(198,240,28,0.12); color: var(--volt-ink); }
+.tk-spark { display: block; height: 22px; margin-top: 2px; }
+.tk-flat { display: block; height: 1px; margin-top: 11px; background: var(--line); }
+.tk-r { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 0; }
+.tk-r b { font-size: 15px; font-weight: 700; white-space: nowrap; }
+.tk-r small { font-size: 11px; color: var(--faint); white-space: nowrap; margin-top: 2px; }
+@media (max-width: 360px) { .tk { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 10px; padding: 10px; } .tk-av { width: 48px; height: 48px; } .tk-av img, .tk-av > span { width: 48px !important; height: 48px !important; } }
+/* bottom status bar (computers) */
+.statusbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; height: 30px; display: flex; align-items: center; gap: 18px; padding: 0 16px; font-size: 12px; color: var(--muted); background: var(--bar-bg); border-top: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); white-space: nowrap; overflow: hidden; }
+.statusbar b { color: var(--text); font-weight: 600; }
+.sb-live { display: inline-flex; align-items: center; gap: 6px; color: var(--up); font-weight: 600; }
+.sb-live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--up); }
+.sb-ok { color: var(--up); font-weight: 600; }
+@media (min-width: 768px) { body { padding-bottom: 30px; } }
+@media (max-width: 1100px) { .statusbar .dim { display: none; } }
+.term-stats b.burn, b.mono.burn { color: var(--burn); }

@@ -94,7 +94,7 @@ export function PortfolioCard({ holdings, me }: { holdings: Holding[]; me: strin
       <div className="legend">
         <span><i style={{ background: "var(--down)" }} />Under 1 hour old · {facts.young}%</span>
         <span><i style={{ background: "var(--warn)" }} />Bonding curve · {Math.max(0, facts.bonding - facts.young)}%</span>
-        <span><i style={{ background: "var(--up)" }} />Graduated · {facts.graduated}%</span>
+        <span><i style={{ background: "var(--up)" }} />In locked pools · {facts.graduated}%</span>
       </div>
     </section>
   );

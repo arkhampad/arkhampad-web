@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { listCoins, listPromoted, recentTrades, totalCoins, useLive, useTradeFeed, ago, type LiveCoin, type LiveTrade, type Tab } from "@/lib/live";
 import { Avatar as Av } from "@/components/bits";
 import { Avatar, sparkUseful } from "@/components/bits";
-import { CoinRows, CoinTable, HotCard } from "@/components/market";
+import { CoinTickets, HotCard } from "@/components/market";
 import { ScrollTabs } from "@/components/scrolltabs";
 import { board, traderColors } from "@/lib/traders";
 import { useRouter } from "next/navigation";
@@ -12,7 +12,7 @@ import { useWallet } from "@/components/wallet";
 import { useApp } from "@/components/shell";
 import { FinderBar, FinderResults, useFinder } from "@/components/finder";
 
-const TABS: Tab[] = ["Trending", "New", "Gainers", "Top volume", "Losers", "Launched here", "Bonding", "Graduated"];
+const TABS: Tab[] = ["Trending", "New", "Launched here", "Gainers", "Top volume", "Losers"];
 const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB", "Arc"];
 const PAGE = 50;
 
@@ -71,11 +71,9 @@ export default function Discover() {
   useEffect(() => { const t = setInterval(() => setHotAt((i) => i + 3), 45_000); return () => clearInterval(t); }, []);
   const hotList = pool.data ?? null;
   const hot = { data: hotList && hotList.length ? [0, 1, 2].map((k) => hotList[(hotAt + k) % hotList.length]).filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i) : hotList };
-  const almost = useLive(async () => (await listCoins("Bonding", { limit: 30 })).filter((c) => c.progress >= 50).sort((a, b) => b.progress - a.progress).slice(0, 3), [], 60_000);
   const total = useLive(totalCoins, [], 120_000);
   const promoted = useLive(listPromoted, [], 60_000);
   const tops = useLive(() => board(7, 10), [], 120_000);
-  const hasGrad = (almost.data?.length ?? 0) > 0;
   const live = useLive<LiveTrade[]>(() => recentTrades(8), [], 0);
   useTradeFeed(() => live.reload());
 
@@ -135,12 +133,6 @@ export default function Discover() {
         {!hot.data ? <div className="feat-row">{[0, 1, 2].map((i) => <div key={i} className="skel" style={{ height: 120, borderRadius: 16, minWidth: 236 }} />)}</div> :
           <div className="feat-row">{hot.data.map((c) => <HotCard key={c.id} c={c} />)}</div>}
       </section>
-      {hasGrad && almost.data && (
-        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div className="feat-head"><h2>Almost graduating</h2></div>
-          <div className="feat-row">{almost.data.map((c) => <HotCard key={c.id} c={c} grad />)}</div>
-        </section>
-      )}
 
       <section className="row">
         <div className="main-col">
@@ -148,8 +140,8 @@ export default function Discover() {
           {fx.active ? <FinderResults fx={fx} /> : <>
           <div className="ttabs"><ScrollTabs gap={0}>{TABS.map((t) => <button key={t} type="button" className={`ttab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</ScrollTabs></div>
           <ScrollTabs gap={6}>{CATS.map((t) => <button key={t} type="button" className={`chip sm${cat === t ? " on" : ""}`} onClick={() => setCat(t)}>{t}</button>)}</ScrollTabs>
-          {(tab === "Launched here" || tab === "Bonding" || tab === "Graduated") && (
-            <div className="dim" style={{ fontSize: 13 }}>Coins launched on ArkhamPad. We are on testnet now: these are test coins with test money.</div>
+          {tab === "Launched here" && (
+            <div className="dim" style={{ fontSize: 13 }}>Coins launched on ArkhamPad. Each one trades in its own locked Uniswap pool from the first second. We are on testnet now: these are test coins with test money.</div>
           )}
           {list === null ? <Skeleton /> : list.length === 0 ? (
             <div className="card" style={{ alignItems: "center", textAlign: "center", padding: 28 }}>
@@ -157,10 +149,7 @@ export default function Discover() {
               <span className="dim" style={{ fontSize: 13 }}>{err ? "Please try again in a moment." : chain ? `New ${chain} coins show up here as soon as they trade.` : "Check another tab, or launch the first one."}</span>
             </div>
           ) : (
-            <>
-              <div className="hide-m"><CoinTable list={list} /></div>
-              <div className="show-m" style={{ margin: "0 -16px" }}><CoinRows list={list} /></div>
-            </>
+            <CoinTickets list={list} />
           )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
             <span className="dim" style={{ fontSize: 13 }}>Coins from other DEXs are shown for discovery. Trading them here opens on mainnet.</span>

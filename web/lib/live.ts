@@ -68,6 +68,8 @@ export type LiveCoin = Coin & {
   priceNum: number | null; mcNum: number | null; volNum: number | null;
   phase?: number; startMc?: number; creator?: string; curve?: string; createdAt?: string | null; lockSeconds?: number;
   about?: { description?: string; x?: string; telegram?: string; website?: string }; feeMode?: number;
+  /** v2: the coin's 30% share of pool fees so far (paid to the creator, or its buyback fund). */
+  creatorFees?: number;
 };
 
 /** Creator-written details stored with the coin (description and links). */
@@ -81,7 +83,7 @@ export function parseMeta(uri: string | null | undefined): LiveCoin["about"] {
 }
 
 type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null };
-type OwnRow = { image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
+type OwnRow = { creator_fees_usd?: number | null; pool_usd?: number | null; image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
 
 /** Names with no Latin letters or digits, or placeholder "?" names, are spam in lists (search still finds them). */
 // Fake market caps (hundreds of billions on a day-old token) never show either.
@@ -107,16 +109,17 @@ export function fromOwn(r: OwnRow): LiveCoin {
   const [c1, c2] = colours(r.address);
   const start = Number(r.start_mc_usd) || 0;
   const mc = Number(r.mc_usd) || 0;
-  const target = start * (7500 / 4500); // graduation market cap
   const chg = r.change_24h_pct !== null && r.change_24h_pct !== undefined ? Number(r.change_24h_pct) : start ? ((mc - start) / start) * 100 : 0;
   return {
     id: `${r.chain_id}-${r.address}`, name: r.name, tick: r.symbol, chain: chainName(r.chain_id), age: ago(r.created_at),
-    price: price(Number(r.price_usd)), chg, mc: usd(mc), vol: usd(Number(r.volume_24h)), liq: usd(Number(r.usdc_reserve)),
+    price: price(Number(r.price_usd)), chg, mc: usd(mc), vol: usd(Number(r.volume_24h)), liq: usd(Number(r.pool_usd ?? r.usdc_reserve ?? 0)),
     holders: count(r.buyers), trades: count(r.trades_count), c1, c2,
-    spark: sparkOf([start, mc]), progress: r.phase >= 1 ? 100 : target > start ? Math.max(0, Math.min(100, ((mc - start) / (target - start)) * 100)) : 0,
+    // v2: every coin trades in its pool from launch, so there is no progress to a graduation
+    spark: sparkOf([start, mc]), progress: 100,
     chainId: r.chain_id, address: r.address, own: true, image: r.image_url ?? null, priceNum: Number(r.price_usd), mcNum: mc, volNum: Number(r.volume_24h),
     phase: r.phase, startMc: start, creator: r.creator, curve: r.curve, createdAt: r.created_at,
     about: parseMeta(r.metadata_uri), feeMode: r.fee_mode, lockSeconds: Number(r.lock_seconds ?? 0),
+    creatorFees: Number(r.creator_fees_usd ?? 0),
   };
 }
 

@@ -11,6 +11,7 @@ import { ProfitSheet } from "./profit";
 import { positionPnl } from "@/lib/pnl";
 import type { Pnl } from "@/lib/share";
 import { extBalance, extNet, extQuote, extTrade, extTradable } from "@/lib/ext";
+import { useLaunchFee } from "./v2";
 import { PriceAlertButton } from "./alerts";
 import { BuyWarning, useBuyWarning } from "./safety";
 import { usd as fmtUsd } from "@/lib/live";
@@ -37,6 +38,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const [tp, setTp] = useState<number | null>(100); // Auto: take profit at +X%
   const [sl, setSl] = useState<number | null>(25); // Auto: stop loss at -Y%
   const phase = coin.phase ?? 0;
+  const launchFee = useLaunchFee(coin);
   const inPool = coin.own && phase === 2; // graduated: trades in its locked Uniswap pool
   const ext = !coin.own && !!extNet(coin.chainId); // coin from another DEX on a network we can quote
   const extLive = ext && extTradable(coin.chainId); // ...and trade (mainnet)
@@ -221,8 +223,10 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       {coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable && <BuyWarning text={caution.text} onAck={caution.ack} />}
       {!(coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable) && <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={go} disabled={busy || !tradable} aria-busy={busy} style={{ fontSize: 17, opacity: !tradable ? 0.55 : 1 }}>{label}</button>}
       {!coin.own && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>{extLive ? "Trades through other DEXs at the best price · 1% fee" : ext ? "Live price from other DEXs. Trading these coins here opens on mainnet." : "This coin trades on another DEX. Trading it here opens on mainnet."}</span>}
-      {coin.own && phase === 1 && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>Moving to its locked pool. Trading reopens in a few seconds.</span>}
-      {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{inPool ? "Graduated · trades in its locked pool · " : ""}Testnet · test USDC has no value</span>}
+      {coin.own && launchFee.live && launchFee.fee !== null && (
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Fee right now</span><b className="mono" style={{ color: "var(--burn)" }}>{launchFee.fee.toFixed(1)}%</b></div>
+      )}
+      {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>Trades in its locked Uniswap pool · Testnet · test USDC has no value</span>}
       <div style={{ display: "flex", gap: 8 }}>
         <span style={{ flex: 1, display: "flex" }}><PriceAlertButton c={coin} className="btn ghost sm grow" /></span>
         <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={onShare}><IShare size={15} />Share</button>

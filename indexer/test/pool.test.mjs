@@ -3,12 +3,23 @@ import assert from "node:assert/strict";
 import { poolIdOf, poolTrade } from "../poolmath.mjs";
 
 test("pool id matches Solidity PoolKey.toId()", () => {
-  // value printed by a forge test with the same key
-  assert.equal(poolIdOf("0x036CbD53842c5426634e7929541eC2318f3dCF7e", "0x7a3f9b21c4e8d07a5f61b2c93e40d1a8f2b6c91e", "0xFe92db0aF76Eb08B553a3FC6aea9A9F1C5D3a000"),
+  // values printed by forge tests with the same keys: v1 (1% fixed fee) and v2 (dynamic fee)
+  assert.equal(poolIdOf("0x036CbD53842c5426634e7929541eC2318f3dCF7e", "0x7a3f9b21c4e8d07a5f61b2c93e40d1a8f2b6c91e", "0xFe92db0aF76Eb08B553a3FC6aea9A9F1C5D3a000", 10_000),
     "0x37d69f7bc7eb6baa86e3dc59dd029e3393d3678239babacb31a174f7bac49c52");
+  assert.equal(poolIdOf("0x036CbD53842c5426634e7929541eC2318f3dCF7e", "0x7a3f9b21c4e8d07a5f61b2c93e40d1a8f2b6c91e", "0xFE92db0aF76EB08b553a3Fc6aEA9a9f1c5d3A080"),
+    "0x797c65b33a4897eee6786348cc1ee6f6cde5839ae099cbacb06f2de89544a573");
   // order of the two tokens doesn't matter to the caller
   assert.equal(poolIdOf("0x036CbD53842c5426634e7929541eC2318f3dCF7e", "0x7a3f9b21c4e8d07a5f61b2c93e40d1a8f2b6c91e", "0xFe92db0aF76Eb08B553a3FC6aea9A9F1C5D3a000"),
     poolIdOf("0x036cbd53842c5426634e7929541ec2318f3dcf7e", "0x7A3f9B21c4E8D07A5f61B2c93E40D1A8f2b6c91e", "0xfe92db0af76eb08b553a3fc6aea9a9f1c5d3a000"));
+});
+
+test("fee comes from the swap: 30% launch fee and 2% normal fee", () => {
+  const sqrt = BigInt(Math.round(Math.sqrt(1e18 / 1e6 / 0.0000075) * 2 ** 96));
+  const early = poolTrade({ amount0: -100_000_000n, amount1: 1n, sqrtPriceX96: sqrt, fee: 300000 }, true);
+  assert.equal(early.fee, 30);
+  assert.equal(early.feeRate, 0.3);
+  const late = poolTrade({ amount0: -100_000_000n, amount1: 1n, sqrtPriceX96: sqrt, fee: 20000 }, true);
+  assert.equal(late.fee, 2);
 });
 
 const sqrtFor = (coinPerUsdcRaw) => BigInt(Math.round(Math.sqrt(coinPerUsdcRaw) * 2 ** 96));

@@ -5,7 +5,7 @@ import type { Address } from "viem";
 import { useApp } from "./shell";
 import { useSafety } from "@/lib/safety";
 import { useWallet } from "./wallet";
-import { NETS, TradeError, collectPoolFees, creatorFeesOf, fromUsdc, onLocalTrade, promote, runBuyback, settleFees, uploadCoinImage } from "@/lib/chain";
+import { NETS, TradeError, collectPoolFees, promote, runBuyback, uploadCoinImage } from "@/lib/chain";
 import { short, usd, type LiveCoin } from "@/lib/live";
 
 /** Turns what a creator typed (handle, bare domain, full link) into a safe https link. */
@@ -46,19 +46,14 @@ export function AboutCard({ c }: { c: LiveCoin }) {
 export function CreatorCard({ c, onImage }: { c: LiveCoin; onImage: (url: string) => void }) {
   const w = useWallet();
   const { toast } = useApp();
-  const [fees, setFees] = useState<{ fees: bigint; mode: number } | null>(null);
   const [busy, setBusy] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const isCreator = !!w.address && !!c.creator && w.address.toLowerCase() === c.creator.toLowerCase();
-  const graduated = (c.phase ?? 0) === 2;
-  const load = () => { if (c.curve) creatorFeesOf(c.chainId, c.curve as Address).then(setFees).catch(() => {}); };
-  useEffect(() => { load(); const off = onLocalTrade((t) => { if (t.coin.toLowerCase() === c.address.toLowerCase()) setTimeout(load, 500); }); return off; }, [c.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (label: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(label);
-    try { await fn(); toast(ok); load(); } catch (e) { toast(e instanceof TradeError ? e.message : "Something went wrong. Please try again."); } finally { setBusy(""); }
+    try { await fn(); toast(ok); } catch (e) { toast(e instanceof TradeError ? e.message : "Something went wrong. Please try again."); } finally { setBusy(""); }
   };
-  const burn = (fees?.mode ?? c.feeMode) === 1;
-  const pending = fees ? fromUsdc(fees.fees) : 0;
+  const burn = c.feeMode === 1;
   const pickImage = async (f: File | undefined) => {
     if (!f || !w.signer) return;
     await run("Uploading…", async () => { const url = await uploadCoinImage(c.chainId, c.address as Address, f, w.signer!); onImage(url); }, "Image updated");
@@ -70,16 +65,10 @@ export function CreatorCard({ c, onImage }: { c: LiveCoin; onImage: (url: string
         <span className="dim mono" style={{ fontSize: 12 }}>by {c.creator ? short(c.creator) : "—"}</span>
       </div>
       <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>
-        {burn ? "This coin's creator fees buy the coin back and burn it." : "This coin's creator earns a share of every trade."}
+        {burn ? "30% of this coin's pool fees buy the coin back and burn it." : "This coin's creator earns 30% of the pool fee on every trade, in any app."} Fees are collected automatically every 30 minutes.
       </span>
-      {!graduated ? (
-        <>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}><span className="dim">{burn ? "Ready to burn" : "Ready to claim"}</span><b className="mono">{fees ? usd(pending, 2) : "—"}</b></div>
-          {pending >= 0.01 && (burn || isCreator) && (
-            <button type="button" className="btn volt" disabled={!!busy} onClick={() => run(burn ? "Burning…" : "Claiming…", () => settleFees(c.chainId, c.curve as Address), burn ? "Bought back and burned" : `Claimed ${usd(pending, 2)}`)}>{busy || (burn ? "Buy back & burn now" : `Claim ${usd(pending, 2)}`)}</button>
-          )}
-        </>
-      ) : (
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}><span className="dim">{burn ? "Buyback fund so far" : "Earned so far"}</span><b className="mono">{usd(c.creatorFees ?? 0, 2)}</b></div>
+      {(burn || isCreator) && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" className="btn" style={{ flex: 1 }} disabled={!!busy} onClick={() => run("Collecting…", () => collectPoolFees(c.chainId, c.address as Address), "Pool fees collected")}>{busy || "Collect pool fees"}</button>
           {burn && <button type="button" className="btn" style={{ flex: 1 }} disabled={!!busy} onClick={() => run("Burning…", () => runBuyback(c.chainId, c.address as Address), "Bought back and burned")}>Run buyback</button>}
@@ -151,7 +140,7 @@ export function HoldersCard({ c }: { c: LiveCoin }) {
             <span className="dim">{((r.amount / supply) * 100).toFixed(2)}%</span>
           </div>
         ))}
-      <span style={{ fontSize: 11, color: "var(--faint)" }}>Coins still for sale sit in the bonding curve and aren&apos;t listed.</span>
+      <span style={{ fontSize: 11, color: "var(--faint)" }}>Coins in the locked pool aren&apos;t a person, so they aren&apos;t listed.</span>
     </div>
   );
 }

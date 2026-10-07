@@ -28,7 +28,7 @@ export default function Analytics() {
         <Kpi k="Volume 24h" v={s.data ? usd(s.data.volume_24h) : "—"} d={s.data ? `${usd(s.data.volume_7d)} this week` : undefined} />
         <Kpi k="Trades 24h" v={s.data ? n0(s.data.trades_24h) : "—"} d={s.data ? `${n0(s.data.trades_all)} all time` : undefined} />
         <Kpi k="Traders 24h" v={s.data ? n0(s.data.traders_24h) : "—"} d={s.data ? `${n0(s.data.traders_all)} all time` : undefined} />
-        <Kpi k="Coins launched" v={s.data ? n0(s.data.coins_total) : "—"} d={s.data ? `${n0(s.data.coins_24h)} today · ${n0(s.data.graduated)} graduated` : undefined} />
+        <Kpi k="Coins launched" v={s.data ? n0(s.data.coins_total) : "—"} d={s.data ? `${n0(s.data.coins_24h)} today` : undefined} />
       </div>
       <div className="row">
         <div className="main-col">

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getCoin, useCoinMarket, shareCoin, prepareCard, usd, short, ago, listCoins, type LiveCoin } from "@/lib/live";
-import { Avatar, Bar, ChainTag, useIsMobile } from "@/components/bits";
+import { Avatar, ChainTag, useIsMobile } from "@/components/bits";
 import { Intervals } from "@/components/trade";
 import { TradePanel } from "@/components/tradepanel";
 import { AboutCard, CreatorCard, PromoteButton } from "@/components/cointools";
@@ -17,6 +17,7 @@ const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, load
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
 import { ICopy, IShare } from "@/components/icons";
 import { useApp } from "@/components/shell";
+import { LaunchFeeCard, PoolCard } from "@/components/v2";
 
 
 function Stat({ k, v, cls }: { k: string; v: string; cls?: string }) {
@@ -68,7 +69,6 @@ function CoinView() {
   );
 
   const up = c.chg >= 0;
-  const target = (c.startMc ?? 0) * (7500 / 4500);
   const tradesPanel = (
           <div className="panel">
               <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""} <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· last 5</span></span>
@@ -97,7 +97,7 @@ function CoinView() {
             <h1 className="coin-h1" style={{ margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: -0.8, overflowWrap: "anywhere" }}>{c.name}</h1>
             <span className="mono dim" style={{ fontWeight: 600 }}>{c.tick}</span>
             <span className="pill" style={{ background: "var(--raise)", color: "var(--text2)" }}><ChainTag chain={c.chain} /></span>
-            {c.own ? <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt-ink)" }}>Testnet</span> : <span className="pill" style={{ background: "var(--raise)", color: "var(--muted)" }}>{c.dex ? c.dex.replace(/[-_]/g, " ") : "Other DEX"}</span>}
+            {c.own ? <><span className="pill live-pill">Live on Uniswap</span><span className="pill" style={{ background: "var(--raise)", color: "var(--muted)" }}>Testnet</span></> : <span className="pill" style={{ background: "var(--raise)", color: "var(--muted)" }}>{c.dex ? c.dex.replace(/[-_]/g, " ") : "Other DEX"}</span>}
           </div>
           <div className="mono dim" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, flexWrap: "wrap" }}>
             {short(c.address)}
@@ -110,7 +110,7 @@ function CoinView() {
 
       <div className="grid6 hide-m">
         <Stat k="Price" v={c.price} /><Stat k="Market cap" v={c.mc} /><Stat k="24h" v={`${up ? "+" : ""}${c.chg.toFixed(1)}%`} cls={up ? "up" : "down"} />
-        <Stat k="Volume 24h" v={c.vol} /><Stat k={c.own ? "In curve" : "Liquidity"} v={c.liq} /><Stat k={c.own ? "Buyers" : "Trades 24h"} v={c.own ? c.holders : c.trades} />
+        <Stat k="Volume 24h" v={c.vol} /><Stat k={c.own ? "In pool" : "Liquidity"} v={c.liq} /><Stat k={c.own ? "Buyers" : "Trades 24h"} v={c.own ? c.holders : c.trades} />
       </div>
 
       <div className="row">
@@ -124,31 +124,27 @@ function CoinView() {
           </div>
           <div className="show-m coin-strip">
             <span><i>Vol 24h</i><b className="mono">{c.vol}</b></span>
-            <span><i>{c.own ? "In curve" : "Liquidity"}</i><b className="mono">{c.liq}</b></span>
+            <span><i>{c.own ? "In pool" : "Liquidity"}</i><b className="mono">{c.liq}</b></span>
             <span><i>{c.own ? "Buyers" : "Trades 24h"}</i><b className="mono">{c.own ? c.holders : c.trades}</b></span>
             <span><i>Age</i><b className="mono">{c.age}</b></span>
           </div>
           <div className="hide-m col-stack">
+            {c.own && <LaunchFeeCard c={c} />}
             {c.own && <SafetyCard c={c} />}
             {c.own && <LockCard c={c} />}
             {tradesPanel}
             {c.own && <div className="col-stack" style={{ gap: 8 }}><span style={{ fontWeight: 700, fontSize: 15 }}>Holder map</span><HolderMap c={c} stacked /></div>}
             {c.own && <Comments c={c} />}
           </div>
-          {/* phones: graduation up top, details in tabs */}
+          {/* phones: the launch fee up top (first five minutes), details in tabs */}
           <div className="show-m col-stack">
-            {c.own && (
-              <div className="card" style={{ gap: 6, padding: "10px 12px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ fontWeight: 700 }}>Graduation</span><span className="mono volt" style={{ fontWeight: 700 }}>{c.phase === 2 ? "Graduated" : `${c.progress.toFixed(0)}%`}</span></div>
-                <Bar pct={c.progress} />
-              </div>
-            )}
+            {c.own && <LaunchFeeCard c={c} />}
             <div className="mtabs" role="tablist">
               {(c.own ? (["safety", "trades", "holders", "chat"] as const) : (["trades"] as const)).map((t) => (
                 <button key={t} type="button" role="tab" aria-selected={mt === t || (!c.own && t === "trades")} className={mt === t || (!c.own && t === "trades") ? "on" : ""} onClick={() => setMt(t)}>{t[0].toUpperCase() + t.slice(1)}</button>
               ))}
             </div>
-            {c.own && mt === "safety" && <><SafetyCard c={c} /><LockCard c={c} /></>}
+            {c.own && mt === "safety" && <><PoolCard c={c} /><SafetyCard c={c} /><LockCard c={c} /></>}
             {(mt === "trades" || !c.own) && tradesPanel}
             {c.own && mt === "holders" && <HolderMap c={c} stacked />}
             {c.own && mt === "chat" && <Comments c={c} />}
@@ -159,12 +155,7 @@ function CoinView() {
           <AboutCard c={c} />
           {c.own && <CreatorCard c={c} onImage={(url) => setC({ ...c, image: url })} />}
 
-          {c.own && (
-            <div className="card hide-m" style={{ gap: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span style={{ fontWeight: 700 }}>Graduation</span><span className="mono volt" style={{ fontWeight: 600 }}>{c.phase === 2 ? "Graduated" : `${usd(c.mcNum)} / ${usd(target)}`}</span></div>
-              <Bar pct={c.progress} /><span className="dim" style={{ fontSize: 12 }}>At graduation the coin moves to a locked pool forever.</span>
-            </div>
-          )}
+          {c.own && <div className="hide-m"><PoolCard c={c} /></div>}
           {!c.own && (
             <div className="card" style={{ gap: 6 }}>
               <span style={{ fontWeight: 700 }}>Trading opens on mainnet</span>

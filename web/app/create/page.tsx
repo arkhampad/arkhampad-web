@@ -41,7 +41,7 @@ function CreateView() {
   const [lock, setLock] = useState("No lock");
   const [fee, setFee] = useState("you");
   const [boost, setBoost] = useState("none");
-  const [first, setFirst] = useState(0);
+  const [first, setFirst] = useState(5); // every launch includes a first buy of at least $5
   const [firstTxt, setFirstTxt] = useState(""); // typed amount (kept as text so "12." can be typed)
   const [links, setLinks] = useState(false);
   const [done, setDone] = useState<null | { coin: string; chainId: number }>(null);
@@ -131,6 +131,7 @@ function CreateView() {
     if (!nm || nm.length > 32) return toast("Name must be 1 to 32 characters.");
     if (!/^[A-Z0-9]{1,10}$/.test(tk)) return toast("Ticker must be 1 to 10 letters or numbers.");
     if (desc.length > 280) return toast("Keep the description under 280 characters.");
+    if (!(first >= 5)) return toast("Your first buy must be at least $5.");
     if (cash < need) { toast(`You need $${need.toFixed(2)} USDC on ${chain}. Add test USDC first.`); openFunds("deposit"); return; }
     const meta = JSON.stringify({ description: desc.trim().slice(0, 280), x: xUrl.trim().slice(0, 100) || undefined, telegram: tgUrl.trim().slice(0, 100) || undefined, website: webUrl.trim().slice(0, 100) || undefined, art: { c1: o.c1, c2: o.c2 } });
     const metadataURI = `data:application/json;base64,${btoa(unescape(encodeURIComponent(meta)))}`;
@@ -306,19 +307,20 @@ function CreateView() {
               <div className="cr-set"><div className="cr-lbl">Creator lock <span>shows buyers you won&apos;t dump</span></div>
                 <div className="cr-sg">{[["No lock", "None"], ["Lock 1h", "1 hour"], ["Lock 24h", "24 hours"]].map(([k, t]) => <button key={k} type="button" className={lock === k ? "on" : ""} onClick={() => setLock(k)}>{t}</button>)}</div>
               </div>
-              <div className="cr-set"><div className="cr-lbl">Creator fees <span>{fee === "burn" ? "fees buy your coin and burn it" : "fees go to your balance"}</span></div>
+              <div className="cr-set"><div className="cr-lbl">Your 30% of trading fees <span>{fee === "burn" ? "buys your coin back and burns it" : "from every trade, in any app"}</span></div>
                 <div className="cr-sg"><button type="button" className={fee === "you" ? "on" : ""} onClick={() => setFee("you")}>To you</button><button type="button" className={fee === "burn" ? "on" : ""} onClick={() => setFee("burn")}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</button></div>
               </div>
-              <div className="cr-set"><div className="cr-lbl">Be the first buyer <span>optional</span></div>
-                <div className="cr-chips">{[0, 10, 25, 50, 100].map((v) => <button key={v} type="button" className={first === v && !firstTxt ? "on" : ""} onClick={() => { setFirst(v); setFirstTxt(""); }}>${v}</button>)}</div>
+              <div className="cr-set"><div className="cr-lbl">Your first buy <span>at least $5 · makes the first trade</span></div>
+                <div className="cr-chips">{[5, 10, 25, 50, 100].map((v) => <button key={v} type="button" className={first === v && !firstTxt ? "on" : ""} onClick={() => { setFirst(v); setFirstTxt(""); }}>${v}</button>)}</div>
                 <label className="amt-field" htmlFor="first-amt">
                   <span className="mono dim">$</span>
                   <input id="first-amt" inputMode="decimal" placeholder="Other amount" value={firstTxt}
                     onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 8); setFirstTxt(v); setFirst(Math.min(500, Math.round((Number(v) || 0) * 100) / 100)); }} />
+                  {firstTxt !== "" && first < 5 && <span className="down" style={{ fontSize: 12, whiteSpace: "nowrap" }}>min $5</span>}
                   <span className="mono dim" style={{ fontSize: 12 }}>USDC</span>
                 </label>
               </div>
-              <div className="cr-set"><div className="cr-lbl">Boost <span>top of Discover</span></div>
+              <div className="cr-set"><div className="cr-lbl">Boost <span>Get seen first: top of ArkhamPad</span></div>
                 <div className="cr-sg cr-boost">
                   <button type="button" className={boost === "none" ? "on" : ""} onClick={() => setBoost("none")}>No boost</button>
                   <button type="button" className={boost === "10" ? "on" : ""} onClick={() => setBoost("10")}><em>Most popular</em>6h · $10</button>
@@ -326,7 +328,10 @@ function CreateView() {
                 </div>
               </div>
               <div className="cr-facts">
-                <span>Starts at <b className="mono">$450</b> · graduates at <b className="mono">$750</b> <span className="dim">(testnet)</span></span>
+                <span>Opens at a <b className="mono">$450</b> market cap in a Uniswap pool <span className="dim">(testnet; $4.5K on mainnet)</span></span>
+                <span>Liquidity locked forever. Nobody can pull it, not even us.</span>
+                <span>Tradable in other apps from the first trade.</span>
+                <span>Launch fee protects you from bots: <b className="mono">30%</b> falling to <b className="mono">2%</b> in five minutes.</span>
                 <span>Your USDC on {chain}: <b className="mono">{w.signedIn ? `$${cash.toFixed(2)}` : "—"}</b></span>
               </div>
             </div>
