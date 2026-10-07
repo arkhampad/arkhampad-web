@@ -4,15 +4,16 @@ pragma solidity 0.8.26;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
-/// @title PadCoin
-/// @notice A coin created on ArkhamPad. The whole supply is minted once, to
-/// its bonding curve, at creation. There is no owner and no way to mint more.
+/// @title ArkhamPadCoin
+/// @notice A coin created on ArkhamPad (arkhampad.com). The whole supply is minted
+/// once at creation, to ArkhamPad's pool builder, which puts all of it into the
+/// coin's locked Uniswap pool. There is no owner and no way to mint more.
 ///
 /// Optional creator lock: until `unlockTime`, the creator's own wallet cannot
 /// move or sell this coin. It can still receive (buy) more. The lock length is
 /// chosen at launch, can never be changed and is at most one day.
 /// Supports EIP-2612 permit, so holders can approve by signature (no gas).
-contract PadCoin is ERC20, ERC20Permit {
+contract ArkhamPadCoin is ERC20, ERC20Permit {
     uint256 public constant MAX_LOCK = 1 days;
 
     address public immutable creator;

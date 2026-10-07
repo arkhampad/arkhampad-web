@@ -18,7 +18,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {PadHub} from "../src/PadHub.sol";
-import {PadCoin} from "../src/PadCoin.sol";
+import {ArkhamPadCoin} from "../src/PadCoin.sol";
 import {PadPoolBuilder} from "../src/PadPoolBuilder.sol";
 import {PadLaunchHook} from "../src/PadLaunchHook.sol";
 import {FeeMode} from "../src/PadTypes.sol";
@@ -107,12 +107,12 @@ abstract contract LaunchFlow is Test {
 
     /// Launches a coin. `launchUsdc` 0 means the $5 minimum; that launch buy's fee is
     /// collected right away so each test starts from a clean fee slate.
-    function _launch(FeeMode mode, uint256 launchUsdc) internal returns (PadCoin coin) {
+    function _launch(FeeMode mode, uint256 launchUsdc) internal returns (ArkhamPadCoin coin) {
         bool minimum = launchUsdc == 0;
         if (minimum) launchUsdc = 5 * D;
         vm.startPrank(creator);
         usdc.approve(address(hub), launchUsdc);
-        coin = PadCoin(hub.createCoin("Moonfrog", "MFROG", "ipfs://x", 0, mode, launchUsdc, 0));
+        coin = ArkhamPadCoin(hub.createCoin("Moonfrog", "MFROG", "ipfs://x", 0, mode, launchUsdc, 0));
         vm.stopPrank();
         if (minimum) builder.collectFees(address(coin));
     }
@@ -152,7 +152,7 @@ abstract contract LaunchFlow is Test {
     /// Launch opens a real pool at once: the whole supply is locked liquidity
     /// at the launch price, and the coin can be bought by anyone, from any app.
     function _flow_launchOpensPool() internal {
-        PadCoin coin = _launch(FeeMode.ToCreator, 0);
+        ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 0);
         (uint256 positionId, address cr,) = builder.pools(address(coin));
         assertGt(positionId, 0, "position minted");
         assertEq(cr, creator);
@@ -180,7 +180,7 @@ abstract contract LaunchFlow is Test {
         assertEq(hook.feeAt(1000, 1150), 160_000);
         assertEq(hook.feeAt(1000, 1300), 20_000);
         assertEq(hook.feeAt(1000, 99999), 20_000);
-        PadCoin coin = _launch(FeeMode.ToCreator, 0);
+        ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 0);
         PoolKey memory key = builder.poolKeyFor(address(coin));
         assertEq(hook.currentFee(key), 300_000, "30% at launch");
         assertEq(key.fee, LPFeeLibrary.DYNAMIC_FEE_FLAG, "dynamic fee pool");
@@ -199,7 +199,7 @@ abstract contract LaunchFlow is Test {
 
     /// Snipers pay the launch fee, and it lands in the pool's fees: 70% platform, 30% creator.
     function _flow_sniperFeesSplit() internal {
-        PadCoin coin = _launch(FeeMode.ToCreator, 0);
+        ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 0);
         _extBuy(alice, address(coin), 1_000 * D); // a bot buying in the first block
         uint256 t0 = usdc.balanceOf(treasury);
         uint256 c0 = usdc.balanceOf(creator);
@@ -211,7 +211,7 @@ abstract contract LaunchFlow is Test {
 
     /// Trades from any app pay 2% after launch; fees in both currencies are split 70/30.
     function _flow_outsideTradesPayUs() internal {
-        PadCoin coin = _launch(FeeMode.ToCreator, 0);
+        ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 0);
         vm.warp(vm.getBlockTimestamp() + 600);
         uint256 got = _extBuy(bob, address(coin), 200 * D);
         assertGt(got, 0, "bought from an outside app");
@@ -234,7 +234,7 @@ abstract contract LaunchFlow is Test {
     /// The creator's launch buy is made by the builder and pays the normal 2%, not 30%.
     function _flow_launchBuyPaysBase() internal {
         uint256 c0 = usdc.balanceOf(creator);
-        PadCoin coin = _launch(FeeMode.ToCreator, 100 * D);
+        ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 100 * D);
         uint256 got = coin.balanceOf(creator);
         assertEq(c0 - usdc.balanceOf(creator), 100 * D, "paid exactly the launch buy");
         assertApproxEqRel(got, _fresh(98 * D), 0.025e18, "2% fee, launch price");
@@ -245,7 +245,7 @@ abstract contract LaunchFlow is Test {
 
     /// Everyone can always sell back; selling everything brings the price back near the start.
     function _flow_sellBackAll() internal {
-        PadCoin coin = _launch(FeeMode.ToCreator, 0);
+        ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 0);
         vm.warp(vm.getBlockTimestamp() + 301);
         uint256 q0 = _quoteBuy(address(coin), 10 * D);
         uint256 a = _extBuy(alice, address(coin), 3_000 * D);
@@ -263,7 +263,7 @@ abstract contract LaunchFlow is Test {
 
     /// Buyback & burn mode: the coin's 30% buys the coin back and burns it.
     function _flow_buybackBurn() internal {
-        PadCoin coin = _launch(FeeMode.BuybackBurn, 0);
+        ArkhamPadCoin coin = _launch(FeeMode.BuybackBurn, 0);
         vm.warp(vm.getBlockTimestamp() + 301);
         _extBuy(alice, address(coin), 5_000 * D);
         uint256 funds0 = builder.buybackFunds(address(coin)); // from the launch buy's fee
@@ -279,7 +279,7 @@ abstract contract LaunchFlow is Test {
 
     /// Nobody but the builder can open a pool with our hook, for any coin.
     function _flow_guardBlocksOtherPools() internal {
-        PadCoin coin = _launch(FeeMode.ToCreator, 0);
+        ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 0);
         PoolKey memory key = builder.poolKeyFor(address(coin));
         vm.expectRevert();
         pm.initialize(key, TickMath.getSqrtPriceAtTick(0)); // already open
@@ -367,7 +367,7 @@ abstract contract LaunchFlow is Test {
 
     /// Only the pool manager, and only during our own unlock, can run the swap callbacks.
     function _flow_callbacksLocked() internal {
-        PadCoin coin = _launch(FeeMode.ToCreator, 0);
+        ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 0);
         bytes memory data = abi.encode(address(coin), true, uint256(1 * D), false);
         vm.expectRevert(PadRouter.OnlyPoolManager.selector);
         router.unlockCallback(data);
@@ -386,7 +386,7 @@ abstract contract LaunchFlow is Test {
 
     /// The guardian can pause new launches; trading in existing pools never stops.
     function _flow_pause() internal {
-        PadCoin coin = _launch(FeeMode.ToCreator, 0);
+        ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 0);
         vm.prank(admin);
         hub.pauseBuys();
         vm.prank(creator);
@@ -400,7 +400,7 @@ abstract contract LaunchFlow is Test {
     function _flow_creatorLock() internal {
         vm.startPrank(creator);
         usdc.approve(address(hub), 50 * D);
-        PadCoin coin = PadCoin(hub.createCoin("Locked", "LOCK", "", 3600, FeeMode.ToCreator, 50 * D, 0));
+        ArkhamPadCoin coin = ArkhamPadCoin(hub.createCoin("Locked", "LOCK", "", 3600, FeeMode.ToCreator, 50 * D, 0));
         vm.stopPrank();
         uint256 held = coin.balanceOf(creator);
         assertGt(held, 0);

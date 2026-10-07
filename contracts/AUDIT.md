@@ -36,7 +36,7 @@ Two independent reviews of v2: **Critical 0 · High 0 · Medium 0.**
 | ID | Finding | Status |
 |---|---|---|
 | L-01 | A hub deployed with `minLaunchBuy = 0` would allow launches without a first buy | Fixed: the hub constructor rejects 0, and Deploy.s.sol requires at least $5 |
-| L-1 | `collectFees` sends coin fees to the treasury with a plain transfer; a revert would stop the collect | Accepted: PadCoin has no blacklist or transfer fee, and the treasury is our vault |
+| L-1 | `collectFees` sends coin fees to the treasury with a plain transfer; a revert would stop the collect | Accepted: ArkhamPadCoin has no blacklist or transfer fee, and the treasury is our vault |
 | L-2 | Unspent launch-buy USDC is refunded to the creator | Accepted and documented: through the router the creator is the payer |
 | I-01 | `feeAt(start, now)` underflowed for a time before the launch | Fixed: returns the launch fee (30%) |
 | I-1 | Launch price rounds up to the tick grid (up to ~2%) | By design |
@@ -47,7 +47,7 @@ Two independent reviews of v2: **Critical 0 · High 0 · Medium 0.**
 
 | File | Role |
 |---|---|
-| `PadCoin.sol` | Fixed-supply ERC20 (1B, 18 decimals) with EIP-2612 permit. Optional creator lock (max 1 day). |
+| `PadCoin.sol` (contract `ArkhamPadCoin`) | Fixed-supply ERC20 (1B, 18 decimals) with EIP-2612 permit. Optional creator lock (max 1 day). |
 | `PadHub.sol` | Factory + registry. Creates a coin and its pool in one call, optional creator launch buy, settings (start market cap, treasury, guardian pause), `createCoinFor` callable only by the router. |
 | `PadPoolBuilder.sol` | Opens each coin's v4 pool at launch, holds the single LP position forever (locked), collects pool fees (70% platform / 30% creator or buyback), runs buybacks in steps of at most $100. |
 | `PadLaunchHook.sol` | v4 hook: pool initialization only by the builder; launch fee schedule (30% → 2% over 5 minutes). |
@@ -107,7 +107,7 @@ Thank you! Findings can be sent as a simple list (severity, file:line, descripti
 | 2 | Router / builder `unlockCallback` only checked `msg.sender == poolManager` | Medium (hardening) | **Fixed**: both set a flag only while they themselves are inside `PoolManager.unlock`; the callback reverts otherwise (`test_callbacksLocked`). |
 | 3 | No way to return tokens sent to the router / ExtSwap by mistake | Low | **Fixed**: `sweep(token, to)`, admin only. Both contracts hold nothing between transactions, so a sweep can never touch a user's trade (`test_routerSweep`). |
 | 4 | Builder: USDC sent to it by mistake mixes with its own funds | Low | **Tested**: stray USDC is not swept into new pools (`test_builderStrayUsdc`); it stays outside `usdcHeld`. Documented. |
-| 5 | Builder: coin fee transfer to the treasury could revert for blacklisting / fee-on-transfer coins | Medium (general) | **Not applicable**: pool coins are always our own `PadCoin` (no blacklist, no transfer fee; the creator lock only blocks transfers *from* the creator). |
+| 5 | Builder: coin fee transfer to the treasury could revert for blacklisting / fee-on-transfer coins | Medium (general) | **Not applicable**: pool coins are always our own `ArkhamPadCoin` (no blacklist, no transfer fee; the creator lock only blocks transfers *from* the creator). |
 | 6 | Rounding dust USDC stays in the builder at graduation | Info | By design (tracked in `usdcHeld`, tiny); documented. |
 | 7 | Pool price slightly above the curve price after graduation (floor on coins) | Info | By design, economically negligible; graduation tests check pool price vs curve price for both token orders and 6/18 decimals. |
 

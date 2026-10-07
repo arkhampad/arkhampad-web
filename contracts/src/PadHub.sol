@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {PadCoin} from "./PadCoin.sol";
+import {ArkhamPadCoin} from "./PadCoin.sol";
 import {FeeMode} from "./PadTypes.sol";
 import {IPadPoolBuilder} from "./interfaces.sol";
 
@@ -139,7 +139,7 @@ contract PadHub is ReentrancyGuard {
         if (launchUsdc < minLaunchBuy || launchUsdc == 0) revert LaunchBuyTooSmall(minLaunchBuy);
 
         // The whole supply is minted to the pool builder, which puts it all into the pool.
-        coin = address(new PadCoin(name, symbol, metadataURI, SUPPLY, address(poolBuilder), creator, lockSeconds));
+        coin = address(new ArkhamPadCoin(name, symbol, metadataURI, SUPPLY, address(poolBuilder), creator, lockSeconds));
         isCoin[coin] = true;
         allCoins.push(coin);
         emit CoinCreated(coin, creator, name, symbol, metadataURI, lockSeconds, feeMode);
