@@ -81,3 +81,30 @@ export async function onRequestPost({ request, env }) {
   if (env.AI) return json({ error: "AI is busy right now. Try again in a few seconds, or fill in the details yourself." }, 503);
   return json({ options: fallback(idea), ai: false });
 }
+
+// GET /api/ideas?test=1 — diagnostics (temporary): tries every text model and one image
+// model with a tiny request and reports what each one answered. No user data involved.
+export async function onRequestGet({ request, env }) {
+  const u = new URL(request.url);
+  if (u.searchParams.get("test") !== "1") return json({ error: "not found" }, 404);
+  const out = { binding: !!(env.AI && typeof env.AI.run === "function"), text: [], image: null };
+  if (!out.binding) return json(out);
+  for (const model of MODELS) {
+    const t0 = Date.now();
+    try {
+      const r = await env.AI.run(model, { messages: [{ role: "user", content: 'Reply with JSON only: {"ok":true}' }], max_tokens: 30 });
+      const text = typeof r?.response === "string" ? r.response : JSON.stringify(r?.response ?? r);
+      out.text.push({ model, ok: true, ms: Date.now() - t0, reply: String(text).slice(0, 80) });
+    } catch (e) {
+      out.text.push({ model, ok: false, ms: Date.now() - t0, error: String(e?.message || e).slice(0, 200) });
+    }
+  }
+  const t1 = Date.now();
+  try {
+    const r = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt: "a small green frog, cartoon", steps: 2, seed: 7 });
+    out.image = { model: "flux-1-schnell", ok: !!(r && (r.image || r.length)), ms: Date.now() - t1 };
+  } catch (e) {
+    out.image = { model: "flux-1-schnell", ok: false, ms: Date.now() - t1, error: String(e?.message || e).slice(0, 200) };
+  }
+  return json(out);
+}

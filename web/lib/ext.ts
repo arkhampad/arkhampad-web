@@ -5,10 +5,11 @@ import { createPublicClient, domainSeparator, http, parseAbi, type Address, type
 import { TradeError, netFee, type Signer } from "./chain";
 
 type ExtNet = { id: number; slug: string; usdc: Address; usdcDecimals: number; rpc: string; swap: Address | null; permitUsdc: boolean };
+// NEXT_PUBLIC_* values reach the browser only when written as literal process.env.NAME
 const env = (k: string) => (process.env as Record<string, string | undefined>)[k] || "";
 export const EXT_NETS: ExtNet[] = [
-  { id: 8453, slug: "base", usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", usdcDecimals: 6, rpc: "https://mainnet.base.org", swap: (env("NEXT_PUBLIC_EXT_SWAP_8453") || null) as Address | null, permitUsdc: true },
-  { id: 56, slug: "bsc", usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", usdcDecimals: 18, rpc: "https://bsc-dataseed.bnbchain.org", swap: (env("NEXT_PUBLIC_EXT_SWAP_56") || null) as Address | null, permitUsdc: false },
+  { id: 8453, slug: "base", usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", usdcDecimals: 6, rpc: "https://mainnet.base.org", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_8453 || null) as Address | null, permitUsdc: true },
+  { id: 56, slug: "bsc", usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", usdcDecimals: 18, rpc: "https://bsc-dataseed.bnbchain.org", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_56 || null) as Address | null, permitUsdc: false },
 ];
 export const extNet = (chainId: number) => EXT_NETS.find((n) => n.id === chainId) ?? null;
 /** Can this coin be traded here right now? (needs PadExtSwap on its network = mainnet) */
@@ -47,7 +48,7 @@ export async function extBalance(chainId: number, token: Address, who: Address) 
   return pub(n).readContract({ address: token, abi: ERC, functionName: "balanceOf", args: [who] }).catch(() => 0n);
 }
 
-const RELAYER = env("NEXT_PUBLIC_RELAYER_URL") || "https://arkhampad-web-production.up.railway.app";
+const RELAYER = process.env.NEXT_PUBLIC_RELAYER_URL || "https://arkhampad-web-production.up.railway.app";
 async function relay(body: Record<string, unknown>) {
   const r = await fetch(`${RELAYER}/relay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
   const j = r ? await r.json().catch(() => ({})) : {};
