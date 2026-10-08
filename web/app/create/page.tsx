@@ -116,7 +116,7 @@ function CreateView() {
   const me = w.address?.toLowerCase() ?? "";
   const coinUrl = done ? `https://arkhampad.com/coin/?c=${done.chainId}-${done.coin}${me ? `&ref=${me}` : ""}` : "";
   const dexUrl = done && DEX_SLUG[done.chainId] ? `https://dexscreener.com/${DEX_SLUG[done.chainId]}/${done.coin}` : "";
-  const shareObj: ShareCoin = { name, tick, chain, mc: "$450", chg: 0, address: ca, id: done ? `${done.chainId}-${done.coin.toLowerCase()}` : "", c1: o.c1, c2: o.c2, own: true };
+  const shareObj: ShareCoin = { name, tick, chain, mc: LIVE ? "$2K" : "$450", chg: 0, address: ca, id: done ? `${done.chainId}-${done.coin.toLowerCase()}` : "", c1: o.c1, c2: o.c2, own: true };
   const post = coinText(shareObj, { launched: true }).replace(/\nMarket cap.*\n/, "\n") + (desc ? `\n\n${desc.trim().slice(0, 140)}` : "") + (dexUrl ? `\n\nChart: ${dexUrl}` : "");
   const [cardUrl, setCardUrl] = useState<string | null>(null);
   useEffect(() => {
