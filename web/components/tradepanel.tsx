@@ -5,7 +5,7 @@ import type { Address } from "viem";
 import { IBell, IShare } from "./icons";
 import { useApp } from "./shell";
 import { useWallet } from "./wallet";
-import { lastFee, warmFees, buy, fromCoin, fromUsdc, onLocalTrade, placeOrder, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError, type OrderKind } from "@/lib/chain";
+import { lastFee, warmFees, buy, fromCoin, fromUsdc, onLocalTrade, placeOrder, poolBuy, poolSell, quoteBuy, quotePool, quoteSell, sell, tokenBalance, toUsdc, TradeError, type OrderKind, LIVE } from "@/lib/chain";
 import { refreshOrders } from "./orders";
 import { ProfitSheet } from "./profit";
 import { positionPnl } from "@/lib/pnl";
@@ -203,7 +203,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       {side === "buy" ? (
         <>
           <label htmlFor={`amt-${coin.id}`} style={{ fontSize: 13, display: "flex", justifyContent: "space-between" }} className="dim"><span>Amount</span><span>Cash <b className="mono" style={{ color: "var(--text)" }}>${cash.toFixed(2)}</b></span></label>
-          {coin.own && w.signedIn && cash < 1 && <button type="button" className="btn volt sm" onClick={() => openFunds("deposit")}>Get free test USDC</button>}
+          {coin.own && w.signedIn && cash < 1 && <button type="button" className="btn volt sm" onClick={() => openFunds("deposit")}>{LIVE ? "Add USDC" : "Get free test USDC"}</button>}
           <div className="tp-amt" style={{ display: "flex", alignItems: "center", height: 60, padding: "0 16px", borderRadius: 14, background: "var(--bg)", border: "1px solid var(--line3)" }}>
             <span className="mono dim" style={{ fontWeight: 700, fontSize: 26 }}>$</span>
             <input id={`amt-${coin.id}`} inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} style={{ flex: 1, minWidth: 0, background: "transparent", border: 0, outline: "none", font: "700 26px var(--mono)", paddingLeft: 4 }} />
@@ -226,7 +226,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       {coin.own && launchFee.live && launchFee.fee !== null && (
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Fee right now</span><b className="mono" style={{ color: "var(--burn)" }}>{launchFee.fee.toFixed(1)}%</b></div>
       )}
-      {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>Trades in its locked Uniswap pool · Testnet · test USDC has no value</span>}
+      {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{LIVE ? "Trades in its locked Uniswap pool" : "Trades in its locked Uniswap pool · Testnet · test USDC has no value"}</span>}
       <div style={{ display: "flex", gap: 8 }}>
         <span style={{ flex: 1, display: "flex" }}><PriceAlertButton c={coin} className="btn ghost sm grow" /></span>
         <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={onShare}><IShare size={15} />Share</button>

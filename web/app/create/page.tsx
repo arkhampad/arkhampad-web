@@ -8,7 +8,7 @@ import { useApp } from "@/components/shell";
 import { Confetti } from "@/components/celebrate";
 import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCoin } from "@/lib/share";
 import { useWallet } from "@/components/wallet";
-import { lastFee, warmFees, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage } from "@/lib/chain";
+import { lastFee, warmFees, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage, LIVE } from "@/lib/chain";
 
 const PALETTE = [["#1B1F6B", "#7C5CFF"], ["#0B3B2E", "#2BB38A"], ["#3B1B0B", "#FF8A3D"]];
 const OPTS0 = [
@@ -135,7 +135,7 @@ function CreateView() {
     if (!/^[A-Z0-9]{1,10}$/.test(tk)) return toast("Ticker must be 1 to 10 letters or numbers.");
     if (desc.length > 280) return toast("Keep the description under 280 characters.");
     if (!(first >= 5)) return toast("Your first buy must be at least $5.");
-    if (cash < need) { toast(`You need $${need.toFixed(2)} USDC on ${chain}. Add test USDC first.`); openFunds("deposit"); return; }
+    if (cash < need) { toast(`You need $${need.toFixed(2)} USDC on ${chain}. ${LIVE ? "Add USDC first." : "Add test USDC first."}`); openFunds("deposit"); return; }
     const meta = JSON.stringify({ description: desc.trim().slice(0, 280), x: xUrl.trim().slice(0, 100) || undefined, telegram: tgUrl.trim().slice(0, 100) || undefined, website: webUrl.trim().slice(0, 100) || undefined, art: { c1: o.c1, c2: o.c2 } });
     const metadataURI = `data:application/json;base64,${btoa(unescape(encodeURIComponent(meta)))}`;
     try {
@@ -329,7 +329,9 @@ function CreateView() {
                 </div>
               </div>
               <div className="cr-facts">
-                <span>Opens at a <b className="mono">$450</b> market cap in a Uniswap pool <span className="dim">(testnet; $4.5K on mainnet)</span></span>
+                {LIVE
+                  ? <span>Opens at a <b className="mono">$2K</b> market cap in a locked Uniswap pool</span>
+                  : <span>Opens at a <b className="mono">$450</b> market cap in a Uniswap pool <span className="dim">(testnet; $2K on mainnet)</span></span>}
                 <span>Liquidity locked forever. Nobody can pull it, not even us.</span>
                 <span>Tradable in other apps from the first trade.</span>
                 <span>Launch fee protects you from bots: <b className="mono">30%</b> falling to <b className="mono">2%</b> in five minutes.</span>

@@ -18,6 +18,7 @@ const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, lo
 import { ICopy, IShare } from "@/components/icons";
 import { useApp } from "@/components/shell";
 import { DexListed, LaunchFeeCard, PoolCard } from "@/components/v2";
+import { LIVE } from "@/lib/chain";
 
 const IS_MAINNET_CHAIN = (id: number) => id === 8453 || id === 4663 || id === 56;
 
@@ -73,7 +74,7 @@ function CoinView() {
   const up = c.chg >= 0;
   const tradesPanel = (
           <div className="panel">
-              <span style={{ fontWeight: 700 }}>Latest trades{c.own ? " · testnet" : ""} <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· last 5</span></span>
+              <span style={{ fontWeight: 700 }}>Latest trades{c.own && !LIVE ? " · testnet" : ""} <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· last 5</span></span>
               {c.own ? (
                 own === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : own.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span> :
                   own.slice(0, 5).map((t) => (

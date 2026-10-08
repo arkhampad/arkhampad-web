@@ -1,3 +1,4 @@
+import { LIVE } from "@/lib/chain";
 // Help centre: short answers to the questions people ask most, plus the full fee list.
 // Fees are listed only here and in the Terms of Use, never on trade, coin or create screens.
 export type HelpTopic = { id: string; title: string; items: [string, string][] };
@@ -37,7 +38,9 @@ export const help: HelpTopic[] = [
       ["How do I withdraw?", "Tap the account icon, then Withdraw. Enter the amount, choose the network, paste the address and confirm. Check the address twice: transfers can't be reversed."],
       ["Why do I see one balance and not one per chain?", "ArkhamPad shows your total USDC as one cash balance, so you don't have to think about chains before you trade."],
       ["I sent the wrong token or used the wrong network.", "Tokens other than USDC, or USDC on an unsupported network, may be lost. Email us with the transaction link and we'll check what can be done, but we can't promise recovery."],
-      ["Where do I get test USDC?", "On testnet, log in and tap Get test USDC. Test USDC has no value and can't be withdrawn to an exchange."],
+      LIVE
+        ? ["How do I add USDC?", "Log in, tap Add USDC and send USDC to the address shown, on the network shown, from an exchange or another wallet. It shows in your balance within a minute."]
+        : ["Where do I get test USDC?", "On testnet, log in and tap Get test USDC. Test USDC has no value and can't be withdrawn to an exchange."],
       ["Do I need ETH for gas?", "No. Network costs are paid from your USDC balance."],
     ],
   },

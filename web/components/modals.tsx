@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getAddress, isAddress, type Address } from "viem";
-import { NETS, faucet, toUsdc, withdraw } from "@/lib/chain";
+import { NETS, faucet, toUsdc, withdraw, LIVE, NET_NAMES } from "@/lib/chain";
 import { useWallet } from "./wallet";
 import { IAlert, IX } from "./icons";
 import { BrandMark } from "./bits";
@@ -78,7 +78,7 @@ export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdra
             <span className="mono" style={{ fontSize: 13, wordBreak: "break-all", textAlign: "center" }}>{w.address}</span>
             <button type="button" className="btn sm" onClick={copy}>Copy address</button>
           </div>
-          <div className="warn-note"><IAlert size={16} color="var(--warn)" /><span>Send only <b>USDC</b> on <b>{n.name}</b> to this address. This is a test network: test USDC has no value.</span></div>
+          <div className="warn-note"><IAlert size={16} color="var(--warn)" /><span>Send only <b>USDC</b> on <b>{n.name}</b> to this address.{LIVE ? " Other tokens or networks can be lost." : " This is a test network: test USDC has no value."}</span></div>
           {n.faucet ? <button type="button" className="btn volt lg" disabled={busy} onClick={getTest}>{busy ? "Sending…" : "Get 100 test USDC"}</button>
             : n.faucetUrl ? <a className="btn volt lg" href={n.faucetUrl} target="_blank" rel="noopener noreferrer">Get test USDC from Circle ↗</a> : null}
           {!n.faucet && n.faucetUrl && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>On the Circle page pick <b>{n.name}</b>, paste your address above, and request USDC.</span>}
@@ -103,9 +103,11 @@ export function WelcomeModal({ onClose }: { onClose: () => void }) {
       <div style={{ display: "flex", justifyContent: "flex-end" }}><Close onClose={onClose} /></div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, marginTop: -18 }}>
         <BrandMark size={56} />
-        <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt-ink)", fontWeight: 800, fontSize: 13 }}><span className="dot" style={{ background: "var(--volt)" }} />Testnet live</span>
-        <h2 style={{ margin: 0, fontSize: 34, fontWeight: 900, letterSpacing: -1, lineHeight: 1.05 }}>Testnet is open</h2>
-        <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>Sign in, get free test USDC and try launching and trading coins with no risk. Mainnet is coming soon: follow <b style={{ color: "var(--text)" }}>@Arkhampad</b> on X so you don&apos;t miss it.</p>
+        <span className="pill" style={{ background: "rgba(212,255,58,0.12)", color: "var(--volt-ink)", fontWeight: 800, fontSize: 13 }}><span className="dot" style={{ background: "var(--volt)" }} />{LIVE ? `Live on ${NET_NAMES}` : "Testnet live"}</span>
+        <h2 style={{ margin: 0, fontSize: 34, fontWeight: 900, letterSpacing: -1, lineHeight: 1.05 }}>{LIVE ? "ArkhamPad is live" : "Testnet is open"}</h2>
+        {LIVE
+          ? <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>Launch a coin in seconds. It opens straight into a locked Uniswap pool and shows on DexScreener right away. Follow <b style={{ color: "var(--text)" }}>@Arkhampad</b> on X for new launches.</p>
+          : <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>Sign in, get free test USDC and try launching and trading coins with no risk. Mainnet is coming soon: follow <b style={{ color: "var(--text)" }}>@Arkhampad</b> on X so you don&apos;t miss it.</p>}
       </div>
       <a className="btn white lg" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" onClick={onClose}><IX size={16} color="#0A0B10" w={2.4} />Follow @Arkhampad on X</a>
       <button type="button" className="btn lg" onClick={onClose}>Start exploring</button>

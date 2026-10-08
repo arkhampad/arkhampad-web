@@ -16,12 +16,11 @@ import { useInbox } from "./alerts";
 import { RefLinker } from "./community";
 import { useRouter } from "next/navigation";
 import { findByAddress } from "@/lib/live";
-import { NETS } from "@/lib/chain";
+import { NETS, LIVE, NET_NAMES } from "@/lib/chain";
 
 type Ctx = { openLogin: () => void; openFunds: (t: "deposit" | "withdraw") => void; toast: (m: string) => void; loggedIn: boolean };
 const AppCtx = createContext<Ctx>({ openLogin: () => {}, openFunds: () => {}, toast: () => {}, loggedIn: false });
 // a mainnet network in the list (Robinhood Chain, Base or BNB) -> the top strip says we are live
-const LIVE = NETS.some((n) => [4663, 8453, 56].includes(n.id));
 
 export const useApp = () => useContext(AppCtx);
 
@@ -179,7 +178,7 @@ function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void
   return (
     <span ref={box} style={{ position: "relative", display: "flex", gap: 8 }}>
       {w.totalUsdc < 1
-        ? <button type="button" className="btn volt" onClick={() => openFunds("deposit")} style={{ height: 44, padding: "0 14px" }}>Get test USDC</button>
+        ? <button type="button" className="btn volt" onClick={() => openFunds("deposit")} style={{ height: 44, padding: "0 14px" }}>{LIVE ? "Add USDC" : "Get test USDC"}</button>
         : <button type="button" className="bal" onClick={() => openFunds("deposit")} aria-label="Balance and deposit">${w.totalUsdc.toFixed(2)}<span className="hide-m" style={{ color: "var(--volt-ink)", fontFamily: "var(--sans)", fontSize: 13 }}>+ Deposit</span></button>}
       <button type="button" className="icon-btn acct-btn" aria-label="Account menu" aria-expanded={open} onClick={() => setOpen(!open)}>
         {me?.avatar ? <img src={me.avatar} alt="" /> : <span className="acct-av" style={{ background: `linear-gradient(135deg, ${traderColors(w.address ?? "0x00")[0]}, ${traderColors(w.address ?? "0x00")[1]})` }}>{(me?.name || w.address?.slice(2, 4) || "").slice(0, 2).toUpperCase()}</span>}
@@ -218,7 +217,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <AppCtx.Provider value={ctx}>
-      <a className="testnet-strip" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--on-volt)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}>{LIVE ? <><span className="hide-m">Live on Robinhood Chain and Base · Follow @Arkhampad →</span><span className="show-m">Live on Robinhood and Base · Follow @Arkhampad →</span></> : <><span className="hide-m">Testnet is open: trade with free test USDC · Mainnet soon · Follow @Arkhampad →</span><span className="show-m">Testnet open · free test USDC · Follow @Arkhampad →</span></>}</a>
+      <a className="testnet-strip" href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer" style={{ display: "block", background: "var(--volt)", color: "var(--on-volt)", textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}>{LIVE ? <><span className="hide-m">Live on {NET_NAMES} · Follow @Arkhampad →</span><span className="show-m">Live on {NET_NAMES} · Follow @Arkhampad →</span></> : <><span className="hide-m">Testnet is open: trade with free test USDC · Mainnet soon · Follow @Arkhampad →</span><span className="show-m">Testnet open · free test USDC · Follow @Arkhampad →</span></>}</a>
       <Ticker />
       <header className="hdr">
         <div className="wrap hdr-in">

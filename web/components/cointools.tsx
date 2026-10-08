@@ -5,7 +5,7 @@ import type { Address } from "viem";
 import { useApp } from "./shell";
 import { useSafety } from "@/lib/safety";
 import { useWallet } from "./wallet";
-import { NETS, TradeError, collectPoolFees, promote, runBuyback, uploadCoinImage } from "@/lib/chain";
+import { NETS, TradeError, collectPoolFees, promote, runBuyback, uploadCoinImage, LIVE } from "@/lib/chain";
 import { short, usd, type LiveCoin } from "@/lib/live";
 
 /** Turns what a creator typed (handle, bare domain, full link) into a safe https link. */
@@ -116,7 +116,7 @@ export function PromoteButton({ c }: { c: LiveCoin }) {
               {PLANS.map((p) => <button key={p.id} type="button" className={`seg${plan === p.id ? " on" : ""}`} style={{ height: 64, flexDirection: "column", gap: 2 }} onClick={() => setPlan(p.id)}><b className="mono">${p.price}</b><span style={{ fontSize: 11 }}>{p.label}</span></button>)}
             </div>
             <button type="button" className="btn volt lg" disabled={busy} onClick={go}>{busy ? "Promoting…" : w.signedIn ? `Promote for $${PLANS.find((p) => p.id === plan)!.price}` : "Log in to promote"}</button>
-            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>Testnet · paid with test USDC</span>
+            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{LIVE ? "Paid in USDC" : "Testnet · paid with test USDC"}</span>
             <button type="button" className="btn ghost" onClick={() => setOpen(false)}>Close</button>
           </div>
         </div>

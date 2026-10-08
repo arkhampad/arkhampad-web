@@ -11,7 +11,7 @@ import { ProfileHead } from "@/components/profilehead";
 import { ProfitSheet } from "@/components/profit";
 import { positionPnl } from "@/lib/pnl";
 import type { Pnl } from "@/lib/share";
-import { NETS, fromCoin, onLocalTrade, tokenBalance } from "@/lib/chain";
+import { NETS, fromCoin, onLocalTrade, tokenBalance, LIVE } from "@/lib/chain";
 import { db, fromOwn, usd, short, type LiveCoin } from "@/lib/live";
 
 type Holding = { coin: LiveCoin; amount: number; value: number };
@@ -65,7 +65,7 @@ export default function Profile() {
     <div className="wrap page" style={{ maxWidth: 1100 }}>
       <ProfileHead />
       <div className="card" style={{ gap: 14, borderRadius: 22 }}>
-        <span className="dim" style={{ fontSize: 13 }}>Total balance (testnet)</span>
+        <span className="dim" style={{ fontSize: 13 }}>{LIVE ? "Total balance" : "Total balance (testnet)"}</span>
         <span className="mono" style={{ fontSize: 38, fontWeight: 900, letterSpacing: -1 }}>${(w.totalUsdc + coinsValue).toFixed(2)}</span>
         <div className="grid2 keep" style={{ gap: 10 }}>
           <div className="card" style={{ padding: 12, gap: 2, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>Cash (USDC)</span><b className="mono">${w.totalUsdc.toFixed(2)}</b></div>

@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useWallet } from "@/components/wallet";
 import { useApp } from "@/components/shell";
 import { FinderBar, FinderResults, useFinder } from "@/components/finder";
+import { LIVE, NET_NAMES } from "@/lib/chain";
 
 const TABS: Tab[] = ["Trending", "New", "Launched here", "Gainers", "Top volume", "Losers"];
 const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB", "Arc"];
@@ -91,7 +92,7 @@ export default function Discover() {
             <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
               <span className="dim" style={{ fontSize: 13 }}>Total balance</span>
               <b className="mono m-bal-v">${Math.floor(w.totalUsdc).toLocaleString("en-US")}<span>.{(w.totalUsdc % 1).toFixed(2).slice(2)}</span></b>
-              <span className="dim" style={{ fontSize: 12 }}>Test USDC on Robinhood and Base</span>
+              <span className="dim" style={{ fontSize: 12 }}>{LIVE ? `USDC on ${NET_NAMES}` : "Test USDC on Robinhood and Base"}</span>
             </span>
             <button type="button" className="btn volt" style={{ height: 40, padding: "0 20px" }} onClick={() => openFunds("deposit")}>Deposit</button>
           </>
@@ -150,7 +151,7 @@ export default function Discover() {
           <div className="ttabs"><ScrollTabs gap={0}>{TABS.map((t) => <button key={t} type="button" className={`ttab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</ScrollTabs></div>
           <ScrollTabs gap={6}>{CATS.map((t) => <button key={t} type="button" className={`chip sm${cat === t ? " on" : ""}`} onClick={() => setCat(t)}>{t}</button>)}</ScrollTabs>
           {tab === "Launched here" && (
-            <div className="dim" style={{ fontSize: 13 }}>Coins launched on ArkhamPad. Each one trades in its own locked Uniswap pool from the first second. We are on testnet now: these are test coins with test money.</div>
+            <div className="dim" style={{ fontSize: 13 }}>Coins launched on ArkhamPad. Each one trades in its own locked Uniswap pool from the first second.{LIVE ? "" : " We are on testnet now: these are test coins with test money."}</div>
           )}
           {list === null ? <Skeleton /> : list.length === 0 ? (
             <div className="card" style={{ alignItems: "center", textAlign: "center", padding: 28 }}>
@@ -161,14 +162,14 @@ export default function Discover() {
             <CoinTickets list={list} />
           )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-            <span className="dim" style={{ fontSize: 13 }}>Coins from other DEXs are shown for discovery. Trading them here opens on mainnet.</span>
+            <span className="dim" style={{ fontSize: 13 }}>{LIVE ? "Coins from other DEXs: buy and sell them here with your USDC." : "Coins from other DEXs are shown for discovery. Trading them here opens on mainnet."}</span>
             {more && list && list.length > 0 && <button type="button" className="btn" disabled={busy} onClick={() => load(list.length)}>{busy ? "Loading…" : "Load more"}</button>}
           </div>
           </>}
         </div>
         <aside className="side-col">
           <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700 }}>Live trades <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>· testnet</span></span><span className="mono up" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600 }}><span className="dot" style={{ background: "var(--up)" }} />Live</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontWeight: 700 }}>Live trades <span className="dim" style={{ fontWeight: 500, fontSize: 12 }}>{LIVE ? "" : "· testnet"}</span></span><span className="mono up" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600 }}><span className="dot" style={{ background: "var(--up)" }} />Live</span></div>
             {live.data && live.data.length === 0 && <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span>}
             {(live.data ?? []).map((t) => (
               <Link key={t.id} href={`/coin/?c=${t.chainId}-${t.coin}`} className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--muted)" }}><span><span style={{ color: "var(--text)" }}>{t.who}</span> {t.act}</span><span><span className={t.up ? "up" : "down"}>{t.amt}</span> {t.tick} <span style={{ color: "var(--faint)" }}>{ago(t.ts)}</span></span></Link>

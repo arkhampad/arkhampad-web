@@ -22,6 +22,10 @@ const DEFAULT_NETS: Net[] = [
 ];
 // Local test builds can point everything at a local chain.
 export const NETS: Net[] = process.env.NEXT_PUBLIC_NETS ? JSON.parse(process.env.NEXT_PUBLIC_NETS) : DEFAULT_NETS;
+/** True once the site runs on real networks (mainnet chains configured): no test money anywhere. */
+export const LIVE = NETS.some((n) => [4663, 8453, 56].includes(n.id));
+/** "Base", "Robinhood and Base"... for copy. */
+export const NET_NAMES = NETS.map((n) => n.short).join(" and ");
 export const netOf = (id: number) => NETS.find((n) => n.id === id) ?? null;
 export const viemChain = (id: number) => (id === 84532 ? baseSepolia : id === 46630 ? robinhoodTestnet : defineChain({ id, name: `chain ${id}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [netOf(id)?.rpc ?? ""] } } }));
 

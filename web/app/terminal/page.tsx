@@ -10,6 +10,7 @@ import { TradePanel } from "@/components/tradepanel";
 import { IDown, ISearch, IX } from "@/components/icons";
 import { ScrollTabs } from "@/components/scrolltabs";
 import { getCoin, listCoins, useCoinMarket, useLive, ago, short, shareCoin, prepareCard, type LiveCoin, type Tab } from "@/lib/live";
+import { LIVE } from "@/lib/chain";
 
 const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 300, borderRadius: 12 }} /> });
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 300, borderRadius: 12 }} /> });
@@ -87,7 +88,7 @@ function TerminalView() {
 
   const trades = (
     <div className="panel trades-few" style={{ padding: 12, gap: 6 }}>
-      <span style={{ fontWeight: 700, fontSize: 14 }}>Latest trades{c?.own ? " · testnet" : ""}</span>
+      <span style={{ fontWeight: 700, fontSize: 14 }}>Latest trades{c?.own && !LIVE ? " · testnet" : ""}</span>
       {c?.own ? (
         m.own === null ? <div className="skel" style={{ height: 120, borderRadius: 12 }} /> : m.own.length === 0 ? <span className="dim" style={{ fontSize: 13 }}>No trades yet.</span> :
           m.own.slice(0, 12).map((t) => (
@@ -123,7 +124,7 @@ function TerminalView() {
               <Avatar name={c.name} c1={c.c1} c2={c.c2} size={38} img={c.image} />
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                 <Link href={`/coin/?c=${c.id}`} style={{ fontWeight: 800, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name} <span className="mono dim" style={{ fontWeight: 600, fontSize: 12 }}>{c.tick}</span></Link>
-                <span className="mono dim" style={{ fontSize: 11 }}>{c.chain}{c.own ? " testnet" : ""} · {short(c.address)} · {c.age}</span>
+                <span className="mono dim" style={{ fontSize: 11 }}>{c.chain}{c.own && !LIVE ? " testnet" : ""} · {short(c.address)} · {c.age}</span>
               </span>
             </span>
             <span className="term-stats">
@@ -148,7 +149,7 @@ function TerminalView() {
         {c && mobile && below === "about" && (
           <div className="panel" style={{ padding: 12, gap: 8, fontSize: 13 }}>
             <Link href={`/coin/?c=${c.id}`} className="volt" style={{ fontWeight: 700 }}>Open the full {c.tick} page →</Link>
-            <span className="mono dim">{c.chain}{c.own ? " testnet" : ""} · {short(c.address)} · {c.age} old</span>
+            <span className="mono dim">{c.chain}{c.own && !LIVE ? " testnet" : ""} · {short(c.address)} · {c.age} old</span>
           </div>
         )}
       </section>

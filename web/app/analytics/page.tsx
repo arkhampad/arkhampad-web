@@ -5,6 +5,7 @@ import { Avatar } from "@/components/bits";
 import { Bars } from "@/components/charts";
 import { usd, useLive } from "@/lib/live";
 import { dailySeries, dayRecap, platformStats } from "@/lib/insights";
+import { LIVE } from "@/lib/chain";
 
 const Kpi = ({ k, v, d }: { k: string; v: string; d?: string }) => (
   <div className="card" style={{ borderRadius: 18, padding: 16, gap: 6 }}><span className="dim" style={{ fontSize: 12 }}>{k}</span><span className="mono" style={{ fontSize: 24, fontWeight: 800 }}>{v}</span>{d && <span className="dim" style={{ fontSize: 12 }}>{d}</span>}</div>
@@ -21,7 +22,7 @@ export default function Analytics() {
   return (
     <div className="wrap page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><h1 className="h-title" style={{ fontSize: "clamp(26px, 4vw, 40px)" }}>Analytics</h1><span className="h-sub" style={{ fontSize: 14 }}>Live numbers from every trade on ArkhamPad. Testnet.</span></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><h1 className="h-title" style={{ fontSize: "clamp(26px, 4vw, 40px)" }}>Analytics</h1><span className="h-sub" style={{ fontSize: 14 }}>Live numbers from every trade on ArkhamPad.{LIVE ? "" : " Testnet."}</span></div>
         <div style={{ display: "flex", gap: 6 }}>{[7, 30, 90].map((v) => <button key={v} type="button" className={`chip sm${days === v ? " on" : ""}`} onClick={() => setDays(v)}>{v}d</button>)}</div>
       </div>
       <div className="grid4" style={{ gap: 10 }}>

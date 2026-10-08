@@ -1,3 +1,4 @@
+import { LIVE } from "@/lib/chain";
 // Learn articles. Written for people first, structured for search and AI answers:
 // a short "In short" answer, simple sections and a FAQ. Reading time is worked out
 // from the text, so it stays right when an article changes.
@@ -36,7 +37,7 @@ const raw: Raw[] = [
     short: "Tap Log in and choose Google, email, X or your own wallet. If you don't connect a wallet, a secure one is created for your account automatically, so you can start in seconds.",
     sections: [
       ["Which login to choose", "Use the account you are least likely to lose. Google and email are the easiest for most people. X is handy if you already share coins there. Connect a wallet if you prefer to manage your own keys."],
-      ["What happens after you log in", "You get one account with one cash balance. On testnet you can tap Get test USDC to receive free test money and try everything without risk."],
+      ["What happens after you log in", "You get one account with one cash balance." + (LIVE ? "" : " On testnet you can tap Get test USDC to receive free test money and try everything without risk.")],
       ["Using more than one device", "Log in with the same method on your phone and computer and you will see the same balance, coins and alerts."],
     ],
     faq: [["Do I need to write down a seed phrase?", "Not when you log in with Google, email or X. If you connect your own wallet, keep that wallet's recovery phrase safe as usual."], ["Can I change my login method later?", "Keep using the method you signed up with. A different method creates a different account and a different balance."]],
@@ -246,7 +247,7 @@ const raw: Raw[] = [
     slug: "how-to-buy-a-meme-coin", cat: "trading", title: "How to buy a meme coin with USDC", desc: "Deposit, pick a coin and buy in one tap.",
     short: "Deposit USDC, open the coin you want, type an amount in dollars and tap Buy. On ArkhamPad you don't need a gas token or a separate wallet app.",
     sections: [
-      ["1. Add USDC", "Tap Deposit and send USDC on the network shown, from an exchange or another wallet. On testnet, tap Get test USDC instead."],
+      ["1. Add USDC", "Tap Deposit and send USDC on the network shown, from an exchange or another wallet." + (LIVE ? "" : " On testnet, tap Get test USDC instead.")],
       ["2. Find the coin", "Use Discover, the search bar or paste a contract address. Always check the contract address if someone shared the coin with you."],
       ["3. Buy", "Enter an amount, check the estimate of coins you'll receive and tap Buy. Your coins show up in your profile."],
     ],
@@ -424,7 +425,7 @@ const raw: Raw[] = [
     short: "Discover doesn't only show coins launched on ArkhamPad. It also lists thousands of coins trading on other DEXs, with prices, charts and volume, so you can find everything in one place.",
     sections: [
       ["Why list them", "Traders don't want to switch sites. One list with new launches and established coins saves time."],
-      ["Trading them", "On mainnet you buy and sell them with the same trade panel and your USDC. On testnet you can browse them and see their charts."],
+      ["Trading them", "On mainnet you buy and sell them with the same trade panel and your USDC." + (LIVE ? "" : " On testnet you can browse them and see their charts.")],
       ["Check before you buy", "These coins weren't launched on ArkhamPad. Always check the contract address and the coin's history."],
     ],
     faq: [["Can I promote a coin from another DEX?", "Yes. Anyone can promote any coin listed on ArkhamPad."]],
@@ -694,5 +695,5 @@ const words = (g: Raw) => [g.short, ...g.sections.flat(), ...g.faq.flat()].join(
 /** Reading time at a relaxed 180 words a minute, never under 2 minutes. */
 export const readTime = (g: Raw) => `${Math.max(2, Math.round(words(g) / 180) + 1)} min`;
 
-export const guides: (Guide & { read: string })[] = raw.map((g, i) => ({ ...g, c1: P[i % P.length][0], c2: P[i % P.length][1], read: readTime(g) }));
+export const guides: (Guide & { read: string })[] = raw.filter((g) => !(LIVE && g.slug === "testnet-explained")).map((g, i) => ({ ...g, c1: P[i % P.length][0], c2: P[i % P.length][1], read: readTime(g) }));
 export const guideBySlug = (slug: string) => guides.find((g) => g.slug === slug);

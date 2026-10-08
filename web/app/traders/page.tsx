@@ -6,6 +6,7 @@ import { CopyButton, FollowButton } from "@/components/social";
 import { useWallet } from "@/components/wallet";
 import { ago, short, usd, useLive } from "@/lib/live";
 import { board, copyAmount, feedOf, setCopyAmount, traderColors, useFollowing, type TraderRow } from "@/lib/traders";
+import { LIVE } from "@/lib/chain";
 
 const RANGES: [string, number][] = [["24h", 1], ["7d", 7], ["30d", 30], ["All time", 0]];
 const SORTS = ["Profit", "ROI", "Win rate", "Volume", "Followers"] as const;
@@ -81,7 +82,7 @@ export default function Traders() {
             <span style={{ fontWeight: 700 }}>Copy in one tap</span>
             <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>When someone you follow buys, you get an alert with a Copy button. Pick how much each copy buys:</span>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{[10, 25, 50, 100].map((v) => <button key={v} type="button" className={`seg mono${amt === v ? " on" : ""}`} style={{ minWidth: 0 }} onClick={() => { setAmt(v); setCopyAmount(v); }}>${v}</button>)}</div>
-            <span style={{ fontSize: 11, color: "var(--faint)" }}>Testnet · copies use test USDC</span>
+            <span style={{ fontSize: 11, color: "var(--faint)" }}>{LIVE ? "Copies use your USDC" : "Testnet · copies use test USDC"}</span>
           </div>
         </aside>
       </div>
