@@ -75,9 +75,12 @@ jobs:
             echo "id=4663" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Build
+        run: forge build
+
       - name: Tests (must pass before anything is sent)
         if: ${{ inputs.verify_coin == '' }}
-        run: forge test --no-match-path "test/LaunchFork.t.sol"
+        run: forge test --no-match-path "test/*Fork.t.sol"
 
       - name: Deploy
         if: ${{ inputs.verify_coin == '' }}
