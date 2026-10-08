@@ -117,7 +117,11 @@ export async function extTrade(chainId: number, coin: Address, side: "buy" | "se
   const data = b.data.data as Hex;
   const target = b.data.routerAddress as Address;
   const extra = await ensurePermit(n, s, isBuy ? n.usdc : coin, isBuy ? amount + NET_FEE : amount);
-  const FEE = NET_FEE + extra; // a first-time approval top-up is repaid here, never by ArkhamPad
+  // a first-time approval top-up is repaid here, never by ArkhamPad (the relayer keeps the
+  // amount, so an earlier attempt that stopped half way is still counted exactly once)
+  const owed = await fetch(`${RELAYER}/fee?chainId=${n.id}&kind=extSwap&user=${s.address}`, { cache: "no-store" })
+    .then((r) => r.json()).then((j) => BigInt(String(j?.owed ?? "0"))).catch(() => extra);
+  const FEE = NET_FEE + (owed > extra ? owed : extra);
   const quoted = isBuy ? r.amountOut : r.amountOut - (r.amountOut * FEE_BPS) / 10_000n - FEE;
   const minOut = (quoted * 98n) / 100n;
   const { keccak256 } = await import("viem");

@@ -741,11 +741,13 @@ export function makeRelayer() {
   setInterval(() => { alertTick().catch((e) => log(`alerts error: ${e.message}`)); }, Number(process.env.ALERT_TICK_MS ?? 15_000));
 
   /** Live network fee for one kind of request, in site units (6-decimal dollars). */
-  async function feeQuote(chainId, kind) {
+  async function feeQuote(chainId, kind, user) {
     const n = nets.get(Number(chainId));
     if (!n) throw err("unsupported chain");
     const q = await fees.quote(n, String(kind));
-    return { fee: String(q.raw / 10n ** BigInt(DEC(n) - 6)), usd: q.usd, busy: q.busy };
+    // an approval top-up this user still owes is repaid with their next trade from another DEX
+    const owes = user && /^0x[0-9a-fA-F]{40}$/.test(user) ? (owed.get(`${n.c.chainId}:${user.toLowerCase()}`) ?? 0n) : 0n;
+    return { fee: String(q.raw / 10n ** BigInt(DEC(n) - 6)), usd: q.usd, busy: q.busy, owed: String(owes / 10n ** BigInt(DEC(n) - 6)) };
   }
 
   // Relayer gas: if its ETH (or BNB) runs low, every trade stops. Watched every 5 minutes;
@@ -883,7 +885,7 @@ export function httpHandler(relayer, status) {
     if (url === "/config") return res.end(JSON.stringify(relayer.config()));
     if (url === "/fee" && req.method === "GET") {
       const q = new URL(req.url, "http://x").searchParams;
-      try { res.setHeader("cache-control", "no-store"); return res.end(JSON.stringify(await relayer.feeQuote(q.get("chainId"), q.get("kind") || "buy"))); }
+      try { res.setHeader("cache-control", "no-store"); return res.end(JSON.stringify(await relayer.feeQuote(q.get("chainId"), q.get("kind") || "buy", q.get("user")))); }
       catch (e) { res.statusCode = e.status || 500; return res.end(JSON.stringify({ error: e.status ? e.message : "fee unavailable" })); }
     }
     if (url.startsWith("/img/") && req.method === "GET") {
