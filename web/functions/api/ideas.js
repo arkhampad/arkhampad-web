@@ -1,12 +1,19 @@
 // POST /api/ideas  { idea } -> { options: [{ name, ticker, description }], ai }
 // One sentence in any language becomes three ready meme coins (English), using
 // Cloudflare Workers AI (binding "AI"). Without AI, a simple local generator answers.
-const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
+// Current Workers AI text models, tried in order (Cloudflare retires older ones from time to time).
+const MODELS = [
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "@cf/meta/llama-4-scout-17b-16e-instruct",
+  "@cf/google/gemma-3-12b-it",
+  "@cf/mistralai/mistral-small-3.1-24b-instruct",
+];
 
 const SYSTEM = `You create meme coins. The user describes an idea in any language.
 Reply with JSON only, no other text, exactly:
-{"options":[{"name":"...","ticker":"...","description":"..."},{"name":"...","ticker":"...","description":"..."},{"name":"...","ticker":"...","description":"..."}]}
+{"options":[{"name":"...","ticker":"...","description":"...","picture":"..."},{"name":"...","ticker":"...","description":"...","picture":"..."},{"name":"...","ticker":"...","description":"...","picture":"..."}]}
 Rules: English only. Name: 2-24 characters, catchy. Ticker: 3-6 capital letters A-Z, no numbers. Description: one or two fun sentences, max 140 characters.
+Picture: a vivid 15-30 word art direction for that coin's logo: the main character or object, its pose, colors and style (e.g. "chubby green frog in a gold crown, neon purple background, glossy 3D cartoon"). Each option gets a clearly different picture.
 Three clearly different takes on the idea. No real people, no brands, no promises of profit or price, nothing hateful or sexual.`;
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -16,9 +23,10 @@ export function clean(o) {
   const name = String(o.name ?? "").replace(/[^\p{L}\p{N} .'!&-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 24);
   let ticker = String(o.ticker ?? "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 6);
   const description = String(o.description ?? "").replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 140);
+  const picture = String(o.picture ?? "").replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
   if (ticker.length < 3) ticker = name.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5);
   if (name.length < 2 || ticker.length < 3 || description.length < 8) return null;
-  return { name, ticker, description };
+  return { name, ticker, description, picture };
 }
 
 export function parse(text) {
@@ -69,5 +77,7 @@ export async function onRequestPost({ request, env }) {
       } catch { /* try the next model */ }
     }
   }
+  // No silent repeats: when every model is busy, say so (the form below still works by hand).
+  if (env.AI) return json({ error: "AI is busy right now. Try again in a few seconds, or fill in the details yourself." }, 503);
   return json({ options: fallback(idea), ai: false });
 }

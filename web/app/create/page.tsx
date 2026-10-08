@@ -68,9 +68,9 @@ function CreateView() {
     setPick(i); pickRef.current = i; setName(list[i].name); setTick(list[i].tick); setDesc(list[i].desc);
     if (art && art !== "loading" && art !== "failed") applyArt(art); else { setImgFile(null); setImgPreview(null); }
   };
-  const drawOne = async (i: number, nm: string, ds: string, run: number) => {
+  const drawOne = async (i: number, nm: string, ds: string, run: number, picture?: string) => {
     try {
-      const r = await fetch("/api/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: nm, description: ds }) });
+      const r = await fetch("/api/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: nm, description: ds, picture }) });
       const j = await r.json().catch(() => ({}));
       if (run !== artRun.current) return;
       if (!r.ok || !j.dataUrl) { setArts((a) => a.map((x, k) => (k === i ? "failed" : x))); return; }
@@ -88,13 +88,13 @@ function CreateView() {
       const r = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idea: text }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !Array.isArray(j.options) || !j.options.length) throw new Error(j.error || "AI is busy, please try again.");
-      const list = j.options.slice(0, 3).map((o: { name: string; ticker: string; description: string }, i: number) => ({ name: o.name, tick: o.ticker, desc: o.description, c1: PALETTE[i][0], c2: PALETTE[i][1] }));
+      const list = j.options.slice(0, 3).map((o: { name: string; ticker: string; description: string; picture?: string }, i: number) => ({ name: o.name, tick: o.ticker, desc: o.description, picture: o.picture, c1: PALETTE[i][0], c2: PALETTE[i][1] }));
       setOpts(list);
       setGenerated(true);
       const run = ++artRun.current;
       setArts(["loading", "loading", "loading"]);
       choose(0, list, null);
-      list.forEach((x: { name: string; desc: string }, i: number) => { drawOne(i, x.name, x.desc, run); });
+      list.forEach((x: { name: string; desc: string; picture?: string }, i: number) => { drawOne(i, x.name, x.desc, run, x.picture); });
     } catch (e) { toast((e as Error).message || "AI is busy, please try again."); } finally { setThinking(false); }
   };
   // AI image for the chosen coin

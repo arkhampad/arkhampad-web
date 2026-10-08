@@ -170,7 +170,8 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   };
 
   const modes = ["Market", "Limit", "Auto"];
-  const label = ext && !extLive ? "Opens on mainnet" : !coin.own && !ext ? "Opens on mainnet" : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
+  const soon = LIVE ? `${coin.chain} trading opens soon` : "Opens on mainnet";
+  const label = ext && !extLive ? soon : !coin.own && !ext ? soon : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
     : mode === "Limit" ? `Set limit ${side === "buy" ? "buy" : "sell"}` : mode === "Auto" ? "Set take profit / stop loss" : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
   return (
     <div className="card tp" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
@@ -222,7 +223,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       )}
       {coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable && <BuyWarning text={caution.text} onAck={caution.ack} />}
       {!(coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable) && <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={go} disabled={busy || !tradable} aria-busy={busy} style={{ fontSize: 17, opacity: !tradable ? 0.55 : 1 }}>{label}</button>}
-      {!coin.own && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>{extLive ? "Trades through other DEXs at the best price · 1% fee" : ext ? "Live price from other DEXs. Trading these coins here opens on mainnet." : "This coin trades on another DEX. Trading it here opens on mainnet."}</span>}
+      {!coin.own && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>{extLive ? "Trades through other DEXs at the best price · 1% fee" : LIVE ? `Live price from other DEXs. Trading ${coin.chain} coins here opens soon.` : ext ? "Live price from other DEXs. Trading these coins here opens on mainnet." : "This coin trades on another DEX. Trading it here opens on mainnet."}</span>}
       {coin.own && launchFee.live && launchFee.fee !== null && (
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Fee right now</span><b className="mono" style={{ color: "var(--burn)" }}>{launchFee.fee.toFixed(1)}%</b></div>
       )}

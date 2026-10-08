@@ -9,10 +9,19 @@ function b64(bytes) {
   return btoa(s);
 }
 
-export function prompt(name, description) {
+export const STYLES = [
+  "glossy 3D cartoon render", "clean flat vector illustration", "bold comic book style", "soft pastel kawaii style",
+  "neon synthwave style", "retro pixel art", "thick-outline sticker style", "vibrant claymation look",
+];
+
+function prompt(name, description, picture) {
   const n = String(name ?? "").replace(/[^\p{L}\p{N} .'!&-]/gu, "").slice(0, 24);
   const d = String(description ?? "").replace(/[^\p{L}\p{N} .,'!?&-]/gu, "").slice(0, 160);
-  return `Mascot logo for a meme coin called "${n}". ${d} Single cute character, centered, bold vivid colors, clean flat cartoon illustration, simple solid background, high contrast, no text, no letters, no watermark.`;
+  const p = String(picture ?? "").replace(/[^\p{L}\p{N} .,'!?&-]/gu, "").slice(0, 240);
+  const style = STYLES[Math.floor(Math.random() * STYLES.length)];
+  // the idea's own art direction when the AI wrote one; otherwise built from the name and story
+  const subject = p || `Mascot for a meme coin called "${n}". ${d}`;
+  return `${subject}. Coin logo artwork, one centered subject, ${style}, bold colors, simple background, high contrast, no text, no letters, no watermark.`;
 }
 
 /** Turns any model output (base64 field, bytes, stream) into a data URL, or null. */
@@ -38,7 +47,7 @@ export async function onRequestPost({ request, env }) {
   if (!env.AI) return json({ error: "AI images are not set up on this site yet.", code: "NO_AI_BINDING" }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ error: "bad request" }, 400); }
-  const p = prompt(body.name, body.description);
+  const p = prompt(body.name, body.description, body.picture);
   const seed = Math.floor(Math.random() * 2_000_000_000); // a new picture every time
   const errors = [];
   for (const [model, input] of MODELS) {

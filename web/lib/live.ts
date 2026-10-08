@@ -254,16 +254,21 @@ export async function getCoin(id: string): Promise<LiveCoin | null> {
   const m = id.match(/^(\d+)-(0x[0-9a-fA-F]{40})$/);
   if (!m) return null;
   const chainId = Number(m[1]), address = m[2].toLowerCase();
+  // 1. a coin launched on ArkhamPad
   if (isOwnChain(chainId)) {
     const { data } = await db().from("coin_list").select("*").eq("chain_id", chainId).eq("address", address).maybeSingle();
     if (data) return fromOwn(data as OwnRow);
-    // launched seconds ago: not indexed yet, read it from the chain
+  }
+  // 2. a coin from another DEX (on mainnet both live on the same chains, e.g. Base)
+  const { data: ext } = await db().from("ext_tokens").select("*").eq("chain_id", chainId).eq("address", address).maybeSingle();
+  if (ext) return fromExt(ext as ExtRow);
+  // 3. launched here seconds ago and not indexed yet: read it from the chain
+  if (isOwnChain(chainId)) {
     const { coinFromChain } = await import("./chain");
     const row = await coinFromChain(chainId, address as `0x${string}`).catch(() => null);
     return row ? fromOwn(row as unknown as OwnRow) : null;
   }
-  const { data } = await db().from("ext_tokens").select("*").eq("chain_id", chainId).eq("address", address).maybeSingle();
-  return data ? fromExt(data as ExtRow) : null;
+  return null;
 }
 
 export type LiveTrade = { id: string; who: string; act: "bought" | "sold"; amt: string; tick: string; up: boolean; ts: string; coin: string; chainId: number; usdcNum: number; coins: number };
