@@ -1,6 +1,6 @@
 "use client";
 // On-chain side of ArkhamPad: networks, contract calls, signed (gasless) requests.
-import { createPublicClient, createWalletClient, defineChain, domainSeparator, encodeFunctionData, http, keccak256, parseAbi, parseEventLogs, type Address, type Hex, type PublicClient } from "viem";
+import { createPublicClient, createWalletClient, defineChain, domainSeparator, encodeFunctionData, fallback, http, keccak256, parseAbi, parseEventLogs, type Address, type Hex, type PublicClient } from "viem";
 import { baseSepolia } from "viem/chains";
 
 export const RELAYER = process.env.NEXT_PUBLIC_RELAYER_URL || "https://arkhampad-web-production.up.railway.app";
@@ -13,7 +13,7 @@ export const robinhoodTestnet = defineChain({
   testnet: true,
 });
 
-export type Net = { id: number; name: string; short: string; rpc: string; hub: Address; router: Address; usdc: Address; faucet: boolean; faucetUrl?: string; usdDecimals?: number; approvals?: "permit" | "gas" };
+export type Net = { id: number; name: string; short: string; rpc: string; rpcs?: string[]; hub: Address; router: Address; usdc: Address; faucet: boolean; faucetUrl?: string; usdDecimals?: number; approvals?: "permit" | "gas" };
 
 // Contract addresses come from contracts/deployments/<chainId>.json.
 const DEFAULT_NETS: Net[] = [
@@ -25,13 +25,25 @@ export const NETS: Net[] = process.env.NEXT_PUBLIC_NETS ? JSON.parse(process.env
 export const netOf = (id: number) => NETS.find((n) => n.id === id) ?? null;
 export const viemChain = (id: number) => (id === 84532 ? baseSepolia : id === 46630 ? robinhoodTestnet : defineChain({ id, name: `chain ${id}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [netOf(id)?.rpc ?? ""] } } }));
 
+/** Public backup nodes per chain: used automatically when the main node is slow or down. */
+const BACKUP_RPCS: Record<number, string[]> = {
+  8453: ["https://mainnet.base.org", "https://base-rpc.publicnode.com"],
+  84532: ["https://sepolia.base.org", "https://base-sepolia-rpc.publicnode.com"],
+  56: ["https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"],
+};
+
 const clients = new Map<number, PublicClient>();
 export function client(id: number): PublicClient {
   let c = clients.get(id);
   if (!c) {
     const n = netOf(id);
     if (!n) throw new Error("Unknown network");
-    c = createPublicClient({ chain: viemChain(id), transport: http(n.rpc, { retryCount: 2, timeout: 15_000 }), pollingInterval: 250 }) as PublicClient;
+    // main node first, then backups: a slow or failing node is skipped without the user noticing
+    const urls = [...new Set([n.rpc, ...(n.rpcs ?? []), ...(BACKUP_RPCS[id] ?? [])].filter(Boolean))];
+    const transport = urls.length > 1
+      ? fallback(urls.map((u) => http(u, { retryCount: 1, timeout: 10_000 })), { rank: false, retryCount: 2 })
+      : http(urls[0], { retryCount: 3, timeout: 15_000 });
+    c = createPublicClient({ chain: viemChain(id), transport, pollingInterval: 250 }) as PublicClient;
     clients.set(id, c);
   }
   return c;
@@ -145,18 +157,42 @@ const S = (v: bigint | number) => v.toString();
 // ---------------------------------------------------------------- relayer
 export class TradeError extends Error {}
 
+/** Reads are safe to repeat: when a node doesn't answer, ask again (0.6 s, then 1.5 s) before giving up. */
+export async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  const waits = [600, 1500];
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const m = String((e as { shortMessage?: string; message?: string })?.shortMessage ?? (e as Error)?.message ?? "");
+      const network = /HTTP request failed|timed? ?out|fetch failed|Failed to fetch|429|rate limit|NetworkError/i.test(m) && !/revert/i.test(m);
+      if (!network || i >= tries - 1) throw e;
+      await new Promise((ok) => setTimeout(ok, waits[Math.min(i, waits.length - 1)]));
+    }
+  }
+}
+
 type Relayed = { hash: Hex; status?: string; logs?: { address: Address; data: Hex; topics: Hex[] }[] };
 
 async function relay(body: Record<string, unknown>): Promise<Relayed> {
-  let r: Response;
-  try {
-    r = await fetch(`${RELAYER}/relay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  } catch {
-    throw new TradeError("Can't reach ArkhamPad right now. Check your connection.");
+  let r: Response | null = null;
+  // A dropped connection is retried once. That's safe: every signed trade carries a nonce,
+  // so the same signature can never run twice on-chain.
+  for (let attempt = 0; attempt < 2 && !r; attempt++) {
+    try {
+      r = await fetch(`${RELAYER}/relay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(90_000) });
+    } catch (e) {
+      if ((e as Error)?.name === "TimeoutError") throw new TradeError("This is taking longer than usual. It may still go through: check your balance in a minute before trying again.");
+      if (attempt === 1) throw new TradeError("Can't reach ArkhamPad right now. Check your connection and try again.");
+      await new Promise((ok) => setTimeout(ok, 1200));
+    }
   }
+  if (!r) throw new TradeError("Can't reach ArkhamPad right now. Check your connection and try again.");
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
     if (j.code === "FEE_CHANGED") feeCache.clear(); // the next tap signs with the new fee
+    // after a dropped connection, "already sent" means the first attempt went through
+    if (/already sent/i.test(String(j.error || ""))) throw new TradeError("Your trade already went through. Your balance updates in a moment.");
     throw new TradeError(j.error || "Something went wrong. Please try again.");
   }
   return j as Relayed;
@@ -168,7 +204,13 @@ async function confirm(n: Net, res: Relayed): Promise<{ logs: Relayed["logs"]; t
     if (res.status !== "success") throw new TradeError("The transaction failed on-chain. Your funds are safe.");
     return { logs: res.logs, transactionHash: res.hash };
   }
-  const rc = await client(n.id).waitForTransactionReceipt({ hash: res.hash, pollingInterval: 250, timeout: 60_000 });
+  // the trade is already sent: wait longer rather than report a failure that didn't happen
+  let rc;
+  try {
+    rc = await client(n.id).waitForTransactionReceipt({ hash: res.hash, pollingInterval: 500, timeout: 120_000 });
+  } catch {
+    throw new TradeError("Your trade was sent and is still confirming. It will show up in your balance shortly.");
+  }
   if (rc.status !== "success") throw new TradeError("The transaction failed on-chain. Your funds are safe.");
   return { logs: rc.logs as never, transactionHash: rc.transactionHash };
 }
@@ -282,7 +324,7 @@ export async function sell(chainId: number, _curve: Address, coin: Address, coin
 export async function quotePool(chainId: number, coin: Address, isBuy: boolean, amountIn: bigint) {
   const n = netOf(chainId);
   if (!n) return 0n;
-  const { result } = await client(chainId).simulateContract({ address: n.router, abi: ROUTER_VIEW, functionName: "quotePool", args: [coin, isBuy, isBuy ? up(n, amountIn) : amountIn] });
+  const { result } = await withRetry(() => client(chainId).simulateContract({ address: n.router, abi: ROUTER_VIEW, functionName: "quotePool", args: [coin, isBuy, isBuy ? up(n, amountIn) : amountIn] }));
   return isBuy ? (result as bigint) : down(n, result as bigint);
 }
 

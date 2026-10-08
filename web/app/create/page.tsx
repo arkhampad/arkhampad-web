@@ -131,6 +131,7 @@ function CreateView() {
     if (!w.signedIn || !w.signer) { w.login(); return; }
     const nm = name.trim(), tk = tick.trim();
     if (!nm || nm.length > 32) return toast("Name must be 1 to 32 characters.");
+    if (/arkham/i.test(nm) || /arkham/i.test(tk)) return toast("Coins can't use the ArkhamPad name. Pick another name.");
     if (!/^[A-Z0-9]{1,10}$/.test(tk)) return toast("Ticker must be 1 to 10 letters or numbers.");
     if (desc.length > 280) return toast("Keep the description under 280 characters.");
     if (!(first >= 5)) return toast("Your first buy must be at least $5.");

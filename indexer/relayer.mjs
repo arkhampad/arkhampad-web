@@ -197,6 +197,8 @@ export function makeRelayer() {
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "poolSell", args: [addr(body.user, "user"), addr(body.coin, "coin"), big(body.coinAmount, "coinAmount"), big(body.minUsdcOut, "minUsdcOut"), feeOf(body, n), sigOf(body)] });
     } else if (kind === "launch") {
       const l = body.launch ?? {};
+      // our name is ours: no coin may pose as ArkhamPad (or Arkham) on ArkhamPad
+      if (/arkham/i.test(String(l.name ?? "")) || /arkham/i.test(String(l.symbol ?? ""))) { const e = new Error("Coins can't use the ArkhamPad name."); e.status = 400; throw e; }
       const launch = { name: str(l.name, "name", 32), symbol: str(l.symbol, "symbol", 10), metadataURI: str(l.metadataURI ?? "", "metadataURI", 1200), lockSeconds: big(l.lockSeconds, "lockSeconds"), feeMode: Number(l.feeMode) === 1 ? 1 : 0, launchUsdc: big(l.launchUsdc, "launchUsdc"), minCoinsOut: big(l.minCoinsOut, "minCoinsOut") };
       data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "launch", args: [addr(body.user, "user"), launch, feeOf(body, n), sigOf(body)] });
     } else if (kind === "withdraw") {

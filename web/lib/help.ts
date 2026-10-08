@@ -22,6 +22,7 @@ export const help: HelpTopic[] = [
   {
     id: "account", title: "Account and login",
     items: [
+      ["Does ArkhamPad have a token?", "Not yet. Any coin using the ArkhamPad or Arkham name, on any chain, is not ours, and coins can't use our name on ArkhamPad. If we ever launch a token, it will be announced only from @Arkhampad and on arkhampad.com."],
       ["How do I sign up?", "Tap Log in and choose Google, email, X or your own wallet. If you don't connect a wallet, a secure one is created for your account automatically."],
       ["I logged in and my balance is gone.", "You probably used a different login method. Each method creates its own account. Log out and log in with the method you used first."],
       ["Do I need a seed phrase?", "Not with Google, email or X. If you connect your own wallet, its recovery phrase is yours to keep safe. ArkhamPad will never ask for it."],
@@ -57,7 +58,7 @@ export const help: HelpTopic[] = [
     items: [
       ["How do I create a coin?", "Open Create, describe your idea in any language, pick one of the AI suggestions, choose a chain and tap Launch."],
       ["Can I change the name, ticker, description or links later?", "No. They're saved with the coin at launch. The creator can change the coin image later from the coin page."],
-      ["What is a creator lock?", "An optional 1 hour or 24 hour period when the creator can't sell their own coins. It's enforced by the contract and can't be ended early."],
+      ["Can creators sell their coins?", "Yes, at any time. ArkhamPad has no creator lock. That's why every coin page shows how much the creator holds and whether they sold, so buyers can decide for themselves."],
       ["How do I get creator fees?", "Automatically. Pool fees are collected every 30 minutes and your 30% goes to your cash balance (or to buyback and burn). Your coin's page shows what you've earned."],
       ["Does a coin graduate?", "No. Every ArkhamPad coin opens straight into a Uniswap pool at launch, with its liquidity locked forever."],
       ["Why do I need to buy at least $5 when I launch?", "Your first buy is the pool's first trade, which lets DEX screeners see the coin right away. It also keeps out empty spam launches."],
