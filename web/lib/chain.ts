@@ -264,7 +264,10 @@ async function ensureAllowance(n: Net, s: Signer, token: Address, need: bigint) 
     // then the wallet approves once. The user never sees or pays any gas themselves.
     if (!s.sendTx) throw new TradeError("This wallet can't approve on this network yet.");
     await relay({ chainId: n.id, kind: "gas", user: s.address, token });
-    const hash = await s.sendTx(n.id, { to: token, data: encodeFunctionData({ abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [n.router, MAX] }) });
+    const hash = await Promise.race([
+      s.sendTx(n.id, { to: token, data: encodeFunctionData({ abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [n.router, MAX] }) }),
+      new Promise<never>((_, no) => setTimeout(() => no(new TradeError("Your wallet didn't respond. Please try again.")), 60_000)),
+    ]);
     await c.waitForTransactionReceipt({ hash, pollingInterval: 250, timeout: 60_000 });
     if (!(await allowanceReaches(n, token, s.address, need))) throw new TradeError("Approval didn't go through. Please try again.");
     permitted.add(key);

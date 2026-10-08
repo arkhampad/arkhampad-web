@@ -81,11 +81,16 @@ async function ensurePermit(n: ExtNet, s: Signer, token: Address, need: bigint):
   return 0n;
 }
 
+/** A wallet that never answers must not leave the trade spinning: give up after `ms`. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new TradeError("Your wallet didn't respond. Please try again.")), ms))]);
+}
+
 async function approveWithGas(n: ExtNet, s: Signer, token: Address, need: bigint): Promise<bigint> {
   if (!s.sendTx) throw new TradeError("This wallet can't approve this coin yet. Please try again from your ArkhamPad account.");
   const r = await relay({ chainId: n.id, kind: "gas", user: s.address, token, spender: "ext" });
   const owed = BigInt(String(r?.owed ?? "0"));
-  const hash = await s.sendTx(n.id, { to: token, data: encodeFunctionData({ abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [n.swap!, 2n ** 256n - 1n] }) });
+  const hash = await withTimeout(s.sendTx(n.id, { to: token, data: encodeFunctionData({ abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [n.swap!, 2n ** 256n - 1n] }) }), 60_000);
   const c = pub(n);
   await c.waitForTransactionReceipt({ hash, pollingInterval: 250, timeout: 60_000 });
   for (let i = 0; i < 12; i++) {

@@ -3,8 +3,19 @@
 import { PrivyProvider, usePrivy, useSendTransaction, useSignTypedData, useWallets, type ConnectedWallet } from "@privy-io/react-auth";
 import { useEffect, useMemo, useRef } from "react";
 import type { Address, Hex } from "viem";
-import { baseSepolia, bsc } from "viem/chains";
-import { robinhoodTestnet, type Signer, type TypedData } from "@/lib/chain";
+import { defineChain } from "viem";
+import { base, baseSepolia, bsc } from "viem/chains";
+import { LIVE, robinhoodTestnet, type Signer, type TypedData } from "@/lib/chain";
+
+// Mainnets the embedded wallet must know, or it can't send a transaction there.
+const robinhood = defineChain({
+  id: 4663, name: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_ROBINHOOD_RPC || "https://rpc.mainnet.chain.robinhood.com"] } },
+});
+const arc = defineChain({
+  id: 5042, name: "Arc", nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+  rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_ARC_RPC || "https://arc.drpc.org"] } },
+});
 
 export type AuthState = { ready: boolean; address: Address | null; signer: Signer | null; login: () => void; logout: () => void };
 
@@ -80,8 +91,8 @@ const CONFIG = {
   loginMethods: (process.env.NEXT_PUBLIC_TELEGRAM_LOGIN === "1" ? ["google", "twitter", "telegram", "email", "wallet"] : ["google", "twitter", "email", "wallet"]) as ("google" | "twitter" | "telegram" | "email" | "wallet")[],
   appearance: { theme: "dark" as const, accentColor: "#D4FF3A" as `#${string}`, logo: "/icon-192.png", landingHeader: "Sign in to ArkhamPad", showWalletLoginFirst: false },
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" as const }, showWalletUIs: false },
-  supportedChains: [baseSepolia, robinhoodTestnet, bsc],
-  defaultChain: baseSepolia,
+  supportedChains: [base, robinhood, bsc, arc, baseSepolia, robinhoodTestnet],
+  defaultChain: LIVE ? base : baseSepolia,
 };
 
 export default function PrivyRoot({ appId, onState, wantLogin }: { appId: string; onState: (s: AuthState) => void; wantLogin: number }) {

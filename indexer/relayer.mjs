@@ -237,7 +237,10 @@ export function makeRelayer() {
       ]);
       if (allow >= 2n ** 128n) return { ok: true, already: true };
       if (bal === 0n) { const e = new Error("Nothing to approve yet."); e.status = 400; throw e; }
-      const need = (gasPrice * 130_000n * 3n) / 2n; // one approve, with room
+      // one approve with generous room: wallets bid above the current gas price, and on
+      // OP-stack chains (Base) the L1 data fee comes on top. The user repays all of it.
+      const l1 = [8453, 84532, 10].includes(n.c.chainId) ? 2_000_000_000_000n : 0n;
+      const need = gasPrice * 130_000n * 4n + l1;
       if (native >= need) return { ok: true, already: true };
       const day = Date.now() - 86_400_000;
       const seen = (dripLog.get(user) ?? []).filter((t) => t > day);

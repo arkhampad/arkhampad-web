@@ -99,8 +99,25 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
     if (ext) {
       try {
         setStep(side === "buy" ? "Buying…" : "Selling…");
-        if (side === "buy") { if (usd <= 0) throw new TradeError("Enter an amount."); await extTrade(coin.chainId, coin.address as Address, "buy", toUsdc(usd), w.signer); toast(`Bought ${coin.tick}`); }
-        else { if (sellAmount <= 0n) throw new TradeError("You don't hold this coin."); await extTrade(coin.chainId, coin.address as Address, "sell", sellAmount, w.signer); toast(`Sold ${coin.tick}`); }
+        const me = w.address as Address, token = coin.address as Address;
+        if (side === "buy") {
+          if (usd <= 0) throw new TradeError("Enter an amount.");
+          const before = held;
+          await extTrade(coin.chainId, token, "buy", toUsdc(usd), w.signer);
+          toast(`Bought ${coin.tick}`);
+          // public nodes can be a block behind: keep reading until the new coins show
+          for (let i = 0; i < 12; i++) { const b = await extBalance(coin.chainId, token, me); if (b > before) { setHeld(b); break; } await new Promise((ok) => setTimeout(ok, 700)); }
+        } else {
+          let amount = sellAmount;
+          if (amount <= 0n) {
+            // the balance on screen may be stale right after a buy: read it fresh before saying no
+            for (let i = 0; i < 8 && amount <= 0n; i++) { const b = await extBalance(coin.chainId, token, me); setHeld(b); amount = (b * BigInt(pct)) / 100n; if (amount <= 0n) await new Promise((ok) => setTimeout(ok, 700)); }
+          }
+          if (amount <= 0n) throw new TradeError("You don't hold this coin.");
+          await extTrade(coin.chainId, token, "sell", amount, w.signer);
+          toast(`Sold ${coin.tick}`);
+          setHeld(await extBalance(coin.chainId, token, me));
+        }
         await w.refresh();
       } catch (e) { toast(e instanceof TradeError ? e.message : "Couldn't trade. Please try again."); }
       finally { setBusy(false); setStep(""); }
