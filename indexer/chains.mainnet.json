@@ -1,0 +1,23 @@
+[
+  {
+    "name": "base",
+    "chainId": 8453,
+    "rpcEnv": "BASE_RPC",
+    "hub": "0x1a5453a1D4c32a9B46aCCc48B3Fa2CB5C78e072b",
+    "promote": "0xC11622d1E479B9821a551E2040bC3Aff7cdf6736",
+    "poolBuilder": "0x75656d8d2A59293DBdA4178F11Af6EE506ef60dD",
+    "startBlock": 52344645,
+    "blockRange": 10,
+    "pollSeconds": 6,
+    "note": "Alchemy free tier allows 10 blocks per getLogs on Base; raise blockRange after upgrading to PAYG",
+    "rangeDelayMs": 150,
+    "router": "0xD3b65d20e991a732AF81C2f42C86d2C1619E56F8",
+    "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "faucet": false,
+    "guard": "0xebB4f20fc425f3E252713BdAB8C9746b9e672080",
+    "poolManager": "0x498581fF718922c3f8e6A244956aF099B2652b2b",
+    "relayRpcEnv": "BASE_RELAY_RPC",
+    "v2": true,
+    "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231"
+  }
+]
