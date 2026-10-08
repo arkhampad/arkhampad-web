@@ -3,8 +3,8 @@
 // Cloudflare Workers AI (binding "AI"). Without AI, a simple local generator answers.
 // Current Workers AI text models, tried in order (Cloudflare retires older ones from time to time).
 const MODELS = [
+  "@cf/meta/llama-4-scout-17b-16e-instruct", // fastest in our tests (~0.3 s)
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-  "@cf/meta/llama-4-scout-17b-16e-instruct",
   "@cf/mistralai/mistral-small-3.1-24b-instruct",
 ];
 

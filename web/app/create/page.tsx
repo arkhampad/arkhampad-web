@@ -10,6 +10,22 @@ import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCo
 import { useWallet } from "@/components/wallet";
 import { lastFee, warmFees, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage, LIVE } from "@/lib/chain";
 
+/**
+ * An AI picture (data: URL) as a file to upload. Decoded by hand: the site's security
+ * policy doesn't let fetch() read data: URLs, which used to drop the chosen picture.
+ */
+function dataUrlToFile(dataUrl: string): File | null {
+  const m = /^data:([^;,]+);base64,(.*)$/.exec(dataUrl);
+  if (!m) return null;
+  try {
+    const bin = atob(m[2]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const ext = m[1].includes("jpeg") ? "jpg" : m[1].split("/")[1] || "png";
+    return new File([bytes], `coin.${ext}`, { type: m[1] });
+  } catch { return null; }
+}
+
 const PALETTE = [["#1B1F6B", "#7C5CFF"], ["#0B3B2E", "#2BB38A"], ["#3B1B0B", "#FF8A3D"]];
 const OPTS0 = [
   { name: "Moonfrog", tick: "MFROG", desc: "An astronaut frog who only buys the dip. Floating in orbit, waiting for red candles.", c1: "#1B1F6B", c2: "#7C5CFF" },
@@ -58,11 +74,10 @@ function CreateView() {
   const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(lastFee(chainId, "launch")) + (boost === "none" ? 0 : fromUsdc(lastFee(chainId, "promote")));
   const o = OPTS[pick];
   const applyArt = async (dataUrl: string) => {
-    try {
-      const blob = await (await fetch(dataUrl)).blob();
-      setImgFile(new File([blob], "coin.png", { type: blob.type || "image/png" }));
-      setImgPreview(dataUrl);
-    } catch { /* keep the current picture */ }
+    const f = dataUrlToFile(dataUrl);
+    if (!f) return; // keep the current picture
+    setImgFile(f);
+    setImgPreview(dataUrl);
   };
   const choose = (i: number, list = OPTS, art = arts[i]) => {
     setPick(i); pickRef.current = i; setName(list[i].name); setTick(list[i].tick); setDesc(list[i].desc);
@@ -104,8 +119,9 @@ function CreateView() {
       const r = await fetch("/api/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description: desc }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.dataUrl) { if (j.detail) console.warn("AI image:", j.code, j.detail); throw new Error(j.error || "Couldn't draw an image right now."); }
-      const blob = await (await fetch(j.dataUrl)).blob();
-      setImgFile(new File([blob], "coin.png", { type: blob.type || "image/png" }));
+      const f = dataUrlToFile(j.dataUrl);
+      if (!f) throw new Error("Couldn't draw an image right now.");
+      setImgFile(f);
       setImgPreview(j.dataUrl);
     } catch (e) { toast((e as Error).message); } finally { setDrawing(false); }
   };
