@@ -5,7 +5,6 @@
 const MODELS = [
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   "@cf/meta/llama-4-scout-17b-16e-instruct",
-  "@cf/google/gemma-3-12b-it",
   "@cf/mistralai/mistral-small-3.1-24b-instruct",
 ];
 
@@ -101,7 +100,7 @@ export async function onRequestGet({ request, env }) {
   }
   const t1 = Date.now();
   try {
-    const r = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt: "a small green frog, cartoon", steps: 2, seed: 7 });
+    const r = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt: "a small green frog, cartoon", steps: 2 });
     out.image = { model: "flux-1-schnell", ok: !!(r && (r.image || r.length)), ms: Date.now() - t1 };
   } catch (e) {
     out.image = { model: "flux-1-schnell", ok: false, ms: Date.now() - t1, error: String(e?.message || e).slice(0, 200) };

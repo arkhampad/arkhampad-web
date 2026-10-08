@@ -149,6 +149,7 @@ export function makeRelayer() {
   let og = null;
   const upkeepLast = new Map();
   const dripLog = new Map(); // user -> [timestamps] for gas top-ups
+  const owed = new Map(); // `${chainId}:${user}` -> USDC still owed for an approval top-up
   const fees = makeFees({ log });
   const limits = makeLimits({ log });
   fees.warm([...nets.values()]);
@@ -223,7 +224,8 @@ export function makeRelayer() {
       fixedGas = 200_000n;
     } else if (kind === "gas") {
       // Networks whose dollar has no permit (BNB): give the user just enough gas for one approve.
-      if (n.c.approvals !== "gas") { const e = new Error("Not needed on this network."); e.status = 400; throw e; }
+      // BNB's dollar has no permit; on any network, coins from other DEXs often don't either.
+      if (n.c.approvals !== "gas" && !(body.spender === "ext" && n.c.extSwap)) { const e = new Error("Not needed on this network."); e.status = 400; throw e; }
       const user = addr(body.user, "user"), token = addr(body.token, "token");
       const spender = body.spender === "ext" && n.c.extSwap ? getAddress(n.c.extSwap) : n.router;
       const ERC = [{ type: "function", name: "allowance", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] }, { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }];
@@ -243,9 +245,15 @@ export function makeRelayer() {
       dripLog.set(user, [...seen, Date.now()]);
       const t0 = Date.now();
       const hash = await n.wallet.sendTransaction({ to: user, value: need - native, gas: 21_000n });
-      await n.pub.waitForTransactionReceipt({ hash, pollingInterval: 150, timeout: 60_000 });
-      log(`${n.c.name} gas top-up ${user} ${need - native} wei ${hash} (${Date.now() - t0}ms)`);
-      return { hash, status: "success", logs: [] };
+      const rc = await n.pub.waitForTransactionReceipt({ hash, pollingInterval: 150, timeout: 60_000 });
+      // The user repays this (top-up + the transfer's own gas) in USDC with their next trade
+      // from other DEXs: ArkhamPad never pays anyone's gas.
+      const spentWei = (need - native) + rc.gasUsed * rc.effectiveGasPrice + (typeof rc.l1Fee === "bigint" ? rc.l1Fee : 0n);
+      const usd = (Number(spentWei) / 1e18) * (await fees.nativeUsd(n.c.native ?? "ETH")) * 1.2;
+      const owe = BigInt(Math.ceil(Math.max(usd, 0.001) * 1e6)) * 10n ** BigInt(DEC(n) - 6);
+      if (body.spender === "ext") owed.set(`${n.c.chainId}:${user.toLowerCase()}`, (owed.get(`${n.c.chainId}:${user.toLowerCase()}`) ?? 0n) + owe);
+      log(`${n.c.name} gas top-up ${user} ${need - native} wei ${hash} (${Date.now() - t0}ms), owed ${owe}`);
+      return { hash, status: "success", logs: [], owed: owe.toString() };
     } else if (kind === "settle" || kind === "collect" || kind === "buyback") {
       // Anyone can trigger these; they only move fees where the contracts say. One per coin a minute.
       const target = addr(kind === "settle" ? body.curve : body.coin, kind === "settle" ? "curve" : "coin");
@@ -285,7 +293,10 @@ export function makeRelayer() {
     }
     // Network fee: the signed fee must cover today's real cost (orders were signed earlier: skipped).
     const signedFee = kind === "extSwap" ? body.swap?.fee : body.fee;
-    if (!opts.order && signedFee !== undefined) await fees.check(n, kind, big(signedFee, "fee"));
+    // an approval top-up still owed by this user is added on top of today's network fee
+    const oweKey = kind === "extSwap" ? `${n.c.chainId}:${String(body.swap?.user ?? "").toLowerCase()}` : "";
+    const owes = oweKey ? (owed.get(oweKey) ?? 0n) : 0n;
+    if (!opts.order && signedFee !== undefined) await fees.check(n, kind, big(signedFee, "fee") - owes);
     // Volume limits (mainnet, first weeks): buys only.
     const D = 10 ** DEC(n);
     const buyUsd = kind === "buy" || kind === "poolBuy" ? Number(big(body.usdcIn, "usdcIn")) / D
@@ -299,6 +310,11 @@ export function makeRelayer() {
     const t2 = Date.now();
     fees.record(n, kind, rc);
     if (kind === "extSwap" && buyUsd > 0 && rc.status === "success") limits.add(n, String(body.swap.user), buyUsd);
+    if (kind === "extSwap" && rc.status === "success") {
+      if (owes > 0n) owed.delete(oweKey);
+      if (db) db.query(`insert into ext_positions ("user", chain_id, coin) values ($1,$2,$3) on conflict ("user", chain_id, coin) do update set updated_at=now()`,
+        [String(body.swap.user).toLowerCase(), n.c.chainId, String(body.swap.coin).toLowerCase()]).catch((e) => log(`ext_positions: ${e.message}`));
+    }
     log(`${n.c.name} ${kind} ${hash} sent ${t1 - t0}ms mined ${t2 - t1}ms`);
     return {
       hash,

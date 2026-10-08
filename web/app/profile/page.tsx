@@ -12,7 +12,8 @@ import { ProfitSheet } from "@/components/profit";
 import { positionPnl } from "@/lib/pnl";
 import type { Pnl } from "@/lib/share";
 import { NETS, fromCoin, onLocalTrade, tokenBalance, LIVE } from "@/lib/chain";
-import { db, fromOwn, usd, short, type LiveCoin } from "@/lib/live";
+import { db, fromOwn, fromExt, usd, short, type LiveCoin } from "@/lib/live";
+import { extBalance, extDecimals } from "@/lib/ext";
 
 type Holding = { coin: LiveCoin; amount: number; value: number };
 
@@ -35,6 +36,24 @@ async function loadHoldings(address: string): Promise<{ holdings: Holding[]; cre
     const amount = fromCoin(bal);
     return amount > 0 ? { coin, amount, value: amount * (coin.priceNum ?? 0) } : null;
   }))).filter(Boolean) as Holding[];
+  // coins from other DEXs traded here
+  const { data: pos } = await db().from("ext_positions").select("chain_id,coin").eq("user", me).limit(200);
+  if (pos?.length) {
+    const { data: ext } = await db().from("ext_tokens").select("*").in("address", pos.map((p: { coin: string }) => p.coin));
+    const rows = (ext ?? []) as Parameters<typeof fromExt>[0][];
+    const more = await Promise.all((pos as { chain_id: number; coin: string }[]).map(async (p) => {
+      const row = rows.find((r) => r.chain_id === p.chain_id && r.address === p.coin);
+      if (!row) return null;
+      const [bal, dec] = await Promise.all([
+        extBalance(p.chain_id, p.coin as Address, address as Address),
+        extDecimals(p.chain_id, p.coin as Address),
+      ]);
+      const amount = Number(bal) / 10 ** dec;
+      const coin = fromExt(row);
+      return amount > 0 ? { coin, amount, value: amount * (coin.priceNum ?? 0) } : null;
+    }));
+    holdings.push(...(more.filter(Boolean) as Holding[]));
+  }
   holdings.sort((a, b) => b.value - a.value);
   return { holdings, created: ((mine.data ?? []) as Parameters<typeof fromOwn>[0][]).map(fromOwn) };
 }

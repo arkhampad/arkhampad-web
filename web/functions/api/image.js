@@ -37,7 +37,7 @@ async function toDataUrl(out) {
 }
 
 const MODELS = [
-  ["@cf/black-forest-labs/flux-1-schnell", (p, seed) => ({ prompt: p, steps: 4, seed })],
+  ["@cf/black-forest-labs/flux-1-schnell", (p) => ({ prompt: p, steps: 4 })], // flux takes no seed (a new picture every call anyway)
   ["@cf/bytedance/stable-diffusion-xl-lightning", (p, seed) => ({ prompt: p, width: 512, height: 512, seed })],
   ["@cf/lykon/dreamshaper-8-lcm", (p, seed) => ({ prompt: p, width: 512, height: 512, seed })],
   ["@cf/stabilityai/stable-diffusion-xl-base-1.0", (p, seed) => ({ prompt: p, width: 512, height: 512, num_steps: 12, seed })],
