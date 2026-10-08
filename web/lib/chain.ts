@@ -243,6 +243,16 @@ export async function permitVersion(chainId: number, token: Address): Promise<st
   return v;
 }
 
+/** Reads the allowance until it reaches `need` (up to ~8 s): nodes behind a load balancer can lag a block. */
+async function allowanceReaches(n: Net, token: Address, owner: Address, need: bigint): Promise<boolean> {
+  for (let i = 0; i < 12; i++) {
+    const got = await withRetry(() => client(n.id).readContract({ address: token, abi: ERC20, functionName: "allowance", args: [owner, n.router] })).catch(() => 0n);
+    if (got >= need) return true;
+    await new Promise((ok) => setTimeout(ok, 700));
+  }
+  return false;
+}
+
 async function ensureAllowance(n: Net, s: Signer, token: Address, need: bigint) {
   const key = `${n.id}:${token}:${s.address}`.toLowerCase();
   if (permitted.has(key)) return;
@@ -256,8 +266,7 @@ async function ensureAllowance(n: Net, s: Signer, token: Address, need: bigint) 
     await relay({ chainId: n.id, kind: "gas", user: s.address, token });
     const hash = await s.sendTx(n.id, { to: token, data: encodeFunctionData({ abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [n.router, MAX] }) });
     await c.waitForTransactionReceipt({ hash, pollingInterval: 250, timeout: 60_000 });
-    const ok = await c.readContract({ address: token, abi: ERC20, functionName: "allowance", args: [s.address, n.router] });
-    if (ok < need) throw new TradeError("Approval didn't go through. Please try again.");
+    if (!(await allowanceReaches(n, token, s.address, need))) throw new TradeError("Approval didn't go through. Please try again.");
     permitted.add(key);
     return;
   }
@@ -269,8 +278,9 @@ async function ensureAllowance(n: Net, s: Signer, token: Address, need: bigint) 
   const dl = deadline();
   const signature = await s.signTypedData(n.id, { domain: { name, version, chainId: n.id, verifyingContract: token }, types: { Permit: TYPES.Permit }, primaryType: "Permit", message: { owner: s.address, spender: n.router, value: MAX, nonce, deadline: dl } });
   await confirm(n, await relay({ chainId: n.id, kind: "permit", token, owner: s.address, value: S(MAX), deadline: S(dl), signature }));
-  const after = await c.readContract({ address: token, abi: ERC20, functionName: "allowance", args: [s.address, n.router] });
-  if (after < need) throw new TradeError("Approval didn't go through. Please try again.");
+  // The approval is mined, but a load-balanced node can answer from a block or two behind:
+  // look again for a few seconds before calling it a failure.
+  if (!(await allowanceReaches(n, token, s.address, need))) throw new TradeError("Approval didn't go through. Please try again.");
   permitted.add(key);
 }
 
