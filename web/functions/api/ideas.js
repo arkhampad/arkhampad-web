@@ -41,6 +41,14 @@ export function fallback(idea) {
   ].filter(Boolean);
 }
 
+/** A different creative angle on every request, so the same sentence never gives the same three coins. */
+const ANGLES = [
+  "Lean into absurd internet humor.", "Make one option cute, one bold, one weird.", "Use wordplay and puns.",
+  "Think like a crypto degen naming a coin at 3am.", "Give it a mascot-style character.", "Go short and punchy, one-word names welcome.",
+  "Use animal or food twists.", "Make it feel like a cult classic meme.", "Mix retro gaming and internet slang.",
+  "Make the names sound like a chant.", "Go mysterious and lore-heavy.", "Make it wholesome and funny.",
+];
+
 export async function onRequestPost({ request, env }) {
   let idea = "";
   try { idea = String((await request.json()).idea ?? ""); } catch { return json({ error: "bad request" }, 400); }
@@ -49,7 +57,12 @@ export async function onRequestPost({ request, env }) {
   if (env.AI) {
     for (const model of MODELS) {
       try {
-        const out = await env.AI.run(model, { messages: [{ role: "system", content: SYSTEM }, { role: "user", content: idea }], max_tokens: 500, temperature: 0.9 });
+        const angle = ANGLES[Math.floor(Math.random() * ANGLES.length)];
+        const seed = Math.floor(Math.random() * 1e9);
+        const out = await env.AI.run(model, {
+          messages: [{ role: "system", content: SYSTEM }, { role: "user", content: `${idea}\n\nStyle for this round: ${angle} Avoid the most obvious names. (variation ${seed})` }],
+          max_tokens: 500, temperature: 1.05, seed,
+        });
         const data = parse(out?.response ?? out);
         const options = (data?.options ?? []).map(clean).filter(Boolean).slice(0, 3);
         if (options.length === 3) return json({ options, ai: true });

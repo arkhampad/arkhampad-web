@@ -37,8 +37,8 @@ export function useProfile(wallet: string | null | undefined): Profile | null {
 
 const changed = (wallet: string) => { cache.delete(wallet.toLowerCase()); listeners.forEach((f) => f()); };
 
-/** 3-20 letters, numbers, dot or underscore. */
-export const NAME_RE = /^[A-Za-z0-9_.]{3,20}$/;
+/** 3-20 letters (any language), numbers, dot or underscore. */
+export const NAME_RE = /^[\p{L}\p{N}_.]{3,20}$/u;
 
 export async function saveName(name: string, s: Signer) {
   const n = name.trim();

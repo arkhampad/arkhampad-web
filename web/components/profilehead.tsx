@@ -42,11 +42,11 @@ export function ProfileHead() {
         <i>{busy === "photo" ? "…" : "Edit"}</i>
       </button>
       {edit ? (
-        <form className="phead-edit" onSubmit={(e) => { e.preventDefault(); if (valid) save(); }}>
+        <form className="phead-edit" onSubmit={(e) => { e.preventDefault(); if (valid) save(); else toast("Use 3-20 letters, numbers, dots or underscores (no spaces)."); }}>
           <label htmlFor="pname" className="sr">Display name</label>
           <input id="pname" className="inp" autoFocus value={name} maxLength={20} placeholder="Your name" onChange={(e) => setName(e.target.value.replace(/\s/g, ""))} />
           <span style={{ display: "flex", gap: 6 }}>
-            <button type="submit" className="btn volt sm" disabled={!valid || !!busy}>{busy === "name" ? "Saving…" : "Save"}</button>
+            <button type="submit" className="btn volt sm" disabled={!!busy}>{busy === "name" ? "Saving…" : "Save"}</button>
             <button type="button" className="btn ghost sm" onClick={() => setEdit(false)}>Cancel</button>
           </span>
           <span style={{ fontSize: 11, color: "var(--faint)" }}>3-20 letters, numbers, dots or underscores. Everyone can see it.</span>

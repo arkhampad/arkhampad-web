@@ -145,9 +145,9 @@ function CreateView() {
       if (imgFile) {
         setBusy("Adding image…");
         // the indexer needs a moment to see the new coin before the image can be attached
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 10; i++) {
           try { await uploadCoinImage(chainId, r.coin, imgFile, w.signer); break; }
-          catch (e) { if (i === 5 || !(e instanceof TradeError) || !/not found yet/i.test(e.message)) { toast(`Coin is live, but the image failed: ${(e as Error).message}`); break; } await new Promise((res) => setTimeout(res, 2500)); }
+          catch (e) { if (i === 9 || !(e instanceof TradeError) || !/not found yet/i.test(e.message)) { toast(`Coin is live, but the image failed: ${(e as Error).message}`); break; } await new Promise((res) => setTimeout(res, 2500)); }
         }
       }
       if (boost !== "none") {

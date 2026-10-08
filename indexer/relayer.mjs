@@ -344,9 +344,15 @@ export function makeRelayer() {
       types: IMAGE_TYPES, primaryType: "CoinImage", message: { coin: getAddress(coin), imageHash },
       signature: hex(body.signature, "signature"),
     }).catch(() => null);
-    const row = (await db.query("select creator from coins where chain_id=$1 and address=$2", [n.c.chainId, coin])).rows[0];
-    if (!row) { const e = new Error("Coin not found yet. Try again in a few seconds."); e.status = 404; throw e; }
-    if (!signer || signer.toLowerCase() !== row.creator) { const e = new Error("Only the creator can change the image."); e.status = 403; throw e; }
+    let creator = (await db.query("select creator from coins where chain_id=$1 and address=$2", [n.c.chainId, coin])).rows[0]?.creator;
+    if (!creator) {
+      // Right after launch the indexer may not have the coin yet: ask the coin itself who
+      // created it. The image is stored now and attached when the coin is indexed.
+      creator = await n.pub.readContract({ address: getAddress(coin), abi: [{ type: "function", name: "creator", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] }], functionName: "creator" })
+        .then((a) => String(a).toLowerCase()).catch(() => null);
+      if (!creator) { const e = new Error("Coin not found yet. Try again in a few seconds."); e.status = 404; throw e; }
+    }
+    if (!signer || signer.toLowerCase() !== creator) { const e = new Error("Only the creator can change the image."); e.status = 403; throw e; }
     await db.query(
       `insert into coin_images (chain_id, coin, mime, data, updated_at) values ($1,$2,$3,$4,now())
        on conflict (chain_id, coin) do update set mime=excluded.mime, data=excluded.data, updated_at=now()`,
@@ -667,7 +673,7 @@ export function makeRelayer() {
         return { ok: true };
       case "profile.name": {
         const name = String(p.name ?? "").trim();
-        if (!/^[A-Za-z0-9_.]{3,20}$/.test(name)) throw err("Use 3-20 letters, numbers, dots or underscores.");
+        if (!/^[\p{L}\p{N}_.]{3,20}$/u.test(name)) throw err("Use 3-20 letters, numbers, dots or underscores.");
         if (/^(arkham|arkhampad|admin|support|team|official|mod|moderator|help|system)/i.test(name)) throw err("That name is reserved. Pick another one.");
         const taken = (await db.query("select wallet from profiles where lower(name)=lower($1) and wallet<>$2", [name, user])).rows[0];
         if (taken) throw err("That name is taken. Pick another one.", 409);

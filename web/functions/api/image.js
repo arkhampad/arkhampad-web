@@ -28,10 +28,10 @@ async function toDataUrl(out) {
 }
 
 const MODELS = [
-  ["@cf/black-forest-labs/flux-1-schnell", (p) => ({ prompt: p, steps: 4 })],
-  ["@cf/bytedance/stable-diffusion-xl-lightning", (p) => ({ prompt: p, width: 512, height: 512 })],
-  ["@cf/lykon/dreamshaper-8-lcm", (p) => ({ prompt: p, width: 512, height: 512 })],
-  ["@cf/stabilityai/stable-diffusion-xl-base-1.0", (p) => ({ prompt: p, width: 512, height: 512, num_steps: 12 })],
+  ["@cf/black-forest-labs/flux-1-schnell", (p, seed) => ({ prompt: p, steps: 4, seed })],
+  ["@cf/bytedance/stable-diffusion-xl-lightning", (p, seed) => ({ prompt: p, width: 512, height: 512, seed })],
+  ["@cf/lykon/dreamshaper-8-lcm", (p, seed) => ({ prompt: p, width: 512, height: 512, seed })],
+  ["@cf/stabilityai/stable-diffusion-xl-base-1.0", (p, seed) => ({ prompt: p, width: 512, height: 512, num_steps: 12, seed })],
 ];
 
 export async function onRequestPost({ request, env }) {
@@ -39,10 +39,11 @@ export async function onRequestPost({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return json({ error: "bad request" }, 400); }
   const p = prompt(body.name, body.description);
+  const seed = Math.floor(Math.random() * 2_000_000_000); // a new picture every time
   const errors = [];
   for (const [model, input] of MODELS) {
     try {
-      const url = await toDataUrl(await env.AI.run(model, input(p)));
+      const url = await toDataUrl(await env.AI.run(model, input(p, seed)));
       if (url) return json({ dataUrl: url, model });
       errors.push(`${model.split("/").pop()}: empty`);
     } catch (e) { errors.push(`${model.split("/").pop()}: ${String(e?.message || e).slice(0, 120)}`); }

@@ -155,6 +155,12 @@ async function syncChain(c, client) {
           [c.chainId, lc(a.coin), lc(id), lc(a.creator), a.name, a.symbol, a.metadataURI, Number(a.lockSeconds), Number(a.feeMode),
            c.startMc / SUPPLY, c.startMc, String(e.blockNumber), e.transactionHash, at],
         );
+        // an image the creator uploaded before the coin was indexed
+        await db.query(
+          `update coins set image_url = $3 || '/img/' || $1::text || '-' || $2 || '?v=' || extract(epoch from i.updated_at)::bigint::text
+             from coin_images i where coins.chain_id=$1 and coins.address=$2 and coins.image_url is null and i.chain_id=$1 and i.coin=$2`,
+          [c.chainId, lc(a.coin), (process.env.PUBLIC_URL || "https://arkhampad-web-production.up.railway.app").replace(/\/$/, "")],
+        ).catch((err) => log(`${c.name}: image attach: ${err.message}`));
       }
       const fresh = []; // buys to announce once this batch is saved
       for (const e of promos) {
