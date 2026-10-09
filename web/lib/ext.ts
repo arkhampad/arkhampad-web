@@ -59,7 +59,7 @@ const RELAYER = process.env.NEXT_PUBLIC_RELAYER_URL || "https://arkhampad-web-pr
 async function relay(body: Record<string, unknown>) {
   const r = await fetch(`${RELAYER}/relay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
   const j = r ? await r.json().catch(() => ({})) : {};
-  if (!r || !r.ok) throw new TradeError(j.error || "Something went wrong. Please try again.");
+  if (!r || !r.ok) { const e = new TradeError(j.error || "Something went wrong. Please try again."); (e as TradeError & { code?: string }).code = j.code; throw e; }
   return j;
 }
 
@@ -103,8 +103,21 @@ async function approveWithGas(n: ExtNet, s: Signer, token: Address, need: bigint
 
 const TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "address"], ["amountIn", "uint256"], ["minOut", "uint256"], ["target", "address"], ["dataHash", "bytes32"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]].map(([name, type]) => ({ name, type })) };
 
-/** Buys or sells a coin from another DEX. Never fills worse than the quote minus 2%. */
+/** Buys or sells a coin from another DEX. Never fills worse than the quote minus 2%.
+ *  Thin pools move between the quote and the trade: when the DEX route fails, it is quoted
+ *  again and retried (twice) with a little more room inside the route, never below the 2% floor. */
 export async function extTrade(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await extTradeOnce(chainId, coin, side, amount, s, attempt);
+    } catch (e) {
+      if (attempt >= 2 || (e as { code?: string })?.code !== "SwapFailed") throw e;
+      await new Promise((ok) => setTimeout(ok, 600));
+    }
+  }
+}
+
+async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, attempt: number) {
   const n = extNet(chainId);
   if (!n || !n.swap) throw new TradeError("Trading coins from other DEXs opens on mainnet.");
   if (n.usdcDecimals !== 6) throw new TradeError("This network isn't supported yet.");
@@ -114,7 +127,7 @@ export async function extTrade(chainId: number, coin: Address, side: "buy" | "se
   if (isBuy) await ensureCash(n.id, amount + NET_FEE + 50_000n, s);
   const spend = isBuy ? amount - (amount * FEE_BPS) / 10_000n : amount;
   const r = await route(n, isBuy ? n.usdc : coin, isBuy ? coin : n.usdc, spend);
-  const build = await fetch(`${API}/${n.slug}/api/v1/route/build`, { method: "POST", headers: { ...HEAD, "content-type": "application/json" }, body: JSON.stringify({ routeSummary: r.summary, sender: n.swap, recipient: n.swap, slippageTolerance: 150, deadline: Math.floor(Date.now() / 1000) + 600 }) }).catch(() => null);
+  const build = await fetch(`${API}/${n.slug}/api/v1/route/build`, { method: "POST", headers: { ...HEAD, "content-type": "application/json" }, body: JSON.stringify({ routeSummary: r.summary, sender: n.swap, recipient: n.swap, slippageTolerance: [150, 300, 500][attempt] ?? 500, deadline: Math.floor(Date.now() / 1000) + 600 }) }).catch(() => null);
   const b = build ? await build.json().catch(() => null) : null;
   if (!build?.ok || !b?.data?.data) throw new TradeError("Couldn't prepare the trade. Please try again.");
   const data = b.data.data as Hex;
