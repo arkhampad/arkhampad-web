@@ -83,7 +83,7 @@ function CreateView() {
   const choose = (i: number, list = OPTS, art = arts[i]) => {
     setPick(i); pickRef.current = i; setName(list[i].name); setTick(list[i].tick); setDesc(list[i].desc);
     if (art && art !== "loading" && art !== "failed") applyArt(art); else { setImgFile(null); setImgPreview(null); }
-    // the third logo is only drawn when someone picks it (saves the daily AI quota)
+    // a coin's logo is only drawn when someone picks it (saves AI cost)
     if (art === null && generated && list === OPTS) {
       const x = list[i] as { name: string; desc: string; picture?: string };
       setArts((a) => a.map((v, k) => (k === i ? "loading" : v)));
@@ -114,10 +114,10 @@ function CreateView() {
       setOpts(list);
       setGenerated(true);
       const run = ++artRun.current;
-      // two logos right away, the third when it's picked (saves the daily AI quota)
-      setArts(["loading", "loading", null]);
+      // one logo right away (the first coin), the others when they're picked (saves AI cost)
+      setArts(["loading", null, null]);
       choose(0, list, "loading");
-      list.forEach((x: { name: string; desc: string; picture?: string }, i: number) => { if (i < 2) drawOne(i, x.name, x.desc, run, x.picture); });
+      drawOne(0, list[0].name, list[0].desc, run, list[0].picture);
     } catch (e) { toast((e as Error).message || "AI is busy, please try again."); } finally { setThinking(false); }
   };
   // Trend Coin: the 3 hottest topics right now (scanned every 5 minutes), one tap designs coins for it
