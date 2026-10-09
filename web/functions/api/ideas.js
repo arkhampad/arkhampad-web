@@ -19,7 +19,8 @@ Three clearly different takes on the idea. No real people, no brands, no promise
 // nod to it, but the coin never claims to be official, and the logo is always a cartoon.
 const TREND_RULES = `This idea comes from a live internet trend. Make coins that ride it the way the crypto crowd would right now.
 Names may playfully nod to the trend, including a famous person's nickname or the meme itself, but never use words like "official" and never claim to be endorsed or affiliated.
-Picture: always a cartoon mascot, animal or object that captures the moment, never a realistic likeness of a real person, no logos or brand marks.
+The trend must be obvious at a glance: anyone who knows the trend should recognize it from the name, the ticker and the picture alone. Never pick an unrelated object or animal (e.g. a donut for a politics trend).
+Picture: always a cartoon mascot, animal or object that clearly captures the moment, never a realistic likeness of a real person, no logos or brand marks.
 No promises of profit or price, nothing hateful or sexual.`;
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });

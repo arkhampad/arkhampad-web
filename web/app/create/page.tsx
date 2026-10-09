@@ -142,8 +142,12 @@ function CreateView() {
     if (!t || thinking) return;
     setTrendPick(i);
     setIdea(t.idea);
+    setTrendOpen(false); // the topic is chosen: show the coins designed for it
+    setTimeout(() => cardsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
     generate(t.idea, `${t.title}: ${t.why}`);
   };
+  const cardsRef = useRef<HTMLDivElement>(null);
+  const pickedTrend = trendPick !== null && trends?.topics[trendPick]?.idea === idea ? trends.topics[trendPick] : null;
   // "Generate again" on a trend idea keeps the trend's context
   const trendWhy = () => { const t = trendPick !== null ? trends?.topics[trendPick] : undefined; return t && t.idea === idea ? `${t.title}: ${t.why}` : undefined; };
   const ago = (ts: number) => { const m = Math.max(0, Math.round((Date.now() - ts) / 60_000)); return m < 1 ? "just now" : `${m} min ago`; };
@@ -286,11 +290,12 @@ function CreateView() {
               <div className={`cr-trend${trendOpen ? " open" : ""}`}>
                 <button type="button" className="cr-trend-btn" onClick={() => (trendOpen && !trendBusy ? setTrendOpen(false) : openTrends())} aria-expanded={trendOpen}>
                   <span className="cr-flame" aria-hidden="true">🔥</span>
-                  <span className="cr-trend-t"><b>Create Trend Coin</b><span>The 3 hottest topics on the internet right now. Pick one, your coin is ready.</span></span>
+                  <span className="cr-trend-t"><b>Create Trend Coin</b><span>{pickedTrend && !trendOpen ? <>Topic: <b style={{ fontSize: "inherit" }}>{pickedTrend.title}</b> · tap to pick another</> : "The 3 hottest topics on the internet right now. Pick one, your coin is ready."}</span></span>
                   <span className="cr-trend-go" aria-hidden="true">{trendOpen ? "▴" : "▾"}</span>
                 </button>
                 {trendOpen && (
                   <div className="cr-trend-list" role="radiogroup" aria-label="Trending topics" aria-busy={trendBusy}>
+                    <span className="cr-trend-h">Pick a topic · we design 3 coins for it</span>
                     {trendBusy || !trends ? [0, 1, 2].map((i) => <div key={i} className="cr-topic skel" style={{ height: 76 }} />) : trends.topics.map((t, i) => (
                       <button key={i} type="button" role="radio" aria-checked={trendPick === i} className={`cr-topic${trendPick === i ? " on" : ""}`} disabled={thinking} onClick={() => pickTrend(i)}>
                         <span className="cr-topic-e" aria-hidden="true">{t.emoji}</span>
@@ -313,6 +318,7 @@ function CreateView() {
                 </div>
                 <button type="button" className="cr-gen" disabled={thinking} onClick={() => generate(idea, trendWhy())}><ISpark size={16} color="currentColor" />{thinking ? "Designing your coins…" : generated ? "Generate again" : "Generate 3 coins"}</button>
               </div>
+              {(thinking || generated) && pickedTrend && <div className="cr-cards-h" ref={cardsRef}>🔥 3 coins for: <b>{pickedTrend.title}</b> · pick one</div>}
               {(thinking || generated) && (
                 <div className="cr-cards" role="radiogroup" aria-label="AI coins" aria-busy={thinking}>
                   {thinking ? [0, 1, 2].map((i) => <div key={i} className="cr-card skel" style={{ height: 268 }} />) : OPTS.map((x, i) => {

@@ -474,6 +474,9 @@ textarea.inp { height: auto; padding: 12px 14px; line-height: 1.5; resize: none;
 .cr-topic-t b { font-size: 14px; font-weight: 750; }
 .cr-topic-t span { font-size: 12px; color: var(--muted); line-height: 1.4; }
 .cr-heat { flex: none; font-size: 11px; font-weight: 800; color: #FF7A28; white-space: nowrap; }
+.cr-trend-h { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 0 2px; }
+.cr-cards-h { margin-top: 14px; font-size: 14px; color: var(--muted); scroll-margin-top: 90px; }
+.cr-cards-h b { color: var(--text); }
 .cr-trend-note { font-size: 11px; color: var(--faint); padding: 0 2px; }
 .cr-ai { position: relative; border-radius: 22px; padding: 16px; isolation: isolate; }
 .cr-ai::before { content: ""; position: absolute; inset: -1.5px; border-radius: 23.5px; z-index: -2; background: conic-gradient(from var(--cra), #D4FF3A, #3DDC97, #2BB3FF, #B57BFF, #FF8A3D, #D4FF3A); animation: cr-spin 6s linear infinite; }
