@@ -21,7 +21,7 @@ function prompt(name, description, picture) {
   const style = STYLES[Math.floor(Math.random() * STYLES.length)];
   // the idea's own art direction when the AI wrote one; otherwise built from the name and story
   const subject = p || `Mascot for a meme coin called "${n}". ${d}`;
-  return `${subject}. Coin logo artwork, one centered subject, ${style}, bold colors, simple background, high contrast, no text, no letters, no watermark.`;
+  return `${subject}. Coin logo artwork, one centered subject, ${style}, bold colors, simple background, high contrast, illustrated character not a realistic photo of a real person, no text, no letters, no watermark.`;
 }
 
 /** Turns any model output (base64 field, bytes, stream) into a data URL, or null. */

@@ -15,11 +15,18 @@ Rules: English only. Name: 2-24 characters, catchy. Ticker: 3-6 capital letters 
 Picture: a vivid 15-30 word art direction for that coin's logo: the main character or object, its pose, colors and style (e.g. "chubby green frog in a gold crown, neon purple background, glossy 3D cartoon"). Each option gets a clearly different picture.
 Three clearly different takes on the idea. No real people, no brands, no promises of profit or price, nothing hateful or sexual.`;
 
+// Trend coins ride a live topic, which can be a famous person's viral post. The name may
+// nod to it, but the coin never claims to be official, and the logo is always a cartoon.
+const TREND_RULES = `This idea comes from a live internet trend. Make coins that ride it the way the crypto crowd would right now.
+Names may playfully nod to the trend, including a famous person's nickname or the meme itself, but never use words like "official" and never claim to be endorsed or affiliated.
+Picture: always a cartoon mascot, animal or object that captures the moment, never a realistic likeness of a real person, no logos or brand marks.
+No promises of profit or price, nothing hateful or sexual.`;
+
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
 export function clean(o) {
   if (!o || typeof o !== "object") return null;
-  const name = String(o.name ?? "").replace(/[^\p{L}\p{N} .'!&-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 24);
+  const name = String(o.name ?? "").replace(/[^\p{L}\p{N} .'!&-]/gu, "").replace(/\bofficial\b/gi, "").replace(/\s+/g, " ").trim().slice(0, 24);
   let ticker = String(o.ticker ?? "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 6);
   const description = String(o.description ?? "").replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 140);
   const picture = String(o.picture ?? "").replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
@@ -57,8 +64,9 @@ const ANGLES = [
 ];
 
 export async function onRequestPost({ request, env }) {
-  let idea = "";
-  try { idea = String((await request.json()).idea ?? ""); } catch { return json({ error: "bad request" }, 400); }
+  let idea = "", trend = "";
+  try { const b = await request.json(); idea = String(b.idea ?? ""); trend = b.trend ? String(b.trend).replace(/\s+/g, " ").trim().slice(0, 200) : ""; } catch { return json({ error: "bad request" }, 400); }
+  const system = trend ? SYSTEM.replace(/No real people, no brands,[^`]*$/, "") + "\n" + TREND_RULES : SYSTEM;
   idea = idea.replace(/\s+/g, " ").trim().slice(0, 300);
   if (idea.length < 2) return json({ error: "Describe your coin in a few words." }, 400);
   if (env.AI) {
@@ -67,7 +75,7 @@ export async function onRequestPost({ request, env }) {
         const angle = ANGLES[Math.floor(Math.random() * ANGLES.length)];
         const seed = Math.floor(Math.random() * 1e9);
         const out = await env.AI.run(model, {
-          messages: [{ role: "system", content: SYSTEM }, { role: "user", content: `${idea}\n\nStyle for this round: ${angle} Avoid the most obvious names. (variation ${seed})` }],
+          messages: [{ role: "system", content: system }, { role: "user", content: `${idea}${trend ? `\nWhy it is trending: ${trend}` : ""}\n\nStyle for this round: ${angle} Avoid the most obvious names. (variation ${seed})` }],
           max_tokens: 500, temperature: 1.05, seed,
         });
         const data = parse(out?.response ?? out);

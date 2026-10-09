@@ -134,7 +134,7 @@ function Footer() {
       <div className="wrap foot-in">
         <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span style={{ fontWeight: 800, fontSize: 14 }}>ArkhamPad</span>
-          <span style={{ fontSize: 12, color: "var(--faint)", maxWidth: 420, lineHeight: 1.5 }}>Meme coins are very risky. Nothing on ArkhamPad is financial advice.</span>
+          <span style={{ fontSize: 12, color: "var(--faint)", maxWidth: 420, lineHeight: 1.5 }}>Meme coins are very risky. Nothing on ArkhamPad is financial advice. Coins are made by users and aren&apos;t affiliated with any person or brand they mention.</span>
           <span style={{ fontSize: 12, color: "var(--text2)", maxWidth: 420, lineHeight: 1.5, fontWeight: 600 }}>ArkhamPad has no official token yet. Any coin using the ArkhamPad or Arkham name is not ours. Official news comes only from @Arkhampad.</span>
         </span>
         <nav aria-label="Footer">

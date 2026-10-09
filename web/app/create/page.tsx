@@ -97,11 +97,11 @@ function CreateView() {
   };
 
   // AI: one sentence (any language) -> three ready coins
-  const generate = async (text = idea) => {
+  const generate = async (text = idea, trend?: string) => {
     if (!text.trim()) { toast("Describe your coin in a few words, or tap an idea."); return; }
     setThinking(true);
     try {
-      const r = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idea: text }) });
+      const r = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idea: text, trend }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !Array.isArray(j.options) || !j.options.length) throw new Error(j.error || "AI is busy, please try again.");
       const list = j.options.slice(0, 3).map((o: { name: string; ticker: string; description: string; picture?: string }, i: number) => ({ name: o.name, tick: o.ticker, desc: o.description, picture: o.picture, c1: PALETTE[i][0], c2: PALETTE[i][1] }));
@@ -113,6 +113,33 @@ function CreateView() {
       list.forEach((x: { name: string; desc: string; picture?: string }, i: number) => { drawOne(i, x.name, x.desc, run, x.picture); });
     } catch (e) { toast((e as Error).message || "AI is busy, please try again."); } finally { setThinking(false); }
   };
+  // Trend Coin: the 3 hottest topics right now (scanned every 5 minutes), one tap designs coins for it
+  type Trend = { title: string; emoji: string; why: string; idea: string; heat: number };
+  const [trends, setTrends] = useState<{ topics: Trend[]; scannedAt: number } | null>(null);
+  const [trendOpen, setTrendOpen] = useState(false);
+  const [trendBusy, setTrendBusy] = useState(false);
+  const [trendPick, setTrendPick] = useState<number | null>(null);
+  const openTrends = async () => {
+    setTrendOpen(true);
+    if (trends && Date.now() - trends.scannedAt < 5 * 60_000) return;
+    setTrendBusy(true);
+    try {
+      const r = await fetch("/api/trends");
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !Array.isArray(j.topics) || !j.topics.length) throw new Error(j.error || "Couldn't read the trends right now. Try again in a minute.");
+      setTrends(j);
+    } catch (e) { toast((e as Error).message); setTrendOpen(false); } finally { setTrendBusy(false); }
+  };
+  const pickTrend = (i: number) => {
+    const t = trends?.topics[i];
+    if (!t || thinking) return;
+    setTrendPick(i);
+    setIdea(t.idea);
+    generate(t.idea, `${t.title}: ${t.why}`);
+  };
+  // "Generate again" on a trend idea keeps the trend's context
+  const trendWhy = () => { const t = trendPick !== null ? trends?.topics[trendPick] : undefined; return t && t.idea === idea ? `${t.title}: ${t.why}` : undefined; };
+  const ago = (ts: number) => { const m = Math.max(0, Math.round((Date.now() - ts) / 60_000)); return m < 1 ? "just now" : `${m} min ago`; };
   // AI image for the chosen coin
   const drawImage = async () => {
     setDrawing(true);
@@ -249,16 +276,35 @@ function CreateView() {
         <div className="cr-main">
           {step === 0 && (
             <>
+              <div className={`cr-trend${trendOpen ? " open" : ""}`}>
+                <button type="button" className="cr-trend-btn" onClick={() => (trendOpen && !trendBusy ? setTrendOpen(false) : openTrends())} aria-expanded={trendOpen}>
+                  <span className="cr-flame" aria-hidden="true">🔥</span>
+                  <span className="cr-trend-t"><b>Create Trend Coin</b><span>The 3 hottest topics on the internet right now. Pick one, your coin is ready.</span></span>
+                  <span className="cr-trend-go" aria-hidden="true">{trendOpen ? "▴" : "▾"}</span>
+                </button>
+                {trendOpen && (
+                  <div className="cr-trend-list" role="radiogroup" aria-label="Trending topics" aria-busy={trendBusy}>
+                    {trendBusy || !trends ? [0, 1, 2].map((i) => <div key={i} className="cr-topic skel" style={{ height: 76 }} />) : trends.topics.map((t, i) => (
+                      <button key={i} type="button" role="radio" aria-checked={trendPick === i} className={`cr-topic${trendPick === i ? " on" : ""}`} disabled={thinking} onClick={() => pickTrend(i)}>
+                        <span className="cr-topic-e" aria-hidden="true">{t.emoji}</span>
+                        <span className="cr-topic-t"><b>{t.title}</b><span>{t.why}</span></span>
+                        <span className="cr-heat" title="How hot it is right now">🔥 {t.heat}</span>
+                      </button>
+                    ))}
+                    {trends && !trendBusy && <span className="cr-trend-note">{thinking && trendPick !== null ? "Designing your trend coins…" : `Updated ${ago(trends.scannedAt)} · scans dexes, Google, news and Reddit every 5 minutes`}</span>}
+                  </div>
+                )}
+              </div>
               <div className="cr-ai">
                 <span className="cr-badge"><ISpark size={12} color="currentColor" />AI</span>
                 <h2>Your coin, designed in seconds</h2>
                 <p>One sentence in any language. You get 3 coins with a name, ticker, story and logo.</p>
                 <label htmlFor="cidea" className="sr">Describe your coin in any language</label>
-                <textarea id="cidea" rows={2} value={idea} maxLength={300} placeholder="e.g. A frog astronaut who only buys the dip" onChange={(e) => setIdea(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!thinking) generate(); } }} />
+                <textarea id="cidea" rows={2} value={idea} maxLength={300} placeholder="e.g. A frog astronaut who only buys the dip" onChange={(e) => setIdea(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!thinking) generate(idea, trendWhy()); } }} />
                 <div className="cr-sparks">
                   {SPARKS.map(([a, b]) => <button key={a} type="button" onClick={() => { setIdea(b); generate(b); }} disabled={thinking}>{a}</button>)}
                 </div>
-                <button type="button" className="cr-gen" disabled={thinking} onClick={() => generate()}><ISpark size={16} color="currentColor" />{thinking ? "Designing your coins…" : generated ? "Generate again" : "Generate 3 coins"}</button>
+                <button type="button" className="cr-gen" disabled={thinking} onClick={() => generate(idea, trendWhy())}><ISpark size={16} color="currentColor" />{thinking ? "Designing your coins…" : generated ? "Generate again" : "Generate 3 coins"}</button>
               </div>
               {(thinking || generated) && (
                 <div className="cr-cards" role="radiogroup" aria-label="AI coins" aria-busy={thinking}>
