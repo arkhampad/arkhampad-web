@@ -58,15 +58,20 @@ export function LaunchFeeCard({ c }: { c: LiveCoin }) {
   if (!live || fee === null) return null;
   const decay = launchSchedule(c.chainId).decay;
   const pct = ((decay - left) / decay) * 100;
+  // closed by default: one small line; tap to see the countdown and why
   return (
-    <div className="card launch-fee" role="status" aria-live="polite">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 700, fontSize: 14 }}>Launch fee <b className="mono lf-v">{fmtFee(fee)}</b></span>
+    <details className="card launch-fee lf-mini">
+      <summary style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, cursor: "pointer", listStyle: "none", fontSize: 13 }}>
+        <span className="dim">Launch fee active</span>
+        <span className="dim" style={{ fontSize: 12 }}>Details ▾</span>
+      </summary>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 13 }}>
+        <span>Fee now <b className="mono lf-v">{fmtFee(fee)}</b></span>
         <span className="mono dim" style={{ fontSize: 12 }}>drops to 2% in {mmss(left)}</span>
       </div>
-      <span className="lf-bar"><i style={{ width: `${pct}%` }} /></span>
-      <span className="dim" style={{ fontSize: 12, lineHeight: 1.45 }}>Bots that buy in the first minutes pay more. After {decay === 300 ? "five" : "two"} minutes every trade pays 2%.</span>
-    </div>
+      <span className="lf-bar" style={{ marginTop: 8 }}><i style={{ width: `${pct}%` }} /></span>
+      <span className="dim" style={{ fontSize: 12, lineHeight: 1.45, marginTop: 6 }}>Bots that buy in the first minutes pay more. After {decay === 300 ? "five" : "two"} minutes every trade pays 2%.</span>
+    </details>
   );
 }
 
