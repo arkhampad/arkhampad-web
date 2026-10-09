@@ -8,7 +8,7 @@ import { useProfile } from "@/lib/profiles";
 import { traderColors } from "@/lib/traders";
 import { listCoins, recentTrades, useLive, useTradeFeed, type LiveCoin, type LiveTrade } from "@/lib/live";
 import { IBell, IChart, IHome, IPlus, ISearch, IUser } from "./icons";
-import { FundsModal, WelcomeModal } from "./modals";
+import { FundsModal } from "./modals";
 import { WalletProvider, useWallet } from "./wallet";
 import { OrderWatcher } from "./orders";
 import { CopyAlerts } from "./social";
@@ -204,13 +204,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const w = useWallet();
   const [funds, setFunds] = useState<null | "deposit" | "withdraw">(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [welcome, setWelcome] = useState(false);
-  useEffect(() => {
-    try {
-      if (!localStorage.getItem("ap_welcome_seen")) setWelcome(true);
-    } catch { setWelcome(true); }
-  }, []);
-  const closeWelcome = () => { setWelcome(false); try { localStorage.setItem("ap_welcome_seen", "1"); } catch { /* storage off */ } };
   const toast = useCallback((m: string) => { setMsg(m); }, []);
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(null), 2200); return () => clearTimeout(t); }, [msg]);
   const ctx: Ctx = { openLogin: w.login, openFunds: (t) => (w.signedIn ? setFunds(t) : w.login()), toast, loggedIn: w.signedIn };
@@ -243,7 +236,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         <Link href="/alerts/" className={isOn(path, "/alerts/") ? "on" : ""}><IBell size={22} />Alerts</Link>
         <Link href="/profile/" className={isOn(path, "/profile/") ? "on" : ""}><IUser size={22} />Profile</Link>
       </nav>
-      {welcome && <WelcomeModal onClose={closeWelcome} />}
       {funds && <FundsModal tab={funds} setTab={setFunds} onClose={() => setFunds(null)} />}
       {w.signedIn && <OrderWatcher />}
       {w.signedIn && <CopyAlerts />}
