@@ -770,24 +770,86 @@ export function makeRelayer() {
     return { fee: String(q.raw / 10n ** BigInt(DEC(n) - 6)), usd: q.usd, busy: q.busy, owed: String(owes / 10n ** BigInt(DEC(n) - 6)) };
   }
 
-  // Relayer gas: if its ETH (or BNB) runs low, every trade stops. Watched every 5 minutes;
-  // the owner gets a bell + push alert (ALERT_WALLET) and the status page shows it.
-  const LOW = { ETH: Number(process.env.LOW_GAS_ETH ?? 0.005), BNB: Number(process.env.LOW_GAS_BNB ?? 0.03) };
+  // Relayer gas: if its ETH (or BNB) runs low, every trade stops. Watched every 5 minutes.
+  // Users repay every transaction's gas in USDC (it lands in the fee vault), so when the relayer runs
+  // low it refills itself: it takes a few dollars of those fees from the vault (the payer's daily
+  // limit applies) and swaps them for the gas token through KyberSwap. The owner only gets an alert
+  // (bell + push to ALERT_WALLET) when a refill didn't work and gas is really running out.
+  // Alert levels: about a hundred transactions left on each network.
+  const LOW_BY_CHAIN = { 8453: 0.001, 4663: 0.0006, 56: 0.004, 5042: 0.5 };
+  const LOW = { ETH: Number(process.env.LOW_GAS_ETH ?? 0.001), BNB: Number(process.env.LOW_GAS_BNB ?? 0.004) };
+  // refill when the balance falls under twice the alert level
+  const REFILL_USD = Number(process.env.GAS_REFILL_USD ?? 10);
+  const REFILL_PER_DAY = 3;
+  const KYBER_SLUG = { 8453: "base", 4663: "robinhood", 56: "bsc", 5042: "arc" };
+  const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+  const GAS_REF = "0x6761732d726566696c6c00000000000000000000000000000000000000000000"; // "gas-refill"
+  const refills = new Map(); // chainId -> timestamps of today's refills
+  const gasStarted = Date.now();
+  const ERC20_MIN = [
+    { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+    { type: "function", name: "allowance", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] },
+    { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
+  ];
+  async function refillGas(n) {
+    const slug = KYBER_SLUG[n.c.chainId];
+    if (!slug || !n.c.vault) return "no vault or swap route on this network";
+    const day = Date.now() - 86_400_000;
+    const done = (refills.get(n.c.chainId) ?? []).filter((t) => t > day);
+    if (done.length >= REFILL_PER_DAY) return "daily refill limit reached";
+    const vault = getAddress(n.c.vault), usdc = getAddress(n.c.usdc);
+    const amount = BigInt(Math.round(REFILL_USD * 100)) * 10n ** BigInt(DEC(n) - 2);
+    const [left, inVault] = await Promise.all([
+      n.pub.readContract({ address: vault, abi: VAULT_ABI, functionName: "leftToday" }),
+      n.pub.readContract({ address: usdc, abi: ERC20_MIN, functionName: "balanceOf", args: [vault] }),
+    ]);
+    if (inVault < amount || left < amount) return "not enough fees in the vault yet";
+    refills.set(n.c.chainId, [...done, Date.now()]);
+    // 1) fees from the vault to the relayer (shows on-chain as a payout with ref "gas-refill")
+    const h1 = await send(n, vault, encodeFunctionData({ abi: VAULT_ABI, functionName: "payReferral", args: [account.address, amount, GAS_REF] }));
+    await n.pub.waitForTransactionReceipt({ hash: h1, timeout: 60_000 });
+    // Arc: USDC is the gas token itself, nothing to swap
+    if (n.c.chainId === 5042) { log(`${n.c.name}: gas refilled with $${REFILL_USD} of collected fees`); return null; }
+    // 2) swap them for the gas token through KyberSwap
+    const head = { "x-client-id": "arkhampad", "content-type": "application/json" };
+    const rr = await fetch(`https://aggregator-api.kyberswap.com/${slug}/api/v1/routes?tokenIn=${usdc}&tokenOut=${NATIVE}&amountIn=${amount}`, { headers: head, signal: AbortSignal.timeout(15_000) }).then((r) => r.json());
+    const sum = rr?.data?.routeSummary, router = rr?.data?.routerAddress;
+    if (!sum || !router) return "no swap route right now (the dollars stay in the relayer for the next try)";
+    const b = await fetch(`https://aggregator-api.kyberswap.com/${slug}/api/v1/route/build`, { method: "POST", headers: head, body: JSON.stringify({ routeSummary: sum, sender: account.address, recipient: account.address, slippageTolerance: 100 }), signal: AbortSignal.timeout(15_000) }).then((r) => r.json());
+    if (!b?.data?.data) return "swap build failed";
+    const allow = await n.pub.readContract({ address: usdc, abi: ERC20_MIN, functionName: "allowance", args: [account.address, getAddress(router)] });
+    if (allow < amount) {
+      const ha = await send(n, usdc, encodeFunctionData({ abi: ERC20_MIN, functionName: "approve", args: [getAddress(router), 2n ** 256n - 1n] }));
+      await n.pub.waitForTransactionReceipt({ hash: ha, timeout: 60_000 });
+    }
+    const h2 = await send(n, getAddress(router), b.data.data);
+    const rc = await n.pub.waitForTransactionReceipt({ hash: h2, timeout: 60_000 });
+    if (rc.status !== "success") return "swap failed on-chain";
+    log(`${n.c.name}: gas refilled with $${REFILL_USD} of collected fees (${h2})`);
+    return null;
+  }
   const gasState = {};
   const warned = new Map();
   async function gasWatch() {
     for (const n of nets.values()) {
       try {
         const sym = n.c.native ?? "ETH";
-        const bal = Number(await n.pub.getBalance({ address: account.address })) / 1e18;
+        let bal = Number(await n.pub.getBalance({ address: account.address })) / 1e18;
         // testnet gas is almost free, so a much smaller balance lasts for thousands of trades
         const TESTNET = new Set([84532, 46630, 97, 11155111, 421614]);
-        const min = TESTNET.has(n.c.chainId) ? Number(process.env.LOW_GAS_TESTNET ?? 0.0002) : (LOW[sym] ?? LOW.ETH);
+        const min = TESTNET.has(n.c.chainId) ? Number(process.env.LOW_GAS_TESTNET ?? 0.0002) : (LOW_BY_CHAIN[n.c.chainId] ?? LOW[sym] ?? LOW.ETH);
+        // getting low: refill from collected fees before it becomes a problem
+        if (!TESTNET.has(n.c.chainId) && bal < min * 2) {
+          const why = await refillGas(n).catch((e) => String(e.shortMessage || e.message).slice(0, 120));
+          if (why) log(`${n.c.name}: gas refill skipped: ${why}`);
+          else bal = Number(await n.pub.getBalance({ address: account.address })) / 1e18;
+        }
         const low = bal < min;
         gasState[n.c.name] = { balance: +bal.toFixed(6), symbol: sym, low, alertBelow: min, at: new Date().toISOString() };
         if (!low) { warned.delete(n.c.chainId); continue; }
         const last = warned.get(n.c.chainId) ?? 0;
-        if (Date.now() - last < 6 * 3_600_000) continue;
+        // no alerts right after a restart (deploys restart the service): give the refill a chance first
+        if (Date.now() - last < 6 * 3_600_000 || Date.now() - gasStarted < 15 * 60_000) continue;
         warned.set(n.c.chainId, Date.now());
         log(`LOW GAS on ${n.c.name}: ${bal.toFixed(5)} ${sym} left in ${account.address}`);
         const to = (process.env.ALERT_WALLET || "").trim().toLowerCase();

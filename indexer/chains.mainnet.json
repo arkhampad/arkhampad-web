@@ -18,7 +18,8 @@
     "poolManager": "0x498581fF718922c3f8e6A244956aF099B2652b2b",
     "relayRpcEnv": "BASE_RELAY_RPC",
     "v2": true,
-    "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231"
+    "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231",
+    "vault": "0x43Ca3cEe078d8cb8528915B16e8bDcc9aDBe6090"
   },
   {
     "name": "robinhood",
@@ -39,6 +40,7 @@
     "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
     "relayRpcEnv": "ROBINHOOD_RELAY_RPC",
     "v2": true,
-    "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231"
+    "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231",
+    "vault": "0xB4B9F1706537eA2E876Ce8e3684dc982f05Da69E"
   }
 ]
