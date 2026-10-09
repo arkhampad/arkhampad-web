@@ -67,7 +67,8 @@ export default function Profile() {
   const [result, setResult] = useState<Pnl | null>(null);
   const [tab, setTab] = useState<"Holdings" | "Created" | "Orders">("Holdings");
   const load = useCallback(() => { if (w.address) loadHoldings(w.address).then(setData).catch(() => setData({ holdings: [], created: [] })); }, [w.address]);
-  useEffect(() => { setData(null); load(); const off = onLocalTrade(() => setTimeout(load, 300)); const iv = setInterval(load, 30_000); return () => { off(); clearInterval(iv); }; }, [load]);
+  // after a trade: look again a few times while public nodes catch up; every 15 s while on screen
+  useEffect(() => { setData(null); load(); const off = onLocalTrade(() => { for (const ms of [300, 2500, 6000]) setTimeout(load, ms); }); const iv = setInterval(() => { if (document.visibilityState === "visible") load(); }, 15_000); return () => { off(); clearInterval(iv); }; }, [load]);
 
   if (!w.ready) return <div className="wrap page"><div className="skel" style={{ height: 160, borderRadius: 22 }} /></div>;
   if (!w.signedIn || !w.address) return (

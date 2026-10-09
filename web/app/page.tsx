@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { listCoins, listPromoted, recentTrades, totalCoins, useLive, useTradeFeed, ago, type LiveCoin, type LiveTrade, type Tab } from "@/lib/live";
 import { Avatar as Av } from "@/components/bits";
 import { Avatar, sparkUseful } from "@/components/bits";
@@ -78,7 +78,12 @@ export default function Discover() {
   const promoted = useLive(listPromoted, [], 60_000);
   const tops = useLive(() => board(7, 10), [], 120_000);
   const live = useLive<LiveTrade[]>(() => recentTrades(8), [], 0);
-  useTradeFeed(() => live.reload());
+  // a new trade anywhere: refresh the live strip at once and the first page of the list (at most every 3 s)
+  const lastList = useRef(0);
+  useTradeFeed(() => {
+    live.reload();
+    if ((list?.length ?? 0) <= PAGE && Date.now() - lastList.current > 3_000) { lastList.current = Date.now(); load(0); }
+  });
 
   const go = (e?: React.FormEvent) => { e?.preventDefault(); router.push(`/create/?idea=${encodeURIComponent(idea)}`); };
 

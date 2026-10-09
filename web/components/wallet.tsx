@@ -20,35 +20,72 @@ type WalletCtx = {
   usdc: Record<number, bigint>; // per network
   totalUsdc: number;
   refresh: () => Promise<void>;
+  /** Shows a known balance change at once (site units), until the chain confirms it. */
+  adjust: (chainId: number, delta: bigint) => void;
 };
-const Ctx = createContext<WalletCtx>({ ready: false, signedIn: false, address: null, login: () => {}, logout: () => {}, signer: null, usdc: {}, totalUsdc: 0, refresh: async () => {} });
+const Ctx = createContext<WalletCtx>({ ready: false, signedIn: false, address: null, login: () => {}, logout: () => {}, signer: null, usdc: {}, totalUsdc: 0, refresh: async () => {}, adjust: () => {} });
 export const useWallet = () => useContext(Ctx);
 
+type Pending = { delta: bigint; base: bigint | undefined; until: number };
+
 function useBalances(address: Address | null) {
-  const [usdc, setUsdc] = useState<Record<number, bigint>>({});
+  const [chainUsdc, setUsdc] = useState<Record<number, bigint>>({});
+  // A trade made here changes the balance on screen at once; the chain's own number replaces it
+  // as soon as a read shows the change (public nodes can lag a block or two), or after 20 s.
+  const [pending, setPending] = useState<Record<number, Pending>>({});
+  const latest = useRef<Record<number, bigint>>({});
   const seq = useRef(0);
   const refresh = useCallback(async () => {
-    if (!address) { setUsdc({}); return; }
+    if (!address) { setUsdc({}); latest.current = {}; return; }
     const n = ++seq.current;
     const rows = await Promise.all(NETS.map(async (x) => [x.id, await usdcBalance(x.id, address).catch(() => null)] as const));
     if (n !== seq.current) return;
-    setUsdc((cur) => {
-      const next = { ...cur };
-      for (const [id, v] of rows) if (v !== null) next[id] = v;
-      return next;
+    const next = { ...latest.current };
+    for (const [id, v] of rows) if (v !== null) next[id] = v;
+    latest.current = next;
+    setUsdc(next);
+    setPending((cur) => {
+      let changed = false;
+      const out: Record<number, Pending> = {};
+      for (const [k, p] of Object.entries(cur)) {
+        const id = Number(k);
+        if (Date.now() > p.until || (next[id] !== undefined && next[id] !== p.base)) { changed = true; continue; }
+        out[id] = p;
+      }
+      return changed ? out : cur;
     });
   }, [address]);
+  const adjust = useCallback((chainId: number, delta: bigint) => {
+    setPending((cur) => {
+      const p = cur[chainId];
+      return { ...cur, [chainId]: { delta: (p?.delta ?? 0n) + delta, base: p ? p.base : latest.current[chainId], until: Date.now() + 20_000 } };
+    });
+    // look again soon: the chain usually confirms within a few seconds
+    for (const ms of [1500, 4000, 8000]) setTimeout(() => { refresh(); }, ms);
+  }, [refresh]);
   useEffect(() => {
     refresh();
-    const iv = setInterval(refresh, 15_000); // deposits from outside show up on their own
-    const off = onLocalTrade(() => { refresh(); });
-    return () => { clearInterval(iv); off(); };
-  }, [refresh]);
+    // every 5 s while the page is on screen (deposits from outside show up on their own), 30 s in the background
+    let last = 0;
+    const iv = setInterval(() => {
+      const every = typeof document !== "undefined" && document.visibilityState === "visible" ? 5_000 : 30_000;
+      if (Date.now() - last >= every) { last = Date.now(); refresh(); }
+    }, 1_000);
+    const onShow = () => { if (document.visibilityState === "visible") { last = Date.now(); refresh(); } };
+    document.addEventListener("visibilitychange", onShow);
+    const off = onLocalTrade((t) => { adjust(t.chainId, BigInt(Math.round((t.isBuy ? -t.usdc : t.usdc) * 1e6))); });
+    return () => { clearInterval(iv); off(); document.removeEventListener("visibilitychange", onShow); };
+  }, [refresh, adjust]);
+  const usdc = useMemo(() => {
+    const out = { ...chainUsdc };
+    for (const [k, p] of Object.entries(pending)) { const id = Number(k); const v = (out[id] ?? 0n) + p.delta; out[id] = v < 0n ? 0n : v; }
+    return out;
+  }, [chainUsdc, pending]);
   const totalUsdc = Object.values(usdc).reduce((a, b) => a + Number(b) / 1e6, 0);
-  return { usdc, totalUsdc, refresh };
+  return { usdc, totalUsdc, refresh, adjust };
 }
 
-function Provide({ value, children }: { value: Omit<WalletCtx, "usdc" | "totalUsdc" | "refresh">; children: React.ReactNode }) {
+function Provide({ value, children }: { value: Omit<WalletCtx, "usdc" | "totalUsdc" | "refresh" | "adjust">; children: React.ReactNode }) {
   const b = useBalances(value.address);
   const v = useMemo(() => ({ ...value, ...b }), [value, b]);
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;

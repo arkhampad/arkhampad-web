@@ -55,9 +55,17 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   useEffect(() => {
     if (!w.address || (!coin.own && !ext)) { setHeld(0n); return; }
     let alive = true;
-    const load = () => (ext ? extBalance(coin.chainId, coin.address as Address, w.address as Address) : tokenBalance(coin.chainId, coin.address as Address, w.address as Address)).then((b) => alive && setHeld(b)).catch(() => {});
+    // after a trade here the new amount shows at once; a node that lags a block must not put the old one back
+    let stale: bigint | null = null, staleUntil = 0;
+    const load = () => (ext ? extBalance(coin.chainId, coin.address as Address, w.address as Address) : tokenBalance(coin.chainId, coin.address as Address, w.address as Address))
+      .then((b) => { if (!alive) return; if (stale !== null && b === stale && Date.now() < staleUntil) return; stale = null; setHeld(b); }).catch(() => {});
     load();
-    const off = onLocalTrade((t) => { if (t.coin.toLowerCase() === coin.address.toLowerCase()) load(); });
+    const off = onLocalTrade((t) => {
+      if (t.coin.toLowerCase() !== coin.address.toLowerCase() || t.chainId !== coin.chainId) return;
+      const d = BigInt(Math.round(t.coins * 1e6)) * 10n ** 12n;
+      setHeld((h) => { stale = h; staleUntil = Date.now() + 15_000; const v = t.isBuy ? h + d : h - d; return v < 0n ? 0n : v; });
+      for (const ms of [1500, 4000, 9000]) setTimeout(load, ms);
+    });
     return () => { alive = false; off(); };
   }, [w.address, coin.chainId, coin.address, coin.own, ext]);
 
@@ -104,6 +112,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           if (usd <= 0) throw new TradeError("Enter an amount.");
           const before = held;
           await extTrade(coin.chainId, token, "buy", toUsdc(usd), w.signer);
+          w.adjust(coin.chainId, -toUsdc(usd));
           toast(`Bought ${coin.tick}`);
           // public nodes can be a block behind: keep reading until the new coins show
           for (let i = 0; i < 12; i++) { const b = await extBalance(coin.chainId, token, me); if (b > before) { setHeld(b); break; } await new Promise((ok) => setTimeout(ok, 700)); }
