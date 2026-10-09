@@ -11,6 +11,8 @@ on:
         options:
           - base
           - robinhood
+          - bnb
+          - arc
       broadcast:
         description: "Really send the transactions (leave off for a dry run first)"
         required: true
@@ -48,10 +50,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned: the same Foundry version always builds byte-identical contracts,
+      # so explorer verification files match on the first try.
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: stable
+          version: v1.8.5
 
       - name: Get libraries
         run: |
@@ -67,13 +71,12 @@ jobs:
       - name: Pick network
         id: net
         run: |
-          if [ "${{ inputs.chain }}" = "base" ]; then
-            echo "rpc=${{ secrets.BASE_RPC }}" >> "$GITHUB_OUTPUT"
-            echo "id=8453" >> "$GITHUB_OUTPUT"
-          else
-            echo "rpc=${{ secrets.ROBINHOOD_RPC }}" >> "$GITHUB_OUTPUT"
-            echo "id=4663" >> "$GITHUB_OUTPUT"
-          fi
+          case "${{ inputs.chain }}" in
+            base)      echo "rpc=${{ secrets.BASE_RPC }}" >> "$GITHUB_OUTPUT"; echo "id=8453" >> "$GITHUB_OUTPUT"; echo "freeverify=no" >> "$GITHUB_OUTPUT" ;;
+            robinhood) echo "rpc=${{ secrets.ROBINHOOD_RPC }}" >> "$GITHUB_OUTPUT"; echo "id=4663" >> "$GITHUB_OUTPUT"; echo "freeverify=yes" >> "$GITHUB_OUTPUT" ;;
+            bnb)       echo "rpc=${{ secrets.BNB_RPC }}" >> "$GITHUB_OUTPUT"; echo "id=56" >> "$GITHUB_OUTPUT"; echo "freeverify=no" >> "$GITHUB_OUTPUT" ;;
+            arc)       echo "rpc=${{ secrets.ARC_RPC }}" >> "$GITHUB_OUTPUT"; echo "id=5042" >> "$GITHUB_OUTPUT"; echo "freeverify=yes" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Build
         run: forge build
@@ -87,13 +90,10 @@ jobs:
         env:
           PRIVATE_KEY: ${{ secrets.DEPLOYER_KEY }}
           START_MC: ${{ inputs.start_mc }}
-          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         run: |
-          VERIFY=""
-          if [ "${{ inputs.chain }}" = "base" ] && [ -n "$ETHERSCAN_API_KEY" ]; then VERIFY="--verify --etherscan-api-key $ETHERSCAN_API_KEY"; fi
           if [ "${{ inputs.broadcast }}" = "true" ]; then
-            forge script script/Deploy.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow $VERIFY
-            forge script script/DeployExtSwap.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow $VERIFY
+            forge script script/Deploy.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow
+            forge script script/DeployExtSwap.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow
           else
             echo "DRY RUN: nothing is sent."
             forge script script/Deploy.s.sol --rpc-url "${{ steps.net.outputs.rpc }}"
@@ -114,11 +114,36 @@ jobs:
           git pull --rebase
           git push
 
-      - name: Verify one coin on the explorer (ArkhamPadCoin)
-        if: ${{ inputs.verify_coin != '' && inputs.chain == 'base' }}
+      # Free explorer verification (Robinhood, Arc). Base and BNB are verified by hand.
+      # A failure here never undoes the deploy: the addresses are already saved above.
+      - name: Verify contracts on the explorer
+        if: ${{ inputs.broadcast && inputs.verify_coin == '' && steps.net.outputs.freeverify == 'yes' }}
+        continue-on-error: true
         env:
           ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         run: |
+          ID=${{ steps.net.outputs.id }}
+          RPC="${{ steps.net.outputs.rpc }}"
+          F=deployments/$ID.json
+          V="--chain $ID --verifier etherscan --verifier-url https://api.etherscan.io/v2/api?chainid=$ID --etherscan-api-key $ETHERSCAN_API_KEY --watch"
+          for pair in vault:src/PadFeeVault.sol:PadFeeVault poolBuilder:src/PadPoolBuilder.sol:PadPoolBuilder hub:src/PadHub.sol:PadHub promote:src/PadPromote.sol:PadPromote router:src/PadRouter.sol:PadRouter; do
+            KEY=${pair%%:*}; SRC=${pair#*:}
+            ADDR=$(jq -r ".$KEY" "$F")
+            echo "== $KEY $ADDR"
+            forge verify-contract "$ADDR" "$SRC" --rpc-url "$RPC" --guess-constructor-args $V || echo "!! $KEY not verified"
+          done
+          GUARD=$(jq -r .guard "$F"); PM=$(jq -r .poolManager "$F"); PB=$(jq -r .poolBuilder "$F")
+          echo "== guard $GUARD"
+          forge verify-contract "$GUARD" src/PadLaunchHook.sol:PadLaunchHook \
+            --constructor-args $(cast abi-encode "c(address,address)" "$PM" "$PB") $V || echo "!! guard not verified"
+
+      - name: Verify one coin on the explorer (ArkhamPadCoin)
+        if: ${{ inputs.verify_coin != '' }}
+        env:
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: |
+          ID=${{ steps.net.outputs.id }}
           forge verify-contract "${{ inputs.verify_coin }}" src/PadCoin.sol:ArkhamPadCoin \
-            --chain 8453 --rpc-url "${{ steps.net.outputs.rpc }}" --guess-constructor-args \
+            --chain $ID --rpc-url "${{ steps.net.outputs.rpc }}" --guess-constructor-args \
+            --verifier etherscan --verifier-url "https://api.etherscan.io/v2/api?chainid=$ID" \
             --etherscan-api-key "$ETHERSCAN_API_KEY" --watch
