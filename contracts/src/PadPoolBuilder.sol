@@ -34,8 +34,8 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 /// The position NFT stays in this contract, which has no way to remove
 /// liquidity or move it: the liquidity is locked forever.
 ///
-/// The pool's fee is set by PadLaunchHook: 30% at launch, falling to 2% over
-/// five minutes, then 2% forever. All of it accrues to the locked position.
+/// The pool's fee is set by PadLaunchHook: 10% at launch, falling to 2% over
+/// two minutes, then 2% forever. All of it accrues to the locked position.
 /// Pool trading fees can be collected by anyone with `collectFees(coin)`.
 /// They are split 70% to the platform treasury and 30% to the coin:
 ///   - fee mode ToCreator:   paid to the coin's creator,

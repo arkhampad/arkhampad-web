@@ -13,7 +13,7 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 ///   1. Nobody except the pool builder can create (initialize) a pool with this
 ///      hook, so no one can open a coin's pool early or at a bad price.
 ///   2. It sets the pool's trading fee. Every coin's pool opens at launch with a
-///      fee of 30% that falls in a straight line to 2% over the first five
+///      fee of 10% that falls in a straight line to 2% over the first two
 ///      minutes, then stays at 2% forever. Bots that buy in the first seconds
 ///      pay the most. Swaps made by the pool builder itself (the creator's
 ///      launch buy and buybacks) always pay the normal 2%.
@@ -26,9 +26,9 @@ contract PadLaunchHook {
     using PoolIdLibrary for PoolKey;
 
     /// @notice Fee units: 1_000_000 = 100%.
-    uint24 public constant START_FEE = 300_000; // 30%
+    uint24 public constant START_FEE = 100_000; // 10%
     uint24 public constant BASE_FEE = 20_000; // 2%
-    uint256 public constant DECAY_SECONDS = 300; // five minutes
+    uint256 public constant DECAY_SECONDS = 120; // two minutes
 
     address public immutable poolManager;
     address public immutable builder;

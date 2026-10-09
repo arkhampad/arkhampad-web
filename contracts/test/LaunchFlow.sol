@@ -174,27 +174,27 @@ abstract contract LaunchFlow is Test {
         assertLe(got, _fresh(10 * D * 98 / 100), "never cheaper than $4.5K");
     }
 
-    /// The fee falls from 30% to 2% over five minutes and the hook reports it.
+    /// The fee falls from 10% to 2% over two minutes and the hook reports it.
     function _flow_feeSchedule() internal {
-        assertEq(hook.feeAt(1000, 1000), 300_000);
-        assertEq(hook.feeAt(1000, 1150), 160_000);
-        assertEq(hook.feeAt(1000, 1300), 20_000);
+        assertEq(hook.feeAt(1000, 1000), 100_000);
+        assertEq(hook.feeAt(1000, 1060), 60_000);
+        assertEq(hook.feeAt(1000, 1120), 20_000);
         assertEq(hook.feeAt(1000, 99999), 20_000);
         ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 0);
         PoolKey memory key = builder.poolKeyFor(address(coin));
-        assertEq(hook.currentFee(key), 300_000, "30% at launch");
+        assertEq(hook.currentFee(key), 100_000, "10% at launch");
         assertEq(key.fee, LPFeeLibrary.DYNAMIC_FEE_FLAG, "dynamic fee pool");
 
-        // Same $100 buy: at launch it gets ~70/98 of what it gets after five minutes.
+        // Same $100 buy: at launch it gets ~90/98 of what it gets after two minutes.
         uint256 early = _quoteBuy(address(coin), 100 * D);
-        vm.warp(vm.getBlockTimestamp() + 150);
-        assertEq(hook.currentFee(key), 160_000, "16% half way");
+        vm.warp(vm.getBlockTimestamp() + 60);
+        assertEq(hook.currentFee(key), 60_000, "6% half way");
         uint256 mid = _quoteBuy(address(coin), 100 * D);
-        vm.warp(vm.getBlockTimestamp() + 150);
+        vm.warp(vm.getBlockTimestamp() + 60);
         uint256 late = _quoteBuy(address(coin), 100 * D);
         // ratios as the pool sees them (fee comes off the input, then price impact)
-        assertApproxEqRel(early * _fresh(98 * D), late * _fresh(70 * D), 0.002e18, "30% fee at launch");
-        assertApproxEqRel(mid * _fresh(98 * D), late * _fresh(84 * D), 0.002e18, "16% fee half way");
+        assertApproxEqRel(early * _fresh(98 * D), late * _fresh(90 * D), 0.002e18, "10% fee at launch");
+        assertApproxEqRel(mid * _fresh(98 * D), late * _fresh(94 * D), 0.002e18, "6% fee half way");
     }
 
     /// Snipers pay the launch fee, and it lands in the pool's fees: 70% platform, 30% creator.
@@ -204,7 +204,7 @@ abstract contract LaunchFlow is Test {
         uint256 t0 = usdc.balanceOf(treasury);
         uint256 c0 = usdc.balanceOf(creator);
         (uint256 uf,) = builder.collectFees(address(coin));
-        assertApproxEqRel(uf, 300 * D, 0.001e18, "30% of the sniper's 1000 USDC");
+        assertApproxEqRel(uf, 100 * D, 0.001e18, "10% of the sniper's 1000 USDC");
         assertApproxEqAbs(usdc.balanceOf(treasury) - t0, uf - uf * 3000 / 10000, 1, "70% platform");
         assertApproxEqAbs(usdc.balanceOf(creator) - c0, uf * 3000 / 10000, 1, "30% creator");
     }
@@ -231,7 +231,7 @@ abstract contract LaunchFlow is Test {
         assertEq(uf2 + cf2, 0);
     }
 
-    /// The creator's launch buy is made by the builder and pays the normal 2%, not 30%.
+    /// The creator's launch buy is made by the builder and pays the normal 2%, not 10%.
     function _flow_launchBuyPaysBase() internal {
         uint256 c0 = usdc.balanceOf(creator);
         ArkhamPadCoin coin = _launch(FeeMode.ToCreator, 100 * D);
@@ -353,10 +353,10 @@ abstract contract LaunchFlow is Test {
     function _flow_hardening() internal {
         vm.expectRevert(abi.encodeWithSelector(PadHub.LaunchBuyTooSmall.selector, 0));
         new PadHub(usdc, builder, 4500 * D, 0, admin, treasury);
-        assertEq(hook.feeAt(1000, 999), 300_000);
-        assertEq(hook.feeAt(1000, 0), 300_000);
-        assertGt(hook.feeAt(1000, 1299), 20_000, "still above 2% at 299s");
-        assertEq(hook.feeAt(1000, 1300), 20_000);
+        assertEq(hook.feeAt(1000, 999), 100_000);
+        assertEq(hook.feeAt(1000, 0), 100_000);
+        assertGt(hook.feeAt(1000, 1119), 20_000, "still above 2% at 119s");
+        assertEq(hook.feeAt(1000, 1120), 20_000);
     }
 
     /// The router only trades coins launched on ArkhamPad.

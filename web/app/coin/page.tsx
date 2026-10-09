@@ -139,7 +139,7 @@ function CoinView() {
             {c.own && <div className="col-stack" style={{ gap: 8 }}><span style={{ fontWeight: 700, fontSize: 15 }}>Holder map</span><HolderMap c={c} stacked /></div>}
             {c.own && <Comments c={c} />}
           </div>
-          {/* phones: the launch fee up top (first five minutes), details in tabs */}
+          {/* phones: the launch fee up top (first minutes), details in tabs */}
           <div className="show-m col-stack">
             {c.own && <LaunchFeeCard c={c} />}
             <div className="mtabs" role="tablist">

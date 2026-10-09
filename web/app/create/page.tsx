@@ -8,6 +8,7 @@ import { useApp } from "@/components/shell";
 import { Confetti } from "@/components/celebrate";
 import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCoin } from "@/lib/share";
 import { useWallet } from "@/components/wallet";
+import { launchSchedule } from "@/components/v2";
 import { lastFee, warmFees, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage, LIVE } from "@/lib/chain";
 
 /**
@@ -350,7 +351,7 @@ function CreateView() {
                   : <span>Opens at a <b className="mono">$450</b> market cap in a Uniswap pool <span className="dim">(testnet; $2K on mainnet)</span></span>}
                 <span>Liquidity locked forever. Nobody can pull it, not even us.</span>
                 <span>Tradable in other apps from the first trade.</span>
-                <span>Launch fee protects you from bots: <b className="mono">30%</b> falling to <b className="mono">2%</b> in five minutes.</span>
+                <span>Launch fee protects you from bots: <b className="mono">{launchSchedule(chainId).start}%</b> falling to <b className="mono">2%</b> in {launchSchedule(chainId).decay === 300 ? "five" : "two"} minutes.</span>
                 <span>Your USDC on {chain}: <b className="mono">{w.signedIn ? `$${cash.toFixed(2)}` : "—"}</b></span>
               </div>
             </div>

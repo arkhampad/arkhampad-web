@@ -45,6 +45,9 @@ contract Deploy is Script {
         } else if (block.chainid == 56) {
             // BNB Chain mainnet: Binance-Peg USDC has 18 decimals and no permit
             v = V4(0x28e2Ea090877bF75740558f6BFB36A5ffeE9e9dF, 0x7A4a5c919aE2541AeD11041A1AEeE68f1287f95b, 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d);
+        } else if (block.chainid == 5042) {
+            // Arc mainnet (Circle): USDC is the gas token; its ERC-20 interface has 6 decimals
+            v = V4(0x8366a39CC670B4001A1121B8F6A443A643e40951, 0x6049c9a0e26405C0985f9E3685C87d0aE917f82B, 0x3600000000000000000000000000000000000000);
         } else if (block.chainid == 8453) {
             v = V4(0x498581fF718922c3f8e6A244956aF099B2652b2b, 0x7C5f5A4bBd8fD63184577525326123B519429bDc, 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
         } else {
@@ -64,6 +67,10 @@ contract Deploy is Script {
     }
 
     /// @dev Accepts the private key with or without the 0x prefix (MetaMask exports it without).
+    function _mainnet() internal view returns (bool) {
+        return block.chainid == 4663 || block.chainid == 8453 || block.chainid == 56 || block.chainid == 5042;
+    }
+
     function _key() internal view returns (uint256) {
         string memory raw = vm.envString("PRIVATE_KEY");
         bytes memory b = bytes(raw);
@@ -77,17 +84,19 @@ contract Deploy is Script {
         address admin = vm.envOr("ADMIN", deployer);
         address treasury = vm.envOr("TREASURY", deployer);
         // Mainnet: admin and treasury must be set on purpose (a Safe), never the hot deployer key.
-        if (block.chainid == 4663 || block.chainid == 8453 || block.chainid == 56) {
+        if (_mainnet()) {
             require(admin != deployer, "mainnet: set ADMIN to the Safe (not the deployer)");
             require(treasury != deployer, "mainnet: set TREASURY to the Safe or a separate wallet (not the deployer)");
         }
         address guardian = vm.envOr("GUARDIAN", address(0));
         bool testCurve = keccak256(bytes(vm.envOr("CURVE", string("main")))) == keccak256("test");
         V4 memory v = _chain();
+        // the PositionManager must belong to this PoolManager (guards against a wrong address)
+        require(address(IPositionManager(v.positionManager).poolManager()) == v.poolManager, "positionManager/poolManager mismatch");
 
         vm.startBroadcast(key);
         if (v.usdc == address(0)) {
-            require(block.chainid != 4663 && block.chainid != 8453 && block.chainid != 56, "set USDC on mainnet");
+            require(!_mainnet(), "set USDC on mainnet");
             v.usdc = address(new TestUSDC());
         }
         // amounts in the dollar token's own decimals (6 for USDC/USDG, 18 on BNB)
@@ -101,7 +110,7 @@ contract Deploy is Script {
         // the relayer may only pay referral rewards from it, capped per day.
         // testnets fall back to the deployer; mainnet must name the relayer explicitly
         address payer = vm.envOr("RELAYER", deployer);
-        if (block.chainid == 4663 || block.chainid == 8453 || block.chainid == 56) {
+        if (_mainnet()) {
             require(vm.envOr("RELAYER", address(0)) != address(0), "mainnet: set RELAYER (the relayer's address)");
         }
         uint256 cap = vm.envOr("VAULT_DAILY_CAP", uint256(500)) * dollar;

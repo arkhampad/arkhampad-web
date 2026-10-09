@@ -8,7 +8,7 @@ export const CONTACT_EMAIL = "team@arkhampad.com";
 export const fees: { what: string; fee: string; note: string }[] = [
   { what: "Creating a coin", fee: "Free", note: "No platform fee to launch." },
   { what: "Trading a coin launched on ArkhamPad", fee: "2%", note: "Pool fee on every trade, in any app. 30% goes to the coin: to its creator or into buyback and burn, as chosen at launch." },
-  { what: "A coin's first five minutes", fee: "30% → 2%", note: "Launch fee against sniping bots: starts at 30% and falls in a straight line to 2% over five minutes. Same 70/30 split." },
+  { what: "A coin's first minutes", fee: "Up to 30% → 2%", note: "Launch fee against sniping bots, falling in a straight line to 2%. On Base: 30% to 2% over five minutes. On Robinhood, BNB and Arc: 10% to 2% over two minutes. Same 70/30 split." },
   { what: "Creator's own buy at launch", fee: "2%", note: "At least $5, always at the normal 2% (never the launch fee)." },
   { what: "Trading coins from other DEXs", fee: "1%", note: "Of the trade amount, on top of the other DEX's own pool fee." },
   { what: "Deposits from other chains", fee: "0.25%", note: "Only when you deposit from a chain ArkhamPad doesn't trade on directly." },

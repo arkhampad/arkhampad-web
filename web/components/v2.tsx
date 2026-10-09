@@ -5,48 +5,59 @@ import { useEffect, useState } from "react";
 import type { LiveCoin } from "@/lib/live";
 import { usd } from "@/lib/live";
 
-/** The pool fee schedule set by PadLaunchHook: 30% at launch, down to 2% over five minutes. */
-export const START_FEE = 30;
+/** The pool fee schedule set by PadLaunchHook. It is fixed in each chain's hook:
+ *  Base (and the first testnets) launched with 30% falling to 2% over five minutes;
+ *  every chain opened after that uses 10% falling to 2% over two minutes. */
 export const BASE_FEE = 2;
-export const DECAY_SECONDS = 300;
+const FIRST_GEN = new Set([8453, 84532, 46630]);
+export function launchSchedule(chainId?: number): { start: number; decay: number } {
+  return chainId !== undefined && FIRST_GEN.has(chainId) ? { start: 30, decay: 300 } : { start: 10, decay: 120 };
+}
+/** "10% falling to 2% in two minutes" for a chain. */
+export function launchFeeText(chainId?: number): string {
+  const s = launchSchedule(chainId);
+  return `${s.start}% falling to 2% in ${s.decay === 300 ? "five" : "two"} minutes`;
+}
 
 /** Fee in percent at `nowMs` for a coin launched at `createdAt` (ISO). */
-export function feeAt(createdAt: string | null | undefined, nowMs = Date.now()): number {
+export function feeAt(createdAt: string | null | undefined, nowMs = Date.now(), chainId?: number): number {
   const start = createdAt ? Date.parse(createdAt) : NaN;
   if (!Number.isFinite(start)) return BASE_FEE;
+  const s = launchSchedule(chainId);
   const t = Math.max(0, (nowMs - start) / 1000);
-  if (t >= DECAY_SECONDS) return BASE_FEE;
-  return START_FEE - ((START_FEE - BASE_FEE) * t) / DECAY_SECONDS;
+  if (t >= s.decay) return BASE_FEE;
+  return s.start - ((s.start - BASE_FEE) * t) / s.decay;
 }
 
 /** Seconds left until the fee is back to 2% (0 when it already is). */
-export function feeSecondsLeft(createdAt: string | null | undefined, nowMs = Date.now()): number {
+export function feeSecondsLeft(createdAt: string | null | undefined, nowMs = Date.now(), chainId?: number): number {
   const start = createdAt ? Date.parse(createdAt) : NaN;
   if (!Number.isFinite(start)) return 0;
-  return Math.max(0, Math.ceil(DECAY_SECONDS - (nowMs - start) / 1000));
+  return Math.max(0, Math.ceil(launchSchedule(chainId).decay - (nowMs - start) / 1000));
 }
 
 /** Re-renders every second while a coin is in its launch window. */
-export function useLaunchFee(c: Pick<LiveCoin, "own" | "createdAt"> | null | undefined) {
+export function useLaunchFee(c: (Pick<LiveCoin, "own" | "createdAt"> & { chainId?: number }) | null | undefined) {
   const [now, setNow] = useState(() => Date.now());
-  const live = !!c?.own && feeSecondsLeft(c?.createdAt, now) > 0;
+  const live = !!c?.own && feeSecondsLeft(c?.createdAt, now, c?.chainId) > 0;
   useEffect(() => {
     if (!live) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [live]);
-  const fee = c?.own ? feeAt(c.createdAt, now) : null;
-  return { fee, left: c?.own ? feeSecondsLeft(c.createdAt, now) : 0, live };
+  const fee = c?.own ? feeAt(c.createdAt, now, c.chainId) : null;
+  return { fee, left: c?.own ? feeSecondsLeft(c.createdAt, now, c.chainId) : 0, live };
 }
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const fmtFee = (f: number) => `${f < 10 ? f.toFixed(1) : f.toFixed(1)}%`;
 
-/** Launch fee countdown: shown only in a coin's first five minutes. */
+/** Launch fee countdown: shown only in a coin's first minutes. */
 export function LaunchFeeCard({ c }: { c: LiveCoin }) {
   const { fee, left, live } = useLaunchFee(c);
   if (!live || fee === null) return null;
-  const pct = ((DECAY_SECONDS - left) / DECAY_SECONDS) * 100;
+  const decay = launchSchedule(c.chainId).decay;
+  const pct = ((decay - left) / decay) * 100;
   return (
     <div className="card launch-fee" role="status" aria-live="polite">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
@@ -54,13 +65,13 @@ export function LaunchFeeCard({ c }: { c: LiveCoin }) {
         <span className="mono dim" style={{ fontSize: 12 }}>drops to 2% in {mmss(left)}</span>
       </div>
       <span className="lf-bar"><i style={{ width: `${pct}%` }} /></span>
-      <span className="dim" style={{ fontSize: 12, lineHeight: 1.45 }}>Bots that buy in the first minutes pay more. After five minutes every trade pays 2%.</span>
+      <span className="dim" style={{ fontSize: 12, lineHeight: 1.45 }}>Bots that buy in the first minutes pay more. After {decay === 300 ? "five" : "two"} minutes every trade pays 2%.</span>
     </div>
   );
 }
 
 /** Small fee label for cards and Terminal: the live launch fee, or 2%. */
-export function FeeChip({ c }: { c: Pick<LiveCoin, "own" | "createdAt"> }) {
+export function FeeChip({ c }: { c: Pick<LiveCoin, "own" | "createdAt"> & { chainId?: number } }) {
   const { fee, live } = useLaunchFee(c);
   if (fee === null) return null;
   return <span className={`chip-fee mono${live ? " hot" : ""}`} title={live ? "Launch fee, falling to 2%" : "Pool fee"}>fee {live ? fmtFee(fee) : "2%"}</span>;

@@ -216,7 +216,7 @@ const raw: Raw[] = [
     slug: "how-creators-earn", cat: "creating", title: "How creators earn on ArkhamPad", desc: "30% of the pool fee on every trade of your coin, in any app, from the first second.",
     short: "Every trade of an ArkhamPad coin pays the pool fee, wherever it happens: on ArkhamPad, in trading apps or on DEX aggregators. 30% of that fee goes to the coin's creator, or to buying the coin back and burning it if the creator chose that at launch.",
     sections: [
-      ["From the first second", "Coins open in their Uniswap pool at launch, so fees start with the first trade. In the first five minutes the fee is higher (30% falling to 2%), so early bot trades pay you more."],
+      ["From the first second", "Coins open in their Uniswap pool at launch, so fees start with the first trade. In the first minutes the fee is higher (falling to 2%), so early bot trades pay you more."],
       ["Paid automatically", "Fees are collected from the pool every 30 minutes and sent to your balance, or used for buyback and burn."],
       ["See what you've earned", "Your coin's page and its card on Discover show how much the creator has earned so far."],
     ],
@@ -258,7 +258,7 @@ const raw: Raw[] = [
     short: "Open the coin, switch to Sell, pick 25%, 50% or 100% of your coins (or type an amount) and confirm. The USDC lands in your cash balance in seconds.",
     sections: [
       ["Selling into the pool", "You sell into the coin's locked Uniswap pool, so there's always someone to sell to."],
-      ["The first five minutes", "Right after launch the pool fee is higher (30% falling to 2%). Selling in that window costs more."],
+      ["The first minutes", "Right after launch the pool fee is higher (falling to 2%). Selling in that window costs more."],
       ["Take profit in steps", "Many traders sell part of their coins after a big rise and keep the rest. You can also set an automatic take profit."],
     ],
     faq: [["Can I always sell?", "Yes. The pool's liquidity is locked forever. The price you get depends on how much others are buying and selling."], ["Why can't the creator sell?", "If the creator chose a creator lock, they can't sell their own coins until the lock ends."]],
@@ -284,14 +284,14 @@ const raw: Raw[] = [
     faq: [["Do I need to wait for a coin to graduate?", "No. ArkhamPad coins trade in their pool from launch."], ["Can the pool be emptied?", "No. The liquidity is locked forever."]],
   },
   {
-    slug: "almost-graduating-coins", cat: "trading", title: "Trading brand-new coins in their first minutes", desc: "Why the first five minutes of a coin are different on ArkhamPad: the launch fee.",
-    short: "A coin's first five minutes are when bots try to snipe it. On ArkhamPad the pool fee starts at 30% at launch and falls in a straight line to 2% over five minutes, so the earliest buyers pay the most and bots lose their edge.",
+    slug: "almost-graduating-coins", cat: "trading", title: "Trading brand-new coins in their first minutes", desc: "Why the first minutes of a coin are different on ArkhamPad: the launch fee.",
+    short: "A coin's first minutes are when bots try to snipe it. On ArkhamPad the pool fee starts high at launch and falls in a straight line to 2% (on Base: 30% over five minutes; on Robinhood, BNB and Arc: 10% over two minutes), so the earliest buyers pay the most and bots lose their edge.",
     sections: [
       ["Why the first minutes matter", "Sniping bots buy in the first seconds and sell into the first real buyers. A high fee at launch makes that expensive."],
-      ["What you see", "In a coin's first five minutes its page shows the launch fee and a countdown to 2%. Cards show the fee next to the name."],
-      ["How to use it", "If you're not in a hurry, wait a couple of minutes: the fee drops every second. After five minutes every trade pays 2%."],
+      ["What you see", "In a coin's first minutes its page shows the launch fee and a countdown to 2%. Cards show the fee next to the name."],
+      ["How to use it", "If you're not in a hurry, wait a couple of minutes: the fee drops every second. Once the window ends every trade pays 2%."],
     ],
-    faq: [["Who gets the launch fee?", "Like every pool fee: 70% the platform, 30% the coin's creator (or its buyback and burn)."], ["Does the creator's first buy pay 30%?", "No. The creator's launch buy always pays 2%."]],
+    faq: [["Who gets the launch fee?", "Like every pool fee: 70% the platform, 30% the coin's creator (or its buyback and burn)."], ["Does the creator's first buy pay the launch fee?", "No. The creator's launch buy always pays 2%."]],
   },
   {
     slug: "market-cap-explained", cat: "trading", title: "Market cap explained for meme coins", desc: "Why market cap tells you more than price.",
@@ -679,7 +679,7 @@ const raw: Raw[] = [
     sections: [
       ["Why not a bonding curve", "Curve launchpads keep new coins on their own contract until they graduate, and most never do. Opening in a pool from the start puts every coin on the open market at once."],
       ["How the price moves", "Early buyers pay the lowest prices because the pool starts at the launch market cap. As people buy, each purchase costs a bit more; selling moves the price back down. There are no order books and nothing to wait for."],
-      ["The launch fee", "The pool fee is 30% at launch and falls to 2% over five minutes, then stays at 2%. It protects real buyers from sniping bots."],
+      ["The launch fee", "The pool fee is high at launch and falls to 2% within minutes (Base: 30% over five minutes; Robinhood, BNB and Arc: 10% over two minutes), then stays at 2%. It protects real buyers from sniping bots."],
       ["Where the fees go", "Every trade, in any app, pays the pool fee: 70% to the platform and 30% to the coin's creator or its buyback and burn."],
       ["Locked forever", "Nobody can remove the pool's liquidity: not the creator, not ArkhamPad. The coin can always be traded."],
     ],
