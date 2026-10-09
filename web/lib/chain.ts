@@ -422,6 +422,15 @@ export async function ensureCash(chainId: number, need: bigint, s: Signer): Prom
 export async function tokenBalance(chainId: number, token: Address, who: Address) {
   return client(chainId).readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [who] });
 }
+/** Reads the balance until it reaches `need` (up to ~8 s): nodes behind a load balancer can lag a block. */
+async function balanceReaches(chainId: number, token: Address, who: Address, need: bigint): Promise<boolean> {
+  for (let i = 0; i < 12; i++) {
+    const got = await withRetry(() => tokenBalance(chainId, token, who)).catch(() => 0n);
+    if (got >= need) return true;
+    await new Promise((ok) => setTimeout(ok, 700));
+  }
+  return false;
+}
 /** v2 has no curve: quotes come from the coin's pool. `curve` is kept for old callers and holds the coin. */
 export async function quoteBuy(chainId: number, curve: Address, usdcIn: bigint) {
   return quotePool(chainId, curve, true, usdcIn);
@@ -500,7 +509,8 @@ export async function poolSell(chainId: number, coin: Address, coinAmount: bigin
   if (coinAmount <= 0n) throw new TradeError("Enter an amount.");
   const [held, quote, base, owes] = await Promise.all([tokenBalance(chainId, coin, s.address), quotePool(chainId, coin, false, coinAmount), netFee(chainId, "poolSell"), owedFor(chainId, s.address), ensureAllowance(n, s, coin, coinAmount)]);
   const fee = base + owes;
-  if (held < coinAmount) throw new TradeError("You don't hold that many.");
+  // a load-balanced node can answer from a block behind right after a buy: look again for a few seconds
+  if (held < coinAmount && !(await balanceReaches(chainId, coin, s.address, coinAmount))) throw new TradeError("You don't hold that many.");
   if (quote <= fee) throw new TradeError("This sale is too small to cover the network fee.");
   const minOut = ((quote - fee) * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
