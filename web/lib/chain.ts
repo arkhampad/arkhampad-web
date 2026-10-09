@@ -26,7 +26,7 @@ const ENV_NETS: Net[] = process.env.NEXT_PUBLIC_NETS ? JSON.parse(process.env.NE
  *  so opening a chain needs no Cloudflare setting. Added only when the site runs on Base mainnet. */
 const MORE_MAINNETS: Net[] = [
   // Robinhood Chain: the dollar is USDG (Global Dollar, 6 decimals, with permit)
-  { id: 4663, name: "Robinhood Chain", short: "Robinhood", rpc: "https://rpc.mainnet.chain.robinhood.com", hub: "0x1a5453a1D4c32a9B46aCCc48B3Fa2CB5C78e072b", router: "0xD3b65d20e991a732AF81C2f42C86d2C1619E56F8", usdc: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", faucet: false, dollar: "USDG" },
+  { id: 4663, name: "Robinhood Chain", short: "Robinhood", rpc: "https://robinhood.drpc.org", hub: "0x1a5453a1D4c32a9B46aCCc48B3Fa2CB5C78e072b", router: "0xD3b65d20e991a732AF81C2f42C86d2C1619E56F8", usdc: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", faucet: false, dollar: "USDG" },
 ];
 export const NETS: Net[] = ENV_NETS.some((n) => n.id === 8453)
   ? [...ENV_NETS, ...MORE_MAINNETS.filter((m) => !ENV_NETS.some((n) => n.id === m.id))]
@@ -45,7 +45,8 @@ const BACKUP_RPCS: Record<number, string[]> = {
   8453: ["https://mainnet.base.org", "https://base-rpc.publicnode.com"],
   84532: ["https://sepolia.base.org", "https://base-sepolia-rpc.publicnode.com"],
   56: ["https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"],
-  4663: ["https://rpc.mainnet.chain.robinhood.com"],
+  // the official endpoint sits behind a Cloudflare challenge that blocks apps now and then
+  4663: ["https://robinhood.drpc.org", "https://rpc.mainnet.chain.robinhood.com"],
 };
 
 const clients = new Map<number, PublicClient>();

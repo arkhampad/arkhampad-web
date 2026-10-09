@@ -119,7 +119,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           setHeld(await extBalance(coin.chainId, token, me));
         }
         await w.refresh();
-      } catch (e) { toast(e instanceof TradeError ? e.message : "Couldn't trade. Please try again."); }
+      } catch (e) { toast(e instanceof TradeError ? e.message : /HTTP request failed|fetch|timed? ?out|429/i.test(String((e as Error)?.message)) ? "The network is busy. Please try again in a moment." : "Couldn't trade. Please try again."); }
       finally { setBusy(false); setStep(""); }
       return;
     }

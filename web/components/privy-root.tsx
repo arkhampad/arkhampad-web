@@ -10,7 +10,7 @@ import { LIVE, robinhoodTestnet, type Signer, type TypedData } from "@/lib/chain
 // Mainnets the embedded wallet must know, or it can't send a transaction there.
 const robinhood = defineChain({
   id: 4663, name: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_ROBINHOOD_RPC || "https://rpc.mainnet.chain.robinhood.com"] } },
+  rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_ROBINHOOD_RPC || "https://robinhood.drpc.org"] } },
 });
 const arc = defineChain({
   id: 5042, name: "Arc", nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },

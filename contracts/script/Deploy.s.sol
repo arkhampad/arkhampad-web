@@ -25,6 +25,8 @@ import {IPadHub} from "../src/interfaces.sol";
 ///      START_MC (optional, whole dollars: the launch market cap on "main", default 2000).
 contract Deploy is Script {
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    /// Base mainnet's hub: no other chain may get this address (see run()).
+    address constant BASE_HUB = 0x1a5453a1D4c32a9B46aCCc48B3Fa2CB5C78e072b;
 
     struct V4 {
         address poolManager;
@@ -95,6 +97,14 @@ contract Deploy is Script {
         require(address(IPositionManager(v.positionManager).poolManager()) == v.poolManager, "positionManager/poolManager mismatch");
 
         vm.startBroadcast(key);
+        // Coin addresses come from the hub's address, so every chain needs its own hub address:
+        // otherwise the same contract address (CA) would point to different coins on different
+        // chains. A fresh deployer starts every chain at the same nonce, so skip ahead first.
+        uint256 skip = vm.envOr("SKIP_NONCES", block.chainid == 56 ? uint256(20) : block.chainid == 5042 ? uint256(40) : uint256(0));
+        for (uint256 i; i < skip; ++i) {
+            (bool ok,) = payable(deployer).call("");
+            require(ok, "nonce skip failed");
+        }
         if (v.usdc == address(0)) {
             require(!_mainnet(), "set USDC on mainnet");
             v.usdc = address(new TestUSDC());
@@ -128,6 +138,8 @@ contract Deploy is Script {
         // review L-01: never deploy with a first buy under $5
         require(minLaunchBuy >= 5 * dollar, "MIN_LAUNCH_BUY must be at least 5 (dollars)");
         PadHub hub = new PadHub(IERC20(v.usdc), builder, startMarketCap, minLaunchBuy, deployer, address(vault));
+        // never reuse a hub address that already makes coins on another chain (same CA, different coin)
+        if (block.chainid != 8453) require(address(hub) != BASE_HUB, "hub address already used on Base: set SKIP_NONCES");
         builder.bindHub(IPadHub(address(hub)));
         PadPromote promote = new PadPromote(IERC20(v.usdc), admin, address(vault));
         PadRouter router = new PadRouter(hub, promote, builder);
