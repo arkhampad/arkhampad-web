@@ -2,7 +2,7 @@
 // Trading coins listed on other DEXs (mainnet only): live quotes from the KyberSwap aggregator,
 // gasless execution through PadExtSwap (the user signs; ArkhamPad takes 1%).
 import { createPublicClient, domainSeparator, encodeFunctionData, http, parseAbi, type Address, type Hex } from "viem";
-import { TradeError, netFee, type Signer } from "./chain";
+import { TradeError, ensureCash, netFee, type Signer } from "./chain";
 
 type ExtNet = { id: number; slug: string; usdc: Address; usdcDecimals: number; rpc: string; swap: Address | null; permitUsdc: boolean };
 // NEXT_PUBLIC_* values reach the browser only when written as literal process.env.NAME
@@ -110,6 +110,8 @@ export async function extTrade(chainId: number, coin: Address, side: "buy" | "se
   if (n.usdcDecimals !== 6) throw new TradeError("This network isn't supported yet.");
   const isBuy = side === "buy";
   const NET_FEE = await netFee(n.id, "extSwap"); // live network fee (6-decimal USDC)
+  // cash on another network comes over first (a few cents of room for any gas still owed)
+  if (isBuy) await ensureCash(n.id, amount + NET_FEE + 50_000n, s);
   const spend = isBuy ? amount - (amount * FEE_BPS) / 10_000n : amount;
   const r = await route(n, isBuy ? n.usdc : coin, isBuy ? coin : n.usdc, spend);
   const build = await fetch(`${API}/${n.slug}/api/v1/route/build`, { method: "POST", headers: { ...HEAD, "content-type": "application/json" }, body: JSON.stringify({ routeSummary: r.summary, sender: n.swap, recipient: n.swap, slippageTolerance: 150, deadline: Math.floor(Date.now() / 1000) + 600 }) }).catch(() => null);

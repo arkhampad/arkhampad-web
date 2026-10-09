@@ -90,12 +90,12 @@ export default function Profile() {
           <div className="card" style={{ padding: 12, gap: 2, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>Cash (USDC)</span><b className="mono">${w.totalUsdc.toFixed(2)}</b></div>
           <div className="card" style={{ padding: 12, gap: 2, borderRadius: 14 }}><span className="dim" style={{ fontSize: 12 }}>Coins</span><b className="mono">${coinsValue.toFixed(2)}</b></div>
         </div>
-        <details style={{ fontSize: 12 }}>
+        {!LIVE && <details style={{ fontSize: 12 }}>
           <summary className="dim" style={{ cursor: "pointer" }}>Details by network</summary>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
             {NETS.map((n) => <span key={n.id} className="mono dim" style={{ display: "flex", justifyContent: "space-between" }}><span>{n.name}</span><span>${(Number(w.usdc[n.id] ?? 0n) / 1e6).toFixed(2)}</span></span>)}
           </div>
-        </details>
+        </details>}
         <div style={{ display: "flex", gap: 10 }}>
           <button type="button" className="btn buy" style={{ flex: 1 }} onClick={() => openFunds("deposit")}>Deposit</button>
           <button type="button" className="btn" style={{ flex: 1 }} onClick={() => openFunds("withdraw")}>Withdraw</button>

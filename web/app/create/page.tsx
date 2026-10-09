@@ -70,7 +70,7 @@ function CreateView() {
   const fileRef = useRef<HTMLInputElement>(null);
   const w = useWallet();
   const chainId = (CHAINS.find((c) => c.name === chain) ?? CHAINS[0]).id;
-  const cash = fromUsdc(w.usdc[chainId] ?? 0n);
+  const cash = LIVE ? w.totalUsdc : fromUsdc(w.usdc[chainId] ?? 0n); // live: one balance, moved to the coin's network automatically
   useEffect(() => { warmFees(chainId, ["launch", "promote"]); }, [chainId]);
   const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(lastFee(chainId, "launch")) + (boost === "none" ? 0 : fromUsdc(lastFee(chainId, "promote")));
   const o = OPTS[pick];
@@ -352,7 +352,7 @@ function CreateView() {
                 <span>Liquidity locked forever. Nobody can pull it, not even us.</span>
                 <span>Tradable in other apps from the first trade.</span>
                 <span>Launch fee protects you from bots: <b className="mono">{launchSchedule(chainId).start}%</b> falling to <b className="mono">2%</b> in {launchSchedule(chainId).decay === 300 ? "five" : "two"} minutes.</span>
-                <span>Your {dollarOf(chainId)} on {chain}: <b className="mono">{w.signedIn ? `$${cash.toFixed(2)}` : "—"}</b></span>
+                <span>{LIVE ? "Your cash" : `Your ${dollarOf(chainId)} on ${chain}`}: <b className="mono">{w.signedIn ? `$${cash.toFixed(2)}` : "—"}</b></span>
               </div>
             </div>
           )}

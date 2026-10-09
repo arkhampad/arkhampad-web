@@ -234,8 +234,13 @@ export function makeRelayer() {
     } else if (kind === "gas") {
       // Networks whose dollar has no permit (BNB): give the user just enough gas for one approve.
       // BNB's dollar has no permit; on any network, coins from other DEXs often don't either.
-      if (n.c.approvals !== "gas" && !(body.spender === "ext" && n.c.extSwap)) { const e = new Error("Not needed on this network."); e.status = 400; throw e; }
+      // "move": the user's own wallet sends a cross-chain cash move (approve + deposit) where the dollar has no EIP-3009
+      const isMove = body.spender === "move";
+      if (n.c.approvals !== "gas" && !(body.spender === "ext" && n.c.extSwap) && !isMove) { const e = new Error("Not needed on this network."); e.status = 400; throw e; }
       const user = addr(body.user, "user"), token = addr(body.token, "token");
+      if (isMove && getAddress(token) !== getAddress(n.c.usdc)) { const e = new Error("Not needed for this token."); e.status = 400; throw e; }
+      const dest = isMove ? nets.get(Number(body.dest)) : null;
+      if (isMove && !dest) { const e = new Error("unsupported chain"); e.status = 400; throw e; }
       const spender = body.spender === "ext" && n.c.extSwap ? getAddress(n.c.extSwap) : n.router;
       const ERC = [{ type: "function", name: "allowance", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] }, { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }];
       const [allow, bal, native, gasPrice] = await Promise.all([
@@ -244,14 +249,14 @@ export function makeRelayer() {
         n.pub.getBalance({ address: user }),
         n.pub.getGasPrice(),
       ]);
-      if (allow >= 2n ** 128n) return { ok: true, already: true };
+      if (!isMove && allow >= 2n ** 128n) return { ok: true, already: true };
       if (bal === 0n) { const e = new Error("Nothing to approve yet."); e.status = 400; throw e; }
       // one approve with generous room: wallets bid above the current gas price, and on
       // OP-stack chains (Base) the L1 data fee comes on top. The user repays all of it.
       const l1 = [8453, 84532, 10].includes(n.c.chainId) ? 2_000_000_000_000n : 0n;
       // Arbitrum-based chains (Robinhood) put the L1 cost inside the gas units, so an approve needs more units
       const units = ARB_CHAINS.has(n.c.chainId) ? 400_000n : 130_000n;
-      const need = gasPrice * units * 4n + l1;
+      const need = (gasPrice * units * 4n + l1) * (isMove ? 2n : 1n); // a move is two transactions
       if (native >= need) return { ok: true, already: true };
       const day = Date.now() - 86_400_000;
       const seen = (dripLog.get(user) ?? []).filter((t) => t > day);
@@ -266,6 +271,8 @@ export function makeRelayer() {
       const usd = (Number(spentWei) / 1e18) * (await fees.nativeUsd(n.c.native ?? "ETH")) * 1.2;
       const owe = BigInt(Math.ceil(Math.max(usd, 0.001) * 1e6)) * 10n ** BigInt(DEC(n) - 6);
       if (body.spender === "ext") owed.set(`${n.c.chainId}:${user.toLowerCase()}`, (owed.get(`${n.c.chainId}:${user.toLowerCase()}`) ?? 0n) + owe);
+      // a move's gas is repaid with the user's next trade on the chain the cash moved to
+      if (isMove) { const k = `${dest.c.chainId}:${user.toLowerCase()}`; const o = (owe * 10n ** BigInt(DEC(dest))) / 10n ** BigInt(DEC(n)); owed.set(k, (owed.get(k) ?? 0n) + o); }
       log(`${n.c.name} gas top-up ${user} ${need - native} wei ${hash} (${Date.now() - t0}ms), owed ${owe}`);
       return { hash, status: "success", logs: [], owed: owe.toString() };
     } else if (kind === "settle" || kind === "collect" || kind === "buyback") {
@@ -308,7 +315,8 @@ export function makeRelayer() {
     // Network fee: the signed fee must cover today's real cost (orders were signed earlier: skipped).
     const signedFee = kind === "extSwap" ? body.swap?.fee : body.fee;
     // an approval top-up still owed by this user is added on top of today's network fee
-    const oweKey = kind === "extSwap" ? `${n.c.chainId}:${String(body.swap?.user ?? "").toLowerCase()}` : "";
+    const oweUser = kind === "extSwap" ? body.swap?.user : ["buy", "sell", "poolBuy", "poolSell", "launch", "promote", "withdraw"].includes(kind) ? body.user : null;
+    const oweKey = oweUser ? `${n.c.chainId}:${String(oweUser).toLowerCase()}` : "";
     const owes = oweKey ? (owed.get(oweKey) ?? 0n) : 0n;
     if (!opts.order && signedFee !== undefined) await fees.check(n, kind, big(signedFee, "fee") - owes);
     // Volume limits (mainnet, first weeks): buys only.
@@ -324,6 +332,7 @@ export function makeRelayer() {
     const t2 = Date.now();
     fees.record(n, kind, rc);
     if (kind === "extSwap" && buyUsd > 0 && rc.status === "success") limits.add(n, String(body.swap.user), buyUsd);
+    if (rc.status === "success" && owes > 0n && kind !== "extSwap") owed.delete(oweKey);
     if (kind === "extSwap" && rc.status === "success") {
       if (owes > 0n) owed.delete(oweKey);
       if (db) db.query(`insert into ext_positions ("user", chain_id, coin) values ($1,$2,$3) on conflict ("user", chain_id, coin) do update set updated_at=now()`,
@@ -865,7 +874,59 @@ export function makeRelayer() {
     }
   }
 
-  return { handle, config, feeQuote, health, graduate, saveImage, saveAvatar, sweepFees, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, session, tokenUser, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
+  // ---------------------------------------------------------------- cross-chain cash moves (Relay)
+  // The site shows one USDC balance. When a trade needs cash on another chain, the user's own wallet
+  // moves it through Relay (relay.link): a signed EIP-3009 authorization where the dollar supports it
+  // (no gas at all), otherwise an approve + deposit sent from the user's wallet after a gas top-up.
+  // Our API key stays here; 0.25% goes to the treasury as Relay's app fee.
+  const RELAY_API = "https://api.relay.link";
+  const RELAY_KEY = (process.env.RELAY_API_KEY || "").trim();
+  const MOVE_FEE_TO = process.env.MOVE_FEE_TO || "0xd9D46EB26c9D753135683b7736FC2be097e7B099"; // treasury
+  const MOVE_FEE_BPS = process.env.MOVE_FEE_BPS || "25";
+  async function relayApi(path, init = {}) {
+    const r = await fetch(RELAY_API + path, { ...init, headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) }, signal: AbortSignal.timeout(15_000) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) {
+      log(`relay.link ${path.split("?")[0]} ${r.status}: ${String(j?.message ?? "").slice(0, 200)}`);
+      throw err(r.status === 400 && /amount|liquidity|route|small|large/i.test(String(j?.message)) ? "This amount can't be moved right now. Try a different amount." : "Couldn't move your cash right now. Please try again.", r.status >= 500 ? 502 : 400);
+    }
+    return j;
+  }
+  async function move(body) {
+    const a = String(body?.action ?? "");
+    if (a === "quote") {
+      const from = nets.get(Number(body.from)), to = nets.get(Number(body.to));
+      if (!from || !to || from === to) throw err("unsupported route");
+      const user = addr(body.user, "user");
+      const amount = big(body.amount, "amount"); // what must arrive, in the destination dollar's units
+      if (amount <= 0n || Number(amount) / 10 ** DEC(to) > 5_000) throw err("amount out of range");
+      const ask = (usePermit) => relayApi("/quote/v2", { method: "POST", body: JSON.stringify({
+        user, recipient: user, refundTo: user,
+        originChainId: from.c.chainId, destinationChainId: to.c.chainId,
+        originCurrency: getAddress(from.c.usdc), destinationCurrency: getAddress(to.c.usdc),
+        amount: String(amount), tradeType: "EXACT_OUTPUT", usePermit,
+        appFees: [{ recipient: MOVE_FEE_TO, fee: MOVE_FEE_BPS }],
+      }) });
+      // gasless (EIP-3009) where the dollar supports it, otherwise approve + deposit from the user's wallet
+      const q = await ask(true).catch(() => ask(false));
+      const steps = Array.isArray(q?.steps) ? q.steps : [];
+      return { requestId: steps[0]?.requestId ?? null, steps, amountIn: q?.details?.currencyIn?.amount ?? null };
+    }
+    if (a === "permit") {
+      const sig = hex(body.signature, "signature");
+      const post = body.post;
+      if (!post || post.endpoint !== "/execute/permits" || typeof post.body !== "object") throw err("bad request");
+      return relayApi(`/execute/permits?signature=${sig}`, { method: "POST", body: JSON.stringify(post.body) });
+    }
+    if (a === "status") {
+      const id = String(body.requestId ?? "");
+      if (!/^0x[0-9a-fA-F]{64}$/.test(id)) throw err("bad request");
+      return relayApi(`/intents/status/v3?requestId=${id}`);
+    }
+    throw err("unknown request");
+  }
+
+  return { handle, move, config, feeQuote, health, graduate, saveImage, saveAvatar, sweepFees, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, session, tokenUser, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -958,6 +1019,16 @@ export function httpHandler(relayer, status) {
       const base = `${String(req.headers["x-forwarded-proto"] || "http").split(",")[0]}://${req.headers.host}`; // Railway sends https
       try { return res.end(JSON.stringify(await relayer.saveImage(body, base))); }
       catch (e) { res.statusCode = e.status || 500; return res.end(JSON.stringify({ error: e.status ? e.message : "Upload failed, please try again." })); }
+    }
+    if (url === "/move" && req.method === "POST") {
+      const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+      if (limited(ip)) { res.statusCode = 429; return res.end(JSON.stringify({ error: "Too many requests, slow down." })); }
+      let raw = "";
+      for await (const ch of req) { raw += ch; if (raw.length > 20_000) { res.statusCode = 413; return res.end(JSON.stringify({ error: "too large" })); } }
+      let body;
+      try { body = JSON.parse(raw); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad request" })); }
+      try { res.setHeader("cache-control", "no-store"); return res.end(JSON.stringify(await relayer.move(body))); }
+      catch (e) { res.statusCode = e.status || 500; if (!e.status) log("move error", e.message); return res.end(JSON.stringify({ error: e.status ? e.message : "Couldn't move your cash right now. Please try again." })); }
     }
     if (url === "/relay" && req.method === "POST") {
       const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();

@@ -11,7 +11,7 @@ export const fees: { what: string; fee: string; note: string }[] = [
   { what: "A coin's first minutes", fee: "Up to 30% → 2%", note: "Launch fee against sniping bots, falling in a straight line to 2%. On Base: 30% to 2% over five minutes. On Robinhood, BNB and Arc: 10% to 2% over two minutes. Same 70/30 split." },
   { what: "Creator's own buy at launch", fee: "2%", note: "At least $5, always at the normal 2% (never the launch fee)." },
   { what: "Trading coins from other DEXs", fee: "1%", note: "Of the trade amount, on top of the other DEX's own pool fee." },
-  { what: "Deposits from other chains", fee: "0.25%", note: "Only when you deposit from a chain ArkhamPad doesn't trade on directly." },
+  { what: "Moving cash between networks", fee: "0.25%", note: "You keep one USDC balance. When a trade needs your cash on another network (for example Robinhood), it moves there automatically for 0.25% plus the transfer's network cost." },
   { what: "Network costs", fee: "Varies", note: "The blockchain's own cost for your transaction, paid from your USDC balance. You never need ETH or another gas token." },
   { what: "Copy trading", fee: "No extra fee", note: "A copied buy pays the normal trading fee only." },
   { what: "Deposits and withdrawals", fee: "No platform fee", note: "Network costs apply." },
@@ -34,9 +34,9 @@ export const help: HelpTopic[] = [
   {
     id: "money", title: "Deposits, withdrawals and balance",
     items: [
-      ["How do I deposit?", "Tap Deposit, choose a network and send only USDC to the address shown. It usually arrives in about a minute."],
-      ["How do I withdraw?", "Tap the account icon, then Withdraw. Enter the amount, choose the network, paste the address and confirm. Check the address twice: transfers can't be reversed."],
-      ["Why do I see one balance and not one per chain?", "ArkhamPad shows your total USDC as one cash balance, so you don't have to think about chains before you trade."],
+      ["How do I deposit?", "Tap Deposit and send only USDC on Base to the address shown. It usually arrives in about a minute. You can then trade coins on every network ArkhamPad supports with that one balance."],
+      ["How do I withdraw?", "Tap the account icon, then Withdraw. Enter the amount, paste a USDC address on Base and confirm. Check the address twice: transfers can't be reversed."],
+      ["Why do I see one balance and not one per chain?", "ArkhamPad shows your total USDC as one cash balance, so you don't have to think about chains before you trade. When you buy a coin on another network, your cash moves there automatically in a few seconds."],
       ["I sent the wrong token or used the wrong network.", "Tokens other than USDC, or USDC on an unsupported network, may be lost. Email us with the transaction link and we'll check what can be done, but we can't promise recovery."],
       LIVE
         ? ["How do I add USDC?", "Log in, tap Add USDC and send USDC to the address shown, on the network shown, from an exchange or another wallet. It shows in your balance within a minute."]

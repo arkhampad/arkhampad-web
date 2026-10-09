@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getAddress, isAddress, type Address } from "viem";
-import { NETS, faucet, toUsdc, withdraw, LIVE, NET_NAMES } from "@/lib/chain";
+import { NETS, faucet, toUsdc, withdraw, LIVE, NET_NAMES, HOME_CHAIN } from "@/lib/chain";
 import { useWallet } from "./wallet";
 import { IAlert, IX } from "./icons";
 import { BrandMark } from "./bits";
@@ -25,15 +25,20 @@ const Close = ({ onClose }: { onClose: () => void }) => (
 
 export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdraw"; setTab: (t: "deposit" | "withdraw") => void; onClose: () => void }) {
   const w = useWallet();
-  // the network with the one-tap test USDC button opens first
-  const [net, setNet] = useState((NETS.find((x) => x.faucet) ?? NETS[0]).id);
+  // Live: one USDC balance, deposits and withdrawals on the home chain (Base) only; cash on other
+  // chains is moved over automatically when needed. Testnet: the faucet network opens first.
+  const shown = LIVE ? NETS.filter((x) => x.id === HOME_CHAIN) : NETS;
+  const [net, setNet] = useState(LIVE ? HOME_CHAIN : (NETS.find((x) => x.faucet) ?? NETS[0]).id);
   const [qr, setQr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [amt, setAmt] = useState("");
   const [to, setTo] = useState("");
   const n = NETS.find((x) => x.id === net) ?? NETS[0];
-  const bal = Number(w.usdc[net] ?? 0n) / 1e6;
+  const bal = LIVE ? w.totalUsdc : Number(w.usdc[net] ?? 0n) / 1e6;
+  const homeBal = Number(w.usdc[net] ?? 0n) / 1e6;
+  // cash that has to come over from another network first costs a little to move
+  const maxOut = homeBal >= bal - 0.01 ? bal - 0.01 : bal * 0.99 - 0.05;
   useEffect(() => {
     if (!w.address) return;
     import("qrcode").then((Q) => Q.toDataURL(w.address as string, { margin: 1, width: 220, color: { dark: "#0A0B10", light: "#FFFFFF" } })).then(setQr).catch(() => setQr(null));
@@ -69,8 +74,8 @@ export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdra
         <div style={{ display: "flex", gap: 4 }}>{(["deposit", "withdraw"] as const).map((t) => <button key={t} type="button" className={`tab${tab === t ? " on" : ""}`} onClick={() => { setTab(t); setMsg(null); }} style={{ fontSize: 15 }}>{t === "deposit" ? "Deposit" : "Withdraw"}</button>)}</div>
         <Close onClose={onClose} />
       </div>
-      <div style={{ display: "flex", gap: 6 }}>{NETS.map((x) => <button key={x.id} type="button" className={`seg${net === x.id ? " on" : ""}`} onClick={() => { setNet(x.id); setMsg(null); }}>{x.name}</button>)}</div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">{n.dollar ?? "USDC"} on {n.short}</span><b className="mono">${bal.toFixed(2)}</b></div>
+      <div style={{ display: "flex", gap: 6 }}>{shown.map((x) => <button key={x.id} type="button" className={`seg${net === x.id ? " on" : ""}`} onClick={() => { setNet(x.id); setMsg(null); }}>{x.name}</button>)}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">{LIVE ? "Cash (USDC)" : `${n.dollar ?? "USDC"} on ${n.short}`}</span><b className="mono">${bal.toFixed(2)}</b></div>
       {tab === "deposit" ? (
         <>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
@@ -87,7 +92,7 @@ export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdra
         <>
           <div className="field"><label htmlFor="wd-to">Send to (wallet or exchange address on {n.name})</label><input id="wd-to" className="inp mono" placeholder="0x…" value={to} onChange={(e) => setTo(e.target.value)} autoComplete="off" spellCheck={false} /></div>
           <div className="field"><label htmlFor="wd-amt">Amount ({n.dollar ?? "USDC"})</label>
-            <div style={{ display: "flex", gap: 6 }}><input id="wd-amt" className="inp mono" inputMode="decimal" placeholder="0.00" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} /><button type="button" className="btn sm" style={{ height: 46 }} onClick={() => setAmt(Math.max(0, bal - 0.01).toFixed(2))}>Max</button></div>
+            <div style={{ display: "flex", gap: 6 }}><input id="wd-amt" className="inp mono" inputMode="decimal" placeholder="0.00" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} /><button type="button" className="btn sm" style={{ height: 46 }} onClick={() => setAmt(Math.max(0, maxOut).toFixed(2))}>Max</button></div>
           </div>
           <button type="button" className="btn volt lg" disabled={busy} onClick={send}>{busy ? "Sending…" : "Withdraw"}</button>
         </>

@@ -206,7 +206,7 @@ async function relay(body: Record<string, unknown>): Promise<Relayed> {
   if (!r) throw new TradeError("Can't reach ArkhamPad right now. Check your connection and try again.");
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    if (j.code === "FEE_CHANGED") feeCache.clear(); // the next tap signs with the new fee
+    if (j.code === "FEE_CHANGED") { feeCache.clear(); owedHint.add(Number(body.chainId)); } // the next tap signs with the new fee (and any gas still owed)
     // after a dropped connection, "already sent" means the first attempt went through
     if (/already sent/i.test(String(j.error || ""))) throw new TradeError("Your trade already went through. Your balance updates in a moment.");
     throw new TradeError(j.error || "Something went wrong. Please try again.");
@@ -310,6 +310,115 @@ export async function usdcBalance(chainId: number, who: Address) {
   if (!n) return 0n;
   return down(n, await client(chainId).readContract({ address: n.usdc, abi: ERC20, functionName: "balanceOf", args: [who] }));
 }
+
+// ---------------------------------------------------------------- one cash balance across chains
+// The user sees one USDC balance. Deposits and withdrawals use the home chain (Base). When a trade
+// needs cash on another chain, it is moved there first through Relay (relay.link), from the
+// user's own wallet: a gasless signed authorization where the dollar supports it, otherwise an
+// approve + deposit after a small gas top-up (repaid with the next trade's network fee).
+const MOVABLE = new Set([8453, 4663, 56, 5042]);
+/** Deposits and withdrawals happen here. */
+export const HOME_CHAIN = LIVE ? 8453 : (NETS[0]?.id ?? 84532);
+const canMove = (id: number) => LIVE && MOVABLE.has(id) && !!netOf(id);
+/** Chains where this user may owe a move's gas top-up: their next fee there includes it. */
+const owedHint = new Set<number>();
+
+type MoveItem = { status?: string; data?: Record<string, unknown> & { sign?: { signatureKind?: string; domain: Record<string, unknown>; types: Record<string, { name: string; type: string }[]>; primaryType: string; value: Record<string, unknown> }; post?: { endpoint: string; method: string; body: Record<string, unknown> } } };
+type MoveStep = { id?: string; kind?: string; requestId?: string; items?: MoveItem[] };
+async function moveApi(body: Record<string, unknown>): Promise<{ requestId?: string | null; steps?: MoveStep[]; amountIn?: string | null; status?: string }> {
+  let r: Response;
+  try {
+    r = await fetch(`${RELAYER}/move`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+  } catch {
+    throw new TradeError("Can't reach ArkhamPad right now. Check your connection and try again.");
+  }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new TradeError(j.error || "Something went wrong. Please try again.");
+  return j;
+}
+
+/** What the user still owes on this chain for a cash move's gas (site units), added to their next fee. */
+async function owedFor(chainId: number, user: Address): Promise<bigint> {
+  if (!owedHint.has(chainId)) return 0n;
+  try {
+    const r = await fetch(`${RELAYER}/fee?chainId=${chainId}&kind=buy&user=${user}`, { signal: AbortSignal.timeout(3000), cache: "no-store" });
+    const j = await r.json();
+    const o = BigInt(String(j?.owed ?? "0"));
+    if (o === 0n) owedHint.delete(chainId);
+    return o;
+  } catch {
+    return 0n;
+  }
+}
+
+/** Every chain's cash for this user (site units), in one read. */
+export async function cashByChain(who: Address): Promise<Record<number, bigint>> {
+  const out: Record<number, bigint> = {};
+  await Promise.all(NETS.map(async (n) => { out[n.id] = await usdcBalance(n.id, who).catch(() => 0n); }));
+  return out;
+}
+
+/**
+ * Makes sure `need` (site units) is on `chainId`, moving cash in from the user's other chains
+ * when it's short there. Returns at once when the cash is already there.
+ */
+export async function ensureCash(chainId: number, need: bigint, s: Signer): Promise<void> {
+  const n = netOf(chainId);
+  if (!n) throw new TradeError("Unknown network");
+  const have = await usdcBalance(chainId, s.address);
+  if (have >= need || !canMove(chainId)) return;
+  const short = need - have + 10_000n; // +$0.01 of room for rounding
+  const others = NETS.filter((x) => x.id !== chainId && canMove(x.id));
+  const bals = await Promise.all(others.map(async (x) => ({ x, b: await usdcBalance(x.id, s.address).catch(() => 0n) })));
+  bals.sort((a, b) => (b.b > a.b ? 1 : b.b < a.b ? -1 : 0));
+  const src = bals[0];
+  if (!src || src.b < short) throw new TradeError("Not enough cash. Deposit USDC to continue.");
+  const q = await moveApi({ action: "quote", from: src.x.id, to: chainId, user: s.address, amount: S(up(n, short)) });
+  if (q.amountIn && down(src.x, BigInt(q.amountIn)) > src.b) throw new TradeError("Not enough cash to cover this trade. Try a slightly smaller amount.");
+  let topped = false;
+  for (const step of q.steps ?? []) {
+    for (const item of step.items ?? []) {
+      if (item.status === "complete") continue;
+      if (step.kind === "signature") {
+        const sign = item.data?.sign, post = item.data?.post;
+        if (!sign || sign.signatureKind !== "eip712" || !post) throw new TradeError("Couldn't move your cash right now. Please try again.");
+        const types = { ...sign.types };
+        delete (types as Record<string, unknown>).EIP712Domain;
+        const signature = await s.signTypedData(Number(sign.domain.chainId ?? src.x.id), { domain: sign.domain, types, primaryType: sign.primaryType, message: sign.value });
+        await moveApi({ action: "permit", signature, post });
+      } else {
+        const d = item.data as { to?: Address; data?: Hex; value?: string; chainId?: number } | undefined;
+        if (!d?.to || !d.data) throw new TradeError("Couldn't move your cash right now. Please try again.");
+        if (BigInt(String(d.value ?? "0")) !== 0n) throw new TradeError("Couldn't move your cash right now. Please try again.");
+        if (!s.sendTx) throw new TradeError("This wallet can't move cash between networks yet.");
+        const cid = Number(d.chainId ?? src.x.id);
+        if (!topped) {
+          await relay({ chainId: cid, kind: "gas", spender: "move", user: s.address, token: src.x.usdc, dest: chainId });
+          owedHint.add(chainId);
+          topped = true;
+        }
+        const hash = await Promise.race([
+          s.sendTx(cid, { to: d.to, data: d.data }),
+          new Promise<never>((_, no) => setTimeout(() => no(new TradeError("Your wallet didn't respond. Please try again.")), 60_000)),
+        ]);
+        const rc = await client(cid).waitForTransactionReceipt({ hash, pollingInterval: 300, timeout: 60_000 });
+        if (rc.status !== "success") throw new TradeError("Moving your cash didn't go through. Your funds are safe; please try again.");
+      }
+    }
+  }
+  // wait for the cash to land (usually a few seconds)
+  const t0 = Date.now();
+  for (let i = 0; Date.now() - t0 < 120_000; i++) {
+    const now = await usdcBalance(chainId, s.address).catch(() => 0n);
+    if (now >= need) return;
+    if (q.requestId && i % 4 === 3) {
+      const st = await moveApi({ action: "status", requestId: q.requestId }).catch(() => null);
+      if (st?.status === "failure" || st?.status === "refund") throw new TradeError("Moving your cash didn't go through. Your funds are safe; please try again.");
+    }
+    await new Promise((ok) => setTimeout(ok, 800));
+  }
+  throw new TradeError("This is taking longer than usual. Your cash is on its way: try again in a minute.");
+}
 export async function tokenBalance(chainId: number, token: Address, who: Address) {
   return client(chainId).readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [who] });
 }
@@ -370,9 +479,10 @@ export async function poolBuy(chainId: number, coin: Address, usdcIn: bigint, s:
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (usdcIn <= 0n) throw new TradeError("Enter an amount.");
-  const fee = await netFee(chainId, "poolBuy");
+  const fee = (await netFee(chainId, "poolBuy")) + (await owedFor(chainId, s.address));
+  await ensureCash(chainId, usdcIn + fee, s);
   const [bal, quote] = await Promise.all([usdcBalance(chainId, s.address), quotePool(chainId, coin, true, usdcIn), ensureAllowance(n, s, n.usdc, up(n, usdcIn + fee))]);
-  if (bal < usdcIn + fee) throw new TradeError(`Not enough ${n.dollar ?? "USDC"} on this network.`);
+  if (bal < usdcIn + fee) throw new TradeError("Not enough cash. Deposit USDC to continue.");
   if (quote === 0n) throw new TradeError("Amount is too small.");
   const minOut = (quote * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
@@ -388,7 +498,8 @@ export async function poolSell(chainId: number, coin: Address, coinAmount: bigin
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (coinAmount <= 0n) throw new TradeError("Enter an amount.");
-  const [held, quote, fee] = await Promise.all([tokenBalance(chainId, coin, s.address), quotePool(chainId, coin, false, coinAmount), netFee(chainId, "poolSell"), ensureAllowance(n, s, coin, coinAmount)]);
+  const [held, quote, base, owes] = await Promise.all([tokenBalance(chainId, coin, s.address), quotePool(chainId, coin, false, coinAmount), netFee(chainId, "poolSell"), owedFor(chainId, s.address), ensureAllowance(n, s, coin, coinAmount)]);
+  const fee = base + owes;
   if (held < coinAmount) throw new TradeError("You don't hold that many.");
   if (quote <= fee) throw new TradeError("This sale is too small to cover the network fee.");
   const minOut = ((quote - fee) * (10_000n - SLIPPAGE_BPS)) / 10_000n;
@@ -408,10 +519,11 @@ export async function launch(chainId: number, l: LaunchInput, s: Signer): Promis
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (l.launchUsdc < MIN_LAUNCH_BUY) throw new TradeError("Your first buy must be at least $5.");
-  const fee = await netFee(chainId, "launch");
+  const fee = (await netFee(chainId, "launch")) + (await owedFor(chainId, s.address));
   const need = l.launchUsdc + fee;
+  await ensureCash(chainId, need, s);
   const bal = await usdcBalance(chainId, s.address);
-  if (bal < need) throw new TradeError(`You need at least $${fromUsdc(need).toFixed(2)} ${n.dollar ?? "USDC"} on ${n.short} to launch.`);
+  if (bal < need) throw new TradeError(`You need at least $${fromUsdc(need).toFixed(2)} in cash to launch.`);
   await ensureAllowance(n, s, n.usdc, up(n, need));
   const nonce = randomNonce(), dl = deadline();
   const message = { user: s.address, name: l.name, symbol: l.symbol, metadataURI: l.metadataURI, lockSeconds: BigInt(l.lockSeconds), feeMode: l.feeMode, launchUsdc: up(n, l.launchUsdc), minCoinsOut: 0n, fee: up(n, fee), nonce, deadline: dl };
@@ -428,7 +540,9 @@ export async function withdraw(chainId: number, to: Address, amount: bigint, s: 
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   if (amount <= 0n) throw new TradeError("Enter an amount.");
-  const [bal, fee] = await Promise.all([usdcBalance(chainId, s.address), netFee(chainId, "withdraw")]);
+  const fee = (await netFee(chainId, "withdraw")) + (await owedFor(chainId, s.address));
+  await ensureCash(chainId, amount + fee, s);
+  const bal = await usdcBalance(chainId, s.address);
   if (bal < amount + fee) throw new TradeError(`Not enough USDC (keep $${fromUsdc(fee).toFixed(2)} for the network fee).`);
   await ensureAllowance(n, s, n.usdc, up(n, amount + fee));
   const nonce = randomNonce(), dl = deadline();
@@ -442,7 +556,9 @@ export async function promote(chainId: number, coin: Address, plan: 1 | 2 | 3, s
   const promoter = await client(chainId).readContract({ address: n.router, abi: ROUTER_VIEW, functionName: "promoter" });
   const [, price, active] = await client(chainId).readContract({ address: promoter, abi: PROMOTE, functionName: "plans", args: [plan] });
   if (!active) throw new TradeError("This promotion isn't available right now.");
-  const [bal, fee] = await Promise.all([usdcBalance(chainId, s.address), netFee(chainId, "promote")]);
+  const fee = (await netFee(chainId, "promote")) + (await owedFor(chainId, s.address));
+  await ensureCash(chainId, down(n, price) + fee, s);
+  const bal = await usdcBalance(chainId, s.address);
   if (bal < down(n, price) + fee) throw new TradeError("Not enough USDC to promote.");
   await ensureAllowance(n, s, n.usdc, price + up(n, fee));
   const nonce = randomNonce(), dl = deadline();
