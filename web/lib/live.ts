@@ -312,19 +312,47 @@ export async function extCandles(network: string, pool: string, iv: string): Pro
 }
 
 // ---------------------------------------------------------------- live hooks
+/**
+ * False once the tab has been in the background for a minute, true again the moment it
+ * is shown. Live connections close while it's false, so the realtime seats (limited per
+ * project) go to the people actually looking at the site.
+ */
+export function usePageVisible(graceMs = 60_000) {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const f = () => {
+      clearTimeout(t);
+      if (document.visibilityState === "visible") setOn(true);
+      else t = setTimeout(() => setOn(false), graceMs);
+    };
+    document.addEventListener("visibilitychange", f);
+    return () => { clearTimeout(t); document.removeEventListener("visibilitychange", f); };
+  }, [graceMs]);
+  return on;
+}
+
 /** Calls `onChange` when a new trade lands (Supabase Realtime), with a slow poll as backup. */
 export function useTradeFeed(onChange: () => void, filter?: { chainId: number; address: string }) {
   const cb = useRef(onChange);
   cb.current = onChange;
+  const visible = usePageVisible();
+  const first = useRef(true);
   useEffect(() => {
+    if (!visible) return; // background tab: no connection, no polling
+    if (!first.current) cb.current(); // back from the background: catch up at once
+    first.current = false;
     let alive = true;
+    let live = false;
     const ch = db()
       .channel(`trades-${filter ? filter.address : "all"}-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "trades", ...(filter ? { filter: `coin=eq.${filter.address}` } : {}) }, () => alive && cb.current())
-      .subscribe();
-    const iv = setInterval(() => alive && cb.current(), 15_000);
+      .subscribe((status) => { live = status === "SUBSCRIBED"; });
+    // backup poll: slow while the live feed works, every 5 s when it doesn't (e.g. the seats are full)
+    let n = 0;
+    const iv = setInterval(() => { n++; if (alive && (!live || n % 3 === 0)) cb.current(); }, 5_000);
     return () => { alive = false; clearInterval(iv); db().removeChannel(ch); };
-  }, [filter?.address, filter?.chainId]);
+  }, [filter?.address, filter?.chainId, visible]);
 }
 
 export function useLive<T>(load: () => Promise<T>, deps: unknown[], every = 30_000) {
@@ -482,7 +510,9 @@ export async function totalCoins(): Promise<number> {
 export function useGraduations(cb: (coin: { symbol: string; name: string; chain_id: number; address: string }) => void) {
   const ref = useRef(cb);
   ref.current = cb;
+  const visible = usePageVisible();
   useEffect(() => {
+    if (!visible) return;
     const seen = new Set<string>();
     const ch = db().channel(`grads-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "coins", filter: "phase=eq.2" }, (p) => {
@@ -494,7 +524,7 @@ export function useGraduations(cb: (coin: { symbol: string; name: string; chain_
       })
       .subscribe();
     return () => { db().removeChannel(ch); };
-  }, []);
+  }, [visible]);
 }
 
 

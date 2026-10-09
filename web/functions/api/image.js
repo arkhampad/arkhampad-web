@@ -43,6 +43,17 @@ const MODELS = [
   ["@cf/stabilityai/stable-diffusion-xl-base-1.0", (p, seed) => ({ prompt: p, width: 512, height: 512, num_steps: 12, seed })],
 ];
 
+/** Pollinations: free, keyless, slower and rate limited, so it's only the backup. */
+async function backup(p, seed) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 25_000);
+  try {
+    const r = await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(p.slice(0, 400))}?width=512&height=512&nologo=true&seed=${seed}`, { signal: ctl.signal });
+    if (!r.ok || !/^image\//.test(r.headers.get("content-type") || "")) return null;
+    return await toDataUrl(new Uint8Array(await r.arrayBuffer()));
+  } finally { clearTimeout(t); }
+}
+
 export async function onRequestPost({ request, env }) {
   if (!env.AI) return json({ error: "AI images are not set up on this site yet.", code: "NO_AI_BINDING" }, 503);
   let body;
@@ -50,13 +61,23 @@ export async function onRequestPost({ request, env }) {
   const p = prompt(body.name, body.description, body.picture);
   const seed = Math.floor(Math.random() * 2_000_000_000); // a new picture every time
   const errors = [];
+  const isQuota = (e) => /quota|limit|neurons|429|capacity/i.test(e);
   for (const [model, input] of MODELS) {
     try {
       const url = await toDataUrl(await env.AI.run(model, input(p, seed)));
       if (url) return json({ dataUrl: url, model });
       errors.push(`${model.split("/").pop()}: empty`);
-    } catch (e) { errors.push(`${model.split("/").pop()}: ${String(e?.message || e).slice(0, 120)}`); }
+    } catch (e) {
+      errors.push(`${model.split("/").pop()}: ${String(e?.message || e).slice(0, 120)}`);
+      if (isQuota(errors[errors.length - 1])) break; // every model shares the daily quota: go straight to the backup
+    }
   }
-  const quota = errors.some((e) => /quota|limit|neurons|429|capacity/i.test(e));
+  // Backup when today's Cloudflare AI quota is used up: a free public image service (no key).
+  try {
+    const url = await backup(p, seed);
+    if (url) return json({ dataUrl: url, model: "backup" });
+    errors.push("backup: empty");
+  } catch (e) { errors.push(`backup: ${String(e?.message || e).slice(0, 120)}`); }
+  const quota = errors.some(isQuota);
   return json({ error: quota ? "AI images reached today's limit. Upload your own image, or try again later." : "Couldn't draw an image right now. Please try again.", code: quota ? "QUOTA" : "FAILED", detail: errors }, 502);
 }

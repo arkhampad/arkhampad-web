@@ -7,10 +7,11 @@ const FRESH_MS = 5 * 60_000; // scan again after 5 minutes
 const STALE_MS = 45 * 60_000; // older than this: wait for a new scan instead of showing it
 const CACHE_KEY = "https://arkhampad.com/__cache/trends-v1";
 
+// Cheapest good model first: a scan runs at most every 5 minutes and shares the daily AI quota.
 const MODELS = [
-  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   "@cf/meta/llama-4-scout-17b-16e-instruct",
   "@cf/mistralai/mistral-small-3.1-24b-instruct",
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
 ];
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
@@ -60,7 +61,7 @@ async function collect() {
   add("News: CZ / Binance (last 3h)", rssTitles(nCz, 6));
   add("News: viral memes (last 3h)", rssTitles(nViral, 8));
   add("Reddit r/memecoins hot", (reddit?.data?.children ?? []).slice(0, 15).map((c) => tidy(`${c.data?.title} (${c.data?.score} pts)`, 110)));
-  return { text: out.join("\n\n").slice(0, 9000), sources: out.length };
+  return { text: out.join("\n\n").slice(0, 6500), sources: out.length };
 }
 
 const SYSTEM = `You are a meme coin trend scout. You get raw signals scraped in the last minutes: dex coins, Google trending searches, news headlines and Reddit.
@@ -94,7 +95,7 @@ async function scan(env) {
   if (sources < 2) throw new Error("not enough signals");
   for (const model of MODELS) {
     try {
-      const out = await env.AI.run(model, { messages: [{ role: "system", content: SYSTEM }, { role: "user", content: text }], max_tokens: 700, temperature: 0.4 });
+      const out = await env.AI.run(model, { messages: [{ role: "system", content: SYSTEM }, { role: "user", content: text }], max_tokens: 600, temperature: 0.4 });
       const topics = (parse(out?.response ?? out)?.topics ?? []).map(clean).filter(Boolean).sort((a, b) => b.heat - a.heat).slice(0, 3);
       if (topics.length === 3) return { topics, scannedAt: Date.now(), sources };
     } catch { /* next model */ }

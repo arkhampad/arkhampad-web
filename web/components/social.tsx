@@ -6,7 +6,7 @@ import type { Address } from "viem";
 import { useApp } from "./shell";
 import { useWallet } from "./wallet";
 import { TradeError, buy, poolBuy, setFollow, toUsdc } from "@/lib/chain";
-import { db, getCoin, short } from "@/lib/live";
+import { db, getCoin, short, usePageVisible } from "@/lib/live";
 import { copyAmount, setFollowingCache, useFollowing } from "@/lib/traders";
 
 export function FollowButton({ trader, big = false }: { trader: string; big?: boolean }) {
@@ -59,8 +59,9 @@ export function CopyAlerts() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const ref = useRef(following);
   ref.current = following;
+  const visible = usePageVisible();
   useEffect(() => {
-    if (!w.address) return;
+    if (!w.address || !visible) return;
     const ch = db().channel(`copy-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "trades" }, async (p) => {
         const t = p.new as { chain_id: number; tx_hash: string; log_index: number; coin: string; trader: string; is_buy: boolean; usdc: number };
@@ -72,7 +73,7 @@ export function CopyAlerts() {
       })
       .subscribe();
     return () => { db().removeChannel(ch); };
-  }, [w.address]);
+  }, [w.address, visible]);
   if (!alerts.length) return null;
   return (
     <div style={{ position: "fixed", right: 16, bottom: "calc(96px + var(--safe-bottom))", zIndex: 60, display: "flex", flexDirection: "column", gap: 8, maxWidth: "min(360px, calc(100vw - 32px))" }}>

@@ -83,6 +83,12 @@ function CreateView() {
   const choose = (i: number, list = OPTS, art = arts[i]) => {
     setPick(i); pickRef.current = i; setName(list[i].name); setTick(list[i].tick); setDesc(list[i].desc);
     if (art && art !== "loading" && art !== "failed") applyArt(art); else { setImgFile(null); setImgPreview(null); }
+    // the third logo is only drawn when someone picks it (saves the daily AI quota)
+    if (art === null && generated && list === OPTS) {
+      const x = list[i] as { name: string; desc: string; picture?: string };
+      setArts((a) => a.map((v, k) => (k === i ? "loading" : v)));
+      drawOne(i, x.name, x.desc, artRun.current, x.picture);
+    }
   };
   const drawOne = async (i: number, nm: string, ds: string, run: number, picture?: string) => {
     try {
@@ -108,9 +114,10 @@ function CreateView() {
       setOpts(list);
       setGenerated(true);
       const run = ++artRun.current;
-      setArts(["loading", "loading", "loading"]);
-      choose(0, list, null);
-      list.forEach((x: { name: string; desc: string; picture?: string }, i: number) => { drawOne(i, x.name, x.desc, run, x.picture); });
+      // two logos right away, the third when it's picked (saves the daily AI quota)
+      setArts(["loading", "loading", null]);
+      choose(0, list, "loading");
+      list.forEach((x: { name: string; desc: string; picture?: string }, i: number) => { if (i < 2) drawOne(i, x.name, x.desc, run, x.picture); });
     } catch (e) { toast((e as Error).message || "AI is busy, please try again."); } finally { setThinking(false); }
   };
   // Trend Coin: the 3 hottest topics right now (scanned every 5 minutes), one tap designs coins for it
@@ -315,6 +322,7 @@ function CreateView() {
                         <span className="cr-art">
                           {a === "loading" ? <span className="skel" style={{ position: "absolute", inset: 0 }} /> : a && a !== "failed" ? <img src={a} alt="" /> : <FrogArt c1={x.c1} c2={x.c2} />}
                           {a === "loading" && <span className="cr-drawing">Drawing logo…</span>}
+                          {a === null && generated && <span className="cr-drawing">Tap to draw logo</span>}
                           <span className="cr-tick" aria-hidden="true">✓</span>
                         </span>
                         <b>{x.name}</b>
