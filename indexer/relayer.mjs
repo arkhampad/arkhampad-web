@@ -12,6 +12,9 @@ import { moderate } from "./moderation.mjs";
 import { makeFees } from "./fees.mjs";
 import { makeLimits, LIMITS } from "./limits.mjs";
 
+// Arbitrum-based chains: gas units include the L1 data cost.
+const ARB_CHAINS = new Set([4663, 46630, 42161]);
+
 const CHAINS = JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./chains.json", import.meta.url), "utf8"));
 const log = (...a) => console.log(new Date().toISOString(), "relayer:", ...a);
 
@@ -169,7 +172,13 @@ export function makeRelayer() {
     }
     // router.permit swallows a failing permit on purpose, so gas estimation would happily
     // pick a limit where the permit runs out of gas: permits get a fixed, safe limit.
-    const gas = fixedGas ?? ((await n.pub.estimateGas({ account: account.address, to, data })) * 12n) / 10n;
+    let gas = fixedGas ?? ((await n.pub.estimateGas({ account: account.address, to, data })) * 12n) / 10n;
+    // Arbitrum-based chains (Robinhood) count the L1 data cost inside the gas units, so a fixed
+    // limit can be too small there: take the node's estimate (+30%) when it is higher.
+    if (ARB_CHAINS.has(n.c.chainId) && fixedGas) {
+      const est = await n.pub.estimateGas({ account: account.address, to, data }).catch(() => 0n);
+      if ((est * 13n) / 10n > gas) gas = (est * 13n) / 10n;
+    }
     // (simulation above already proved the call works; trades use a fixed, generous limit)
     const hash = await n.wallet.sendTransaction({ to, data, gas });
     return hash;
@@ -240,14 +249,16 @@ export function makeRelayer() {
       // one approve with generous room: wallets bid above the current gas price, and on
       // OP-stack chains (Base) the L1 data fee comes on top. The user repays all of it.
       const l1 = [8453, 84532, 10].includes(n.c.chainId) ? 2_000_000_000_000n : 0n;
-      const need = gasPrice * 130_000n * 4n + l1;
+      // Arbitrum-based chains (Robinhood) put the L1 cost inside the gas units, so an approve needs more units
+      const units = ARB_CHAINS.has(n.c.chainId) ? 400_000n : 130_000n;
+      const need = gasPrice * units * 4n + l1;
       if (native >= need) return { ok: true, already: true };
       const day = Date.now() - 86_400_000;
       const seen = (dripLog.get(user) ?? []).filter((t) => t > day);
       if (seen.length >= 6) { const e = new Error("Too many approvals today. Please try again tomorrow."); e.status = 429; throw e; }
       dripLog.set(user, [...seen, Date.now()]);
       const t0 = Date.now();
-      const hash = await n.wallet.sendTransaction({ to: user, value: need - native, gas: 21_000n });
+      const hash = await n.wallet.sendTransaction({ to: user, value: need - native, ...(ARB_CHAINS.has(n.c.chainId) ? {} : { gas: 21_000n }) });
       const rc = await n.pub.waitForTransactionReceipt({ hash, pollingInterval: 150, timeout: 60_000 });
       // The user repays this (top-up + the transfer's own gas) in USDC with their next trade
       // from other DEXs: ArkhamPad never pays anyone's gas.

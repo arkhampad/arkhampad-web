@@ -9,6 +9,7 @@ type ExtNet = { id: number; slug: string; usdc: Address; usdcDecimals: number; r
 const env = (k: string) => (process.env as Record<string, string | undefined>)[k] || "";
 export const EXT_NETS: ExtNet[] = [
   { id: 8453, slug: "base", usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", usdcDecimals: 6, rpc: "https://mainnet.base.org", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_8453 || null) as Address | null, permitUsdc: true },
+  { id: 4663, slug: "robinhood", usdc: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", usdcDecimals: 6, rpc: "https://rpc.mainnet.chain.robinhood.com", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_4663 || "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231") as Address | null, permitUsdc: true },
   { id: 56, slug: "bsc", usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", usdcDecimals: 18, rpc: "https://bsc-dataseed.bnbchain.org", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_56 || null) as Address | null, permitUsdc: false },
 ];
 export const extNet = (chainId: number) => EXT_NETS.find((n) => n.id === chainId) ?? null;

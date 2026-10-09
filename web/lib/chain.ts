@@ -13,7 +13,7 @@ export const robinhoodTestnet = defineChain({
   testnet: true,
 });
 
-export type Net = { id: number; name: string; short: string; rpc: string; rpcs?: string[]; hub: Address; router: Address; usdc: Address; faucet: boolean; faucetUrl?: string; usdDecimals?: number; approvals?: "permit" | "gas" };
+export type Net = { id: number; name: string; short: string; rpc: string; rpcs?: string[]; hub: Address; router: Address; usdc: Address; faucet: boolean; faucetUrl?: string; usdDecimals?: number; approvals?: "permit" | "gas"; dollar?: string };
 
 // Contract addresses come from contracts/deployments/<chainId>.json.
 const DEFAULT_NETS: Net[] = [
@@ -21,9 +21,20 @@ const DEFAULT_NETS: Net[] = [
   { id: 46630, name: "Robinhood Testnet", short: "Robinhood", rpc: "https://rpc.testnet.chain.robinhood.com", hub: "0x3f49Ab48d9e04bd12D9D5613d2d879Eb754a5CA9", router: "0xD8cAF98C955D8c1071807d4884BB04Ea2Ac55a49", usdc: "0x47AfD49069EAbEcfb153926f1f652249fFb61b57", faucet: true },
 ];
 // Local test builds can point everything at a local chain.
-export const NETS: Net[] = process.env.NEXT_PUBLIC_NETS ? JSON.parse(process.env.NEXT_PUBLIC_NETS) : DEFAULT_NETS;
+const ENV_NETS: Net[] = process.env.NEXT_PUBLIC_NETS ? JSON.parse(process.env.NEXT_PUBLIC_NETS) : DEFAULT_NETS;
+/** Mainnets opened after Base: switched on here in code (from contracts/deployments/<chainId>.json),
+ *  so opening a chain needs no Cloudflare setting. Added only when the site runs on Base mainnet. */
+const MORE_MAINNETS: Net[] = [
+  // Robinhood Chain: the dollar is USDG (Global Dollar, 6 decimals, with permit)
+  { id: 4663, name: "Robinhood Chain", short: "Robinhood", rpc: "https://rpc.mainnet.chain.robinhood.com", hub: "0x1a5453a1D4c32a9B46aCCc48B3Fa2CB5C78e072b", router: "0xD3b65d20e991a732AF81C2f42C86d2C1619E56F8", usdc: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", faucet: false, dollar: "USDG" },
+];
+export const NETS: Net[] = ENV_NETS.some((n) => n.id === 8453)
+  ? [...ENV_NETS, ...MORE_MAINNETS.filter((m) => !ENV_NETS.some((n) => n.id === m.id))]
+  : ENV_NETS;
+/** The network's dollar token symbol ("USDC", or "USDG" on Robinhood). */
+export const dollarOf = (id: number) => NETS.find((n) => n.id === id)?.dollar ?? "USDC";
 /** True once the site runs on real networks (mainnet chains configured): no test money anywhere. */
-export const LIVE = NETS.some((n) => [4663, 8453, 56].includes(n.id));
+export const LIVE = NETS.some((n) => [4663, 8453, 56, 5042].includes(n.id));
 /** "Base", "Robinhood and Base"... for copy. */
 export const NET_NAMES = NETS.map((n) => n.short).join(" and ");
 export const netOf = (id: number) => NETS.find((n) => n.id === id) ?? null;
@@ -34,6 +45,7 @@ const BACKUP_RPCS: Record<number, string[]> = {
   8453: ["https://mainnet.base.org", "https://base-rpc.publicnode.com"],
   84532: ["https://sepolia.base.org", "https://base-sepolia-rpc.publicnode.com"],
   56: ["https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"],
+  4663: ["https://rpc.mainnet.chain.robinhood.com"],
 };
 
 const clients = new Map<number, PublicClient>();
@@ -360,7 +372,7 @@ export async function poolBuy(chainId: number, coin: Address, usdcIn: bigint, s:
   if (usdcIn <= 0n) throw new TradeError("Enter an amount.");
   const fee = await netFee(chainId, "poolBuy");
   const [bal, quote] = await Promise.all([usdcBalance(chainId, s.address), quotePool(chainId, coin, true, usdcIn), ensureAllowance(n, s, n.usdc, up(n, usdcIn + fee))]);
-  if (bal < usdcIn + fee) throw new TradeError("Not enough USDC on this network.");
+  if (bal < usdcIn + fee) throw new TradeError(`Not enough ${n.dollar ?? "USDC"} on this network.`);
   if (quote === 0n) throw new TradeError("Amount is too small.");
   const minOut = (quote * (10_000n - SLIPPAGE_BPS)) / 10_000n;
   const nonce = randomNonce(), dl = deadline();
@@ -399,7 +411,7 @@ export async function launch(chainId: number, l: LaunchInput, s: Signer): Promis
   const fee = await netFee(chainId, "launch");
   const need = l.launchUsdc + fee;
   const bal = await usdcBalance(chainId, s.address);
-  if (bal < need) throw new TradeError(`You need at least $${fromUsdc(need).toFixed(2)} USDC on ${n.short} to launch.`);
+  if (bal < need) throw new TradeError(`You need at least $${fromUsdc(need).toFixed(2)} ${n.dollar ?? "USDC"} on ${n.short} to launch.`);
   await ensureAllowance(n, s, n.usdc, up(n, need));
   const nonce = randomNonce(), dl = deadline();
   const message = { user: s.address, name: l.name, symbol: l.symbol, metadataURI: l.metadataURI, lockSeconds: BigInt(l.lockSeconds), feeMode: l.feeMode, launchUsdc: up(n, l.launchUsdc), minCoinsOut: 0n, fee: up(n, fee), nonce, deadline: dl };

@@ -60,7 +60,7 @@ export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdra
     if (to.trim().toLowerCase() === (w.address as string).toLowerCase()) return setMsg({ ok: false, text: "That's your own ArkhamPad address." });
     if (!w.signer) return;
     setBusy(true);
-    try { await withdraw(net, getAddress(to.trim()), toUsdc(v), w.signer); await w.refresh(); setAmt(""); setMsg({ ok: true, text: `Sent $${v.toFixed(2)} USDC` }); }
+    try { await withdraw(net, getAddress(to.trim()), toUsdc(v), w.signer); await w.refresh(); setAmt(""); setMsg({ ok: true, text: `Sent $${v.toFixed(2)} ${n.dollar ?? "USDC"}` }); }
     catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
   };
   return (
@@ -70,7 +70,7 @@ export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdra
         <Close onClose={onClose} />
       </div>
       <div style={{ display: "flex", gap: 6 }}>{NETS.map((x) => <button key={x.id} type="button" className={`seg${net === x.id ? " on" : ""}`} onClick={() => { setNet(x.id); setMsg(null); }}>{x.name}</button>)}</div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">USDC on {n.short}</span><b className="mono">${bal.toFixed(2)}</b></div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">{n.dollar ?? "USDC"} on {n.short}</span><b className="mono">${bal.toFixed(2)}</b></div>
       {tab === "deposit" ? (
         <>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
@@ -78,7 +78,7 @@ export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdra
             <span className="mono" style={{ fontSize: 13, wordBreak: "break-all", textAlign: "center" }}>{w.address}</span>
             <button type="button" className="btn sm" onClick={copy}>Copy address</button>
           </div>
-          <div className="warn-note"><IAlert size={16} color="var(--warn)" /><span>Send only <b>USDC</b> on <b>{n.name}</b> to this address.{LIVE ? " Other tokens or networks can be lost." : " This is a test network: test USDC has no value."}</span></div>
+          <div className="warn-note"><IAlert size={16} color="var(--warn)" /><span>Send only <b>{n.dollar ?? "USDC"}</b> on <b>{n.name}</b> to this address.{LIVE ? " Other tokens or networks can be lost." : " This is a test network: test USDC has no value."}</span></div>
           {n.faucet ? <button type="button" className="btn volt lg" disabled={busy} onClick={getTest}>{busy ? "Sending…" : "Get 100 test USDC"}</button>
             : n.faucetUrl ? <a className="btn volt lg" href={n.faucetUrl} target="_blank" rel="noopener noreferrer">Get test USDC from Circle ↗</a> : null}
           {!n.faucet && n.faucetUrl && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>On the Circle page pick <b>{n.name}</b>, paste your address above, and request USDC.</span>}
@@ -86,7 +86,7 @@ export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdra
       ) : (
         <>
           <div className="field"><label htmlFor="wd-to">Send to (wallet or exchange address on {n.name})</label><input id="wd-to" className="inp mono" placeholder="0x…" value={to} onChange={(e) => setTo(e.target.value)} autoComplete="off" spellCheck={false} /></div>
-          <div className="field"><label htmlFor="wd-amt">Amount (USDC)</label>
+          <div className="field"><label htmlFor="wd-amt">Amount ({n.dollar ?? "USDC"})</label>
             <div style={{ display: "flex", gap: 6 }}><input id="wd-amt" className="inp mono" inputMode="decimal" placeholder="0.00" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} /><button type="button" className="btn sm" style={{ height: 46 }} onClick={() => setAmt(Math.max(0, bal - 0.01).toFixed(2))}>Max</button></div>
           </div>
           <button type="button" className="btn volt lg" disabled={busy} onClick={send}>{busy ? "Sending…" : "Withdraw"}</button>

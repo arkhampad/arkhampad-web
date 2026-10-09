@@ -19,5 +19,26 @@
     "relayRpcEnv": "BASE_RELAY_RPC",
     "v2": true,
     "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231"
+  },
+  {
+    "name": "robinhood",
+    "chainId": 4663,
+    "rpcEnv": "ROBINHOOD_RPC",
+    "hub": "0x1a5453a1D4c32a9B46aCCc48B3Fa2CB5C78e072b",
+    "promote": "0xC11622d1E479B9821a551E2040bC3Aff7cdf6736",
+    "poolBuilder": "0x75656d8d2A59293DBdA4178F11Af6EE506ef60dD",
+    "startBlock": 83944161,
+    "blockRange": 2000,
+    "pollSeconds": 5,
+    "rangeDelayMs": 100,
+    "note": "Robinhood mainnet (Arbitrum-based, fast blocks); dollar is USDG",
+    "router": "0xD3b65d20e991a732AF81C2f42C86d2C1619E56F8",
+    "usdc": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "faucet": false,
+    "guard": "0xD10775100B3b1d99924717FDA90b5fE3E1E76080",
+    "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+    "relayRpcEnv": "ROBINHOOD_RELAY_RPC",
+    "v2": true,
+    "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231"
   }
 ]
