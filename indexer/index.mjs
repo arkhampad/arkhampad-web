@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import pg from "pg";
-import { createPublicClient, http as viemHttp, parseAbiItem, getAddress } from "viem";
+import { createPublicClient, http as viemHttp, fallback as viemFallback, parseAbiItem, getAddress } from "viem";
 import { startMarkets } from "./markets.mjs";
 import { startQuality } from "./quality.mjs";
 import { startDexWatch } from "./dexwatch.mjs";
@@ -290,7 +290,10 @@ async function backfillTransfers(c, client) {
 async function loop(c) {
   const rpc = (process.env[c.rpcEnv] || "").trim();
   if (!rpc) { log(`${c.name}: ${c.rpcEnv} not set, skipped`); return; }
-  const client = createPublicClient({ transport: viemHttp(rpc, { retryCount: 3, timeout: 20_000 }) });
+  // several RPC URLs may be given, comma-separated: the next one answers when one fails
+  // (e.g. a free node that only serves recent blocks, or one behind a Cloudflare challenge)
+  const urls = rpc.split(",").map((u) => u.trim()).filter(Boolean);
+  const client = createPublicClient({ transport: urls.length > 1 ? viemFallback(urls.map((u) => viemHttp(u, { retryCount: 1, timeout: 20_000 }))) : viemHttp(rpc, { retryCount: 3, timeout: 20_000 }) });
   c.hub = getAddress(c.hub);
   if (c.promote) c.promote = getAddress(c.promote);
   if (c.router) c.router = getAddress(c.router);
