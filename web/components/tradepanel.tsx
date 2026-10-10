@@ -132,7 +132,12 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           setHeld(await extBalance(coin.chainId, token, me));
         }
         await w.refresh();
-      } catch (e) { toast(e instanceof TradeError ? e.message : /HTTP request failed|fetch|timed? ?out|429/i.test(String((e as Error)?.message)) ? "The network is busy. Please try again in a moment." : "Couldn't trade. Please try again."); }
+      } catch (e) {
+        const raw = String((e as { shortMessage?: string; message?: string })?.shortMessage ?? (e as Error)?.message ?? e);
+        console.error("trade failed", e);
+        // the short technical reason goes along, so a report from a user tells us what really happened
+        toast(e instanceof TradeError ? e.message : /HTTP request failed|fetch|timed? ?out|429/i.test(raw) ? "The network is busy. Please try again in a moment." : `Couldn't trade. Please try again. (${raw.replace(/\s+/g, " ").slice(0, 90)})`);
+      }
       finally { setBusy(false); setStep(""); }
       return;
     }
