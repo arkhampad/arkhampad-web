@@ -42,5 +42,29 @@
     "v2": true,
     "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231",
     "vault": "0xB4B9F1706537eA2E876Ce8e3684dc982f05Da69E"
+  },
+  {
+    "name": "bnb",
+    "chainId": 56,
+    "rpcEnv": "BNB_RPC",
+    "hub": "0x5abe87751c6d0942805f53F33a4fa022255C08D1",
+    "promote": "0xEFbd358D0120AEbAA77De2805294FAE31d9D7D2D",
+    "poolBuilder": "0xA8c03CFB5aE340fdCE22F94CE83100daef33DEF0",
+    "startBlock": 126784544,
+    "blockRange": 500,
+    "pollSeconds": 3,
+    "rangeDelayMs": 100,
+    "note": "BNB Chain mainnet; BNB_RPC = https://bsc-rpc.publicnode.com (comma-separate a backup); the dollar is Binance-Peg USDC with 18 decimals and no permit (wallets approve once after a small gas top-up)",
+    "router": "0x4669c253E875c351225B8354A02eE5f9DA5dd125",
+    "usdc": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    "usdDecimals": 18,
+    "approvals": "gas",
+    "faucet": false,
+    "guard": "0xA97aCA39aeF9ff386C2a8d4a637F2Bf32EA6a080",
+    "poolManager": "0x28e2Ea090877bF75740558f6BFB36A5ffeE9e9dF",
+    "relayRpcEnv": "BNB_RELAY_RPC",
+    "v2": true,
+    "extSwap": "0x3f49Ab48d9e04bd12D9D5613d2d879Eb754a5CA9",
+    "vault": "0x9Ce7025C69044F3EB599BaF1aEf8fBE7B50BF570"
   }
 ]

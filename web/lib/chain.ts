@@ -27,6 +27,8 @@ const ENV_NETS: Net[] = process.env.NEXT_PUBLIC_NETS ? JSON.parse(process.env.NE
 const MORE_MAINNETS: Net[] = [
   // Robinhood Chain: the dollar is USDG (Global Dollar, 6 decimals, with permit)
   { id: 4663, name: "Robinhood Chain", short: "Robinhood", rpc: "https://robinhood.drpc.org", hub: "0x47AfD49069EAbEcfb153926f1f652249fFb61b57", router: "0x0Bdb2e316294Ef449aa94E242a88383dD3a35d88", usdc: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", faucet: false, dollar: "USDG" },
+  // BNB Chain: Binance-Peg USDC has 18 decimals and no permit (one approval after a small gas top-up)
+  { id: 56, name: "BNB Chain", short: "BNB", rpc: "https://bsc-rpc.publicnode.com", hub: "0x5abe87751c6d0942805f53F33a4fa022255C08D1", router: "0x4669c253E875c351225B8354A02eE5f9DA5dd125", usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", faucet: false, usdDecimals: 18, approvals: "gas" },
 ];
 export const NETS: Net[] = ENV_NETS.some((n) => n.id === 8453)
   ? [...ENV_NETS, ...MORE_MAINNETS.filter((m) => !ENV_NETS.some((n) => n.id === m.id))]
@@ -38,13 +40,13 @@ export const LIVE = NETS.some((n) => [4663, 8453, 56, 5042].includes(n.id));
 /** "Base", "Robinhood and Base"... for copy. */
 export const NET_NAMES = NETS.map((n) => n.short).join(" and ");
 export const netOf = (id: number) => NETS.find((n) => n.id === id) ?? null;
-export const viemChain = (id: number) => (id === 84532 ? baseSepolia : id === 46630 ? robinhoodTestnet : defineChain({ id, name: `chain ${id}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [netOf(id)?.rpc ?? ""] } } }));
+export const viemChain = (id: number) => (id === 84532 ? baseSepolia : id === 46630 ? robinhoodTestnet : defineChain({ id, name: `chain ${id}`, nativeCurrency: id === 56 ? { name: "BNB", symbol: "BNB", decimals: 18 } : { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [netOf(id)?.rpc ?? ""] } } }));
 
 /** Public backup nodes per chain: used automatically when the main node is slow or down. */
 const BACKUP_RPCS: Record<number, string[]> = {
   8453: ["https://mainnet.base.org", "https://base-rpc.publicnode.com"],
   84532: ["https://sepolia.base.org", "https://base-sepolia-rpc.publicnode.com"],
-  56: ["https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"],
+  56: ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed.bnbchain.org"],
   // the official endpoint sits behind a Cloudflare challenge that blocks apps now and then
   4663: ["https://robinhood.drpc.org", "https://rpc.mainnet.chain.robinhood.com"],
 };
