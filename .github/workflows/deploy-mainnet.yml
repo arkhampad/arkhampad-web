@@ -92,8 +92,8 @@ jobs:
           START_MC: ${{ inputs.start_mc }}
         run: |
           if [ "${{ inputs.broadcast }}" = "true" ]; then
-            forge script script/Deploy.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow
-            forge script script/DeployExtSwap.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow
+            forge script script/Deploy.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow --non-interactive
+            forge script script/DeployExtSwap.s.sol --rpc-url "${{ steps.net.outputs.rpc }}" --broadcast --slow --non-interactive
           else
             echo "DRY RUN: nothing is sent."
             forge script script/Deploy.s.sol --rpc-url "${{ steps.net.outputs.rpc }}"
