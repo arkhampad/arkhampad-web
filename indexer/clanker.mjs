@@ -63,13 +63,16 @@ export function startTick(nativeUsd, mcUsd = START_MC_USD) {
 /** Market cap in dollars at a tick (coin-as-token0 convention). */
 export const mcAtTick = (tick, nativeUsd) => Math.pow(1.0001, tick) * 1e11 * nativeUsd;
 
+/** Public link to a coin on ArkhamPad by its launch key (known before the coin's address is). */
+export const coinLink = (chainId, key) => `https://arkhampad.com/coin/?k=${Number(chainId)}-${key}`;
+
 const clean = (s, max) => String(s ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max);
 
 /**
  * The Clanker deployToken transaction for one ArkhamPad coin.
  * @returns {{ to, data, value, abi, args, tick }}
  */
-export async function deployTx({ locker, chainId, name, symbol, image, description, coinUrl, user, devBuyWei, nativeUsd, treasury = ARKHAMPAD_TREASURY, admin = ARKHAMPAD_ADMIN }) {
+export async function deployTx({ locker, salt, socials = [], chainId, name, symbol, image, description, coinUrl, user, devBuyWei, nativeUsd, treasury = ARKHAMPAD_TREASURY, admin = ARKHAMPAD_ADMIN }) {
   chainId = Number(chainId);
   if (!CLANKER_CHAINS.includes(chainId)) throw new Error(`Clanker launches are not open on chain ${chainId}`);
   const k = clankerOf(chainId);
@@ -83,9 +86,10 @@ export async function deployTx({ locker, chainId, name, symbol, image, descripti
     symbol: clean(symbol, 10),
     image: String(image ?? ""),
     tokenAdmin: owner,
+    ...(salt ? { salt } : {}),
     metadata: {
       description: `${desc}${desc ? "\n\n" : ""}Launched on ArkhamPad`,
-      socialMediaUrls: coinUrl ? [{ platform: "website", url: String(coinUrl) }] : [],
+      socialMediaUrls: [...(coinUrl ? [{ platform: "website", url: String(coinUrl) }] : []), ...socials.filter((x) => x && x.url).slice(0, 3).map((x) => ({ platform: clean(x.platform, 20), url: clean(x.url, 200) }))],
     },
     context: { interface: "ArkhamPad", platform: "ArkhamPad", messageId: String(coinUrl ?? ""), id: owner },
     locker: { locker: locker ? getAddress(locker) : "Locker" },
@@ -109,13 +113,13 @@ export async function deployTx({ locker, chainId, name, symbol, image, descripti
   // safety: everything must point at Clanker's own contracts for this chain
   if (getAddress(tx.address) !== k.factory || !lockersOf(chainId).includes(getAddress(cfg.lockerConfig.locker)) || getAddress(cfg.poolConfig.hook) !== k.hook || getAddress(cfg.poolConfig.pairedToken) !== k.paired) throw new Error("Clanker config mismatch");
   const data = encodeFunctionData({ abi: tx.abi, functionName: "deployToken", args: [cfg] });
-  return { to: k.factory, data, value, abi: tx.abi, args: [cfg], tick };
+  return { to: k.factory, data, value, abi: tx.abi, args: [cfg], tick, expected: tx.expectedAddress ? getAddress(tx.expectedAddress) : null };
 }
 
 const lockersOf = (chainId) => [clankerOf(chainId).locker, ...(LOCKER_FALLBACKS[Number(chainId)] ?? []).map((a) => getAddress(a))];
 
 /** Reads the TokenCreated event from a deploy receipt. */
-export function parseCreated(chainId, logs, abi) {
+export function parseCreated(chainId, logs, abi = [TOKEN_CREATED]) {
   const k = clankerOf(chainId);
   for (const l of logs) {
     if (getAddress(l.address) !== k.factory) continue;
