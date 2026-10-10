@@ -33,6 +33,9 @@ const OPTS0 = [
   { name: "Dip Hopper", tick: "HOPPR", desc: "A space frog that hops in every time the chart dips. Never sleeps, never sells.", c1: "#0B3B2E", c2: "#2BB38A" },
   { name: "Orbit Toad", tick: "OTOAD", desc: "Zero gravity, zero panic. This toad buys dips from low orbit.", c1: "#3B1B0B", c2: "#FF8A3D" },
 ];
+// Launching is paused on BNB Chain: its meme market lives on PancakeSwap, and DEX screeners
+// don't list Uniswap v4 pools there yet. Trading other BNB coins still works.
+const CREATE_PAUSED = new Set([56]);
 function CreateView() {
   const q = useSearchParams();
   const { toast, openFunds } = useApp();
@@ -52,7 +55,7 @@ function CreateView() {
   const [desc, setDesc] = useState(OPTS0[0].desc);
   // networks come from the site config (testnet: Robinhood + Base; mainnet adds more)
   // Base first and the default: the chain most trading apps and wallets already show
-  const CHAINS = [...NETS].sort((a, b) => (a.short === "Base" ? -1 : b.short === "Base" ? 1 : 0)).map((n) => ({ id: n.id, name: n.short, color: n.short === "Robinhood" ? "var(--rh)" : n.short === "Base" ? "var(--base)" : n.short === "BNB" ? "#F0B90B" : "var(--volt)" }));
+  const CHAINS = [...NETS].filter((n) => !CREATE_PAUSED.has(n.id)).sort((a, b) => (a.short === "Base" ? -1 : b.short === "Base" ? 1 : 0)).map((n) => ({ id: n.id, name: n.short, color: n.short === "Robinhood" ? "var(--rh)" : n.short === "Base" ? "var(--base)" : n.short === "BNB" ? "#F0B90B" : "var(--volt)" }));
   const [chain, setChain] = useState(CHAINS.find((c) => c.name === "Base")?.name ?? CHAINS[0].name);
   // safe, simple defaults: fees to the creator unless they pick buyback & burn
   const [fee, setFee] = useState("you");
