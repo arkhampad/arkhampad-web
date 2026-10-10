@@ -403,7 +403,13 @@ export async function ensureCash(chainId: number, need: bigint, s: Signer): Prom
   const bals = await Promise.all(others.map(async (x) => ({ x, b: await usdcBalance(x.id, s.address).catch(() => 0n) })));
   bals.sort((a, b) => (b.b > a.b ? 1 : b.b < a.b ? -1 : 0));
   const src = bals[0];
-  if (!src || src.b < short) throw new TradeError("Not enough cash. Deposit USDC to continue.");
+  if (!src || src.b < short) {
+    // say exactly how much is needed and how much is there
+    const total = have + bals.reduce((a, x) => a + x.b, 0n);
+    const $ = (v: bigint) => `$${fromUsdc(v).toFixed(2)}`;
+    if (total < need + 10_000n) throw new TradeError(`You need ${$(need)} for this (network fee included) and your cash is ${$(total)}. Add ${$(need + 10_000n - total)} or more to continue.`);
+    throw new TradeError(`You need ${$(need)} on one network for this, but your ${$(total)} is spread over several networks. Add ${$(short - (src?.b ?? 0n))} or more to continue.`);
+  }
   const q = await moveApi({ action: "quote", from: src.x.id, to: chainId, user: s.address, amount: S(up(n, short)) });
   if (q.amountIn && down(src.x, BigInt(q.amountIn)) > src.b) throw new TradeError("Not enough cash to cover this trade. Try a slightly smaller amount.");
   let topped = false;

@@ -429,7 +429,7 @@ function CreateView() {
                   ? <span>Launched through Clanker: DexScreener, GMGN and trading bots see it the moment it&apos;s live.</span>
                   : <span>Tradable in other apps from the first trade.</span>}
                 {viaClanker
-                  ? <span>Sniper protection: bots that buy in the first moments pay up to <b className="mono">66%</b> fees, and half of that goes to you. Then every trade pays <b className="mono">1%</b>.</span>
+                  ? <span>Sniper protection: bots that buy in the first moments pay up to <b className="mono">80%</b> fees, and half of that goes to you. Then every trade pays <b className="mono">1%</b>.</span>
                   : <span>Launch fee protects you from bots: <b className="mono">{launchSchedule(chainId).start}%</b> falling to <b className="mono">2%</b> in {launchSchedule(chainId).decay === 300 ? "five" : "two"} minutes.</span>}
                 <span>{LIVE ? "Your cash" : `Your ${dollarOf(chainId)} on ${chain}`}: <b className="mono">{w.signedIn ? `$${cash.toFixed(2)}` : "—"}</b></span>
               </div>

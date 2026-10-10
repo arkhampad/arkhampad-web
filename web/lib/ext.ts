@@ -2,7 +2,7 @@
 // Trading coins listed on other DEXs (mainnet only): live quotes from the KyberSwap aggregator,
 // gasless execution through PadExtSwap (the user signs; ArkhamPad takes 1%).
 import { createPublicClient, domainSeparator, encodeFunctionData, http, parseAbi, type Address, type Hex } from "viem";
-import { TradeError, ensureCash, netFee, receipt, type Signer } from "./chain";
+import { TradeError, client, ensureCash, netFee, netOf, receipt, type Signer } from "./chain";
 
 type ExtNet = { id: number; slug: string; usdc: Address; usdcDecimals: number; rpc: string; swap: Address | null; permitUsdc: boolean };
 // NEXT_PUBLIC_* values reach the browser only when written as literal process.env.NAME
@@ -19,6 +19,13 @@ export const extTradable = (chainId: number) => !!extNet(chainId)?.swap;
 const API = "https://aggregator-api.kyberswap.com";
 const HEAD = { "x-client-id": "arkhampad" };
 export const FEE_BPS = 100n;
+// The site counts dollars with 6 decimals; some networks' USDC has more (BNB Chain: 18).
+// These convert at the edge, right where amounts go to or come from the chain.
+const scaleOf = (n: ExtNet) => 10n ** BigInt(n.usdcDecimals - 6);
+const up = (n: ExtNet, v: bigint) => v * scaleOf(n); // site units -> chain units
+const down = (n: ExtNet, v: bigint) => v / scaleOf(n); // chain units -> site units
+/** What PadExtSwap spends on the DEX for a buy of `amountIn` (chain units): the amount less its 1% fee. */
+const spendOf = (amountIn: bigint) => amountIn - (amountIn * FEE_BPS) / 10_000n;
 
 type Route = { amountOut: bigint; summary: unknown; router: Address };
 async function route(n: ExtNet, tokenIn: Address, tokenOut: Address, amountIn: bigint): Promise<Route> {
@@ -33,16 +40,15 @@ async function route(n: ExtNet, tokenIn: Address, tokenOut: Address, amountIn: b
 export async function extQuote(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint) {
   const n = extNet(chainId);
   if (!n) throw new TradeError("Quotes aren't available for this network yet.");
-  if (side === "buy") {
-    const spend = amount - (amount * FEE_BPS) / 10_000n;
-    return (await route(n, n.usdc, coin, spend)).amountOut;
-  }
-  const out = (await route(n, coin, n.usdc, amount)).amountOut;
+  if (side === "buy") return (await route(n, n.usdc, coin, spendOf(up(n, amount)))).amountOut;
+  const out = down(n, (await route(n, coin, n.usdc, amount)).amountOut); // site units
   return out - (out * FEE_BPS) / 10_000n;
 }
 
 const ERC = parseAbi(["function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)", "function nonces(address) view returns (uint256)", "function name() view returns (string)", "function decimals() view returns (uint8)"]);
-const pub = (n: ExtNet) => createPublicClient({ transport: http(n.rpc) });
+// the site's client for the network (main node plus backups), so one public node that fails or
+// rate-limits never shows a balance of 0 or stops a trade
+const pub = (n: ExtNet) => (netOf(n.id) ? client(n.id) : createPublicClient({ transport: http(n.rpc) }));
 export async function extDecimals(chainId: number, token: Address): Promise<number> {
   const n = extNet(chainId);
   if (!n) return 18;
@@ -52,7 +58,13 @@ export async function extDecimals(chainId: number, token: Address): Promise<numb
 export async function extBalance(chainId: number, token: Address, who: Address) {
   const n = extNet(chainId);
   if (!n) return 0n;
-  return pub(n).readContract({ address: token, abi: ERC, functionName: "balanceOf", args: [who] }).catch(() => 0n);
+  // a failed read is asked again before it counts as 0
+  for (let i = 0; i < 3; i++) {
+    const b = await pub(n).readContract({ address: token, abi: ERC, functionName: "balanceOf", args: [who] }).catch(() => null);
+    if (b !== null) return b;
+    await new Promise((ok) => setTimeout(ok, 500));
+  }
+  return 0n;
 }
 
 const RELAYER = process.env.NEXT_PUBLIC_RELAYER_URL || "https://arkhampad-web-production.up.railway.app";
@@ -90,7 +102,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 async function approveWithGas(n: ExtNet, s: Signer, token: Address, need: bigint): Promise<bigint> {
   if (!s.sendTx) throw new TradeError("This wallet can't approve this coin yet. Please try again from your ArkhamPad account.");
   const r = await relay({ chainId: n.id, kind: "gas", user: s.address, token, spender: "ext" });
-  const owed = BigInt(String(r?.owed ?? "0"));
+  const owed = down(n, BigInt(String(r?.owed ?? "0"))); // the relayer answers in chain units
   const hash = await withTimeout(s.sendTx(n.id, { to: token, data: encodeFunctionData({ abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [n.swap!, 2n ** 256n - 1n] }) }), 60_000);
   const c = pub(n);
   // ask for the receipt directly: a load-balanced node a block behind must not fail the wait
@@ -122,31 +134,40 @@ export async function extTrade(chainId: number, coin: Address, side: "buy" | "se
 async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, attempt: number) {
   const n = extNet(chainId);
   if (!n || !n.swap) throw new TradeError("Trading coins from other DEXs opens on mainnet.");
-  if (n.usdcDecimals !== 6) throw new TradeError("This network isn't supported yet.");
   const isBuy = side === "buy";
-  const NET_FEE = await netFee(n.id, "extSwap"); // live network fee (6-decimal USDC)
+  const NET_FEE = await netFee(n.id, "extSwap"); // live network fee (site units: 6 decimals)
   // cash on another network comes over first (a few cents of room for any gas still owed)
   if (isBuy) await ensureCash(n.id, amount + NET_FEE + 50_000n, s);
-  const spend = isBuy ? amount - (amount * FEE_BPS) / 10_000n : amount;
+  // BNB Chain opens after its sell path passes the fork test
+  if (n.usdcDecimals !== 6) throw new TradeError("Trading BNB Chain coins here opens soon.");
+  // what goes on-chain: a buy's dollars in the network's USDC units; a sell's coins as they are
+  const amountIn = isBuy ? up(n, amount) : amount;
+  const spend = isBuy ? spendOf(amountIn) : amountIn;
   const r = await route(n, isBuy ? n.usdc : coin, isBuy ? coin : n.usdc, spend);
   const build = await fetch(`${API}/${n.slug}/api/v1/route/build`, { method: "POST", headers: { ...HEAD, "content-type": "application/json" }, body: JSON.stringify({ routeSummary: r.summary, sender: n.swap, recipient: n.swap, slippageTolerance: [150, 300, 500][attempt] ?? 500, deadline: Math.floor(Date.now() / 1000) + 600 }) }).catch(() => null);
   const b = build ? await build.json().catch(() => null) : null;
   if (!build?.ok || !b?.data?.data) throw new TradeError("Couldn't prepare the trade. Please try again.");
   const data = b.data.data as Hex;
   const target = b.data.routerAddress as Address;
-  const extra = await ensurePermit(n, s, isBuy ? n.usdc : coin, isBuy ? amount + NET_FEE : amount);
+  const extra = await ensurePermit(n, s, isBuy ? n.usdc : coin, isBuy ? up(n, amount + NET_FEE) : amount); // site units back
   // a first-time approval top-up is repaid here, never by ArkhamPad (the relayer keeps the
   // amount, so an earlier attempt that stopped half way is still counted exactly once)
   const owed = await fetch(`${RELAYER}/fee?chainId=${n.id}&kind=extSwap&user=${s.address}`, { cache: "no-store" })
     .then((r) => r.json()).then((j) => BigInt(String(j?.owed ?? "0"))).catch(() => extra);
-  const FEE = NET_FEE + (owed > extra ? owed : extra);
-  const quoted = isBuy ? r.amountOut : r.amountOut - (r.amountOut * FEE_BPS) / 10_000n - FEE;
+  const FEE = NET_FEE + (owed > extra ? owed : extra); // site units
+  const feeChain = up(n, FEE);
+  // buys: coins out; sells: USDC to the user after the 1% fee and the network fee (chain units)
+  const quoted = isBuy ? r.amountOut : r.amountOut - (r.amountOut * FEE_BPS) / 10_000n - feeChain;
+  if (!isBuy && quoted <= 0n) throw new TradeError("This sale is too small to cover the network fee.");
   const minOut = (quoted * 98n) / 100n;
   const { keccak256 } = await import("viem");
   const nonce = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000));
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
-  const msg = { user: s.address, isBuy, coin, amountIn: amount, minOut, target, dataHash: keccak256(data), fee: FEE, nonce, deadline };
+  const msg = { user: s.address, isBuy, coin, amountIn, minOut, target, dataHash: keccak256(data), fee: feeChain, nonce, deadline };
   const signature = await s.signTypedData(n.id, { domain: { name: "ArkhamPad Swap", version: "1", chainId: n.id, verifyingContract: n.swap }, types: TYPES, primaryType: "ExtSwap", message: msg });
   const S = (v: bigint) => v.toString();
-  return relay({ chainId: n.id, kind: "extSwap", swap: { user: s.address, isBuy, coin, amountIn: S(amount), minOut: S(minOut), target, data, fee: S(FEE), nonce: S(nonce), deadline: S(deadline), signature } });
+  const res = await relay({ chainId: n.id, kind: "extSwap", swap: { user: s.address, isBuy, coin, amountIn: S(amountIn), minOut: S(minOut), target, data, fee: S(feeChain), nonce: S(nonce), deadline: S(deadline), signature } });
+  // a trade that was sent but failed on-chain must never look like it went through
+  if (res?.status && res.status !== "success") throw new TradeError("The trade didn't go through. Your funds are safe; please try again.");
+  return res;
 }

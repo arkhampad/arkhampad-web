@@ -40,7 +40,7 @@ export function feeSecondsLeft(createdAt: string | null | undefined, nowMs = Dat
   return Math.max(0, Math.ceil(launchSchedule(chainId).decay - (nowMs - start) / 1000));
 }
 
-/** Clanker coins: seconds left in Clanker's sniper protection (bots pay up to 66% in a coin's first moments). */
+/** Clanker coins: seconds left in Clanker's sniper protection (bots pay up to 80% in a coin's first moments). */
 export function sniperSecondsLeft(createdAt: string | null | undefined, nowMs = Date.now()): number {
   const start = createdAt ? Date.parse(createdAt) : NaN;
   if (!Number.isFinite(start)) return 0;
@@ -80,7 +80,7 @@ export function LaunchFeeCard({ c }: { c: LiveCoin }) {
           <span className="mono dim" style={{ fontSize: 12 }}>trading here opens in {mmss(left)}</span>
         </div>
         <span className="lf-bar"><i style={{ width: `${pct}%` }} /></span>
-        <span className="dim" style={{ fontSize: 12, lineHeight: 1.45 }}>Bots that buy in a coin&apos;s first moments pay fees of up to 66%, and half of that goes to the creator. After that every trade pays 1%.</span>
+        <span className="dim" style={{ fontSize: 12, lineHeight: 1.45 }}>Bots that buy in a coin&apos;s first moments pay fees of up to 80%, and half of that goes to the creator. After that every trade pays 1%.</span>
       </div>
     );
   }

@@ -346,6 +346,12 @@ export function makeRelayer() {
       : kind === "launch" ? Number(big(body.launch?.launchUsdc ?? "0", "launchUsdc")) / D
       : kind === "extSwap" && body.swap?.isBuy === true ? Number(big(body.swap.amountIn, "amountIn")) / D : 0;
     if (buyUsd > 0) await limits.check(db, n, String(body.user ?? body.swap?.user ?? ""), buyUsd, [...nets.keys()]);
+    // DEX routes vary a lot in gas (Clanker pools also convert fees inside the swap): never send a
+    // trade with less gas than it really needs
+    if (kind === "extSwap") {
+      const est = await n.pub.estimateGas({ account: account.address, to, data }).catch(() => 0n);
+      if ((est * 13n) / 10n > fixedGas) { log(`${n.c.name} extSwap needs more gas: ${est}`); fixedGas = (est * 13n) / 10n; }
+    }
     const t0 = Date.now();
     const hash = await send(n, to, data, fixedGas);
     const t1 = Date.now();
