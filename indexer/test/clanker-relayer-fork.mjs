@@ -102,7 +102,13 @@ const KYBER = { 8453: "base", 56: "bsc", 4663: "robinhood" }[CHAIN_ID];
 const EXT_TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "address"], ["amountIn", "uint256"], ["minOut", "uint256"], ["target", "address"], ["dataHash", "bytes32"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]].map(([name, type]) => ({ name, type })) };
 async function kyber(tokenIn, tokenOut, amountIn, sender) {
   const head = { "x-client-id": "arkhampad", "content-type": "application/json" };
-  const r = await (await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/routes?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}&gasInclude=true`, { headers: head })).json().catch(() => null);
+  let r = null;
+  for (let i = 0; i < 4 && !r?.data?.routeSummary; i++) {
+    if (i) await new Promise((ok) => setTimeout(ok, 2000));
+    const res = await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/routes?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}&gasInclude=true`, { headers: head });
+    r = await res.json().catch(() => null);
+    if (!r?.data?.routeSummary) console.log(`  · Kyber route try ${i + 1}: ${res.status} ${String(r?.message ?? "").slice(0, 120)}`);
+  }
   const sum = r?.data?.routeSummary;
   if (!sum) return null;
   const b = await (await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/route/build`, { method: "POST", headers: head, body: JSON.stringify({ routeSummary: sum, sender, recipient: sender, slippageTolerance: 300, deadline: Math.floor(Date.now() / 1000) + 3600 }) })).json().catch(() => null);
@@ -131,6 +137,7 @@ async function extSwapCheck(relayer) {
   const u0 = await bal(USDC, userAcc.address), c0 = await bal(coin, userAcc.address);
   const res = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...Object.fromEntries(Object.entries(mb).map(([k2, v]) => [k2, typeof v === "bigint" ? String(v) : v])), data: rb.data, signature: await sign(mb) } });
   assert.equal(res.status, "success", "one-tap buy failed");
+  console.log(`  · buy gas used ${(await pub.getTransactionReceipt({ hash: res.hash })).gasUsed}`);
   const got = (await bal(coin, userAcc.address)) - c0;
   assert.ok(got > 0n);
   assert.equal(u0 - (await bal(USDC, userAcc.address)) <= amountIn + up(FEE), true, "user paid more than amount + fee");
@@ -144,6 +151,7 @@ async function extSwapCheck(relayer) {
   const ms = { user: userAcc.address, isBuy: false, coin, amountIn: got, minOut: (quoted * 90n) / 100n, target: rs.target, dataHash: keccak256(rs.data), fee: up(FEE), nonce: nonce1 + 1n, deadline: dl };
   const u1 = await bal(USDC, userAcc.address);
   const res2 = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...Object.fromEntries(Object.entries(ms).map(([k2, v]) => [k2, typeof v === "bigint" ? String(v) : v])), data: rs.data, signature: await sign(ms) } });
+  if (res2.status !== "success") { const rc = await pub.getTransactionReceipt({ hash: res2.hash }); console.log(`  · sell gas used ${rc.gasUsed} of ${(await pub.getTransaction({ hash: res2.hash })).gas}`); }
   assert.equal(res2.status, "success", "one-tap sell failed");
   const back = (await bal(USDC, userAcc.address)) - u1;
   assert.ok(back >= ms.minOut, "sell paid less than the signed minimum");
