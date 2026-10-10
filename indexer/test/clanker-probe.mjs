@@ -5,6 +5,7 @@
 //   CHAIN_ID=8453 RPC=... node test/clanker-probe.mjs
 import { createPublicClient, http } from "viem";
 import { clankerOf, TOKEN_CREATED } from "../clanker.mjs";
+import { routeProbe } from "./route-probe.mjs";
 
 const CHAIN_ID = Number(process.env.CHAIN_ID || 8453);
 // the secret first, then public nodes (some nodes refuse log searches)
@@ -41,6 +42,8 @@ async function ours() {
 }
 
 async function main() {
+  // pools for ArkhamPad's own Clanker route (read-only)
+  try { await routeProbe(CHAIN_ID, RPCS[0]); } catch (e) { console.log(`route probe: ${e.shortMessage ?? e.message}`); }
   await ours();
   console.log(`Chain ${CHAIN_ID} · Clanker factory ${k.factory}`);
   // pick the first node that answers a log search
