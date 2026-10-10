@@ -1,0 +1,95 @@
+name: Deploy Clanker route
+
+# Deploys PadClankerRoute (ArkhamPad's own route into Clanker pools) on one network.
+# Runs only when started by hand. Always do a dry run first (broadcast off).
+on:
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: "Network"
+        required: true
+        type: choice
+        options:
+          - base
+          - robinhood
+          - bnb
+      broadcast:
+        description: "Really send the transaction (leave off for a dry run first)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-mainnet
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+
+      - name: Get libraries
+        run: |
+          mkdir -p lib
+          git clone -q --depth 1 --branch v1.9.6 https://github.com/foundry-rs/forge-std lib/forge-std
+          git clone -q --depth 1 --branch v5.1.0 https://github.com/OpenZeppelin/openzeppelin-contracts lib/openzeppelin-contracts
+          git clone -q https://github.com/Uniswap/v4-periphery lib/v4-periphery
+          cd lib/v4-periphery
+          git -c advice.detachedHead=false checkout -q 9969eec44cfdf07e24b41de47f40276a58401976
+          git submodule update -q --init --depth 1 lib/v4-core lib/permit2
+          cd lib/v4-core && git submodule update -q --init --depth 1 lib/solmate
+
+      - name: Pick network
+        id: net
+        run: |
+          case "${{ inputs.chain }}" in
+            base)      echo "rpc=${{ secrets.BASE_RPC }}" >> "$GITHUB_OUTPUT"; echo "id=8453" >> "$GITHUB_OUTPUT" ;;
+            robinhood) echo "rpc=${{ secrets.ROBINHOOD_RPC }}" >> "$GITHUB_OUTPUT"; echo "id=4663" >> "$GITHUB_OUTPUT" ;;
+            bnb)       echo "rpc=${{ secrets.BNB_RPC }}" >> "$GITHUB_OUTPUT"; echo "id=56" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Build
+        run: forge build
+
+      - name: Route tests (must pass before anything is sent)
+        run: forge test --match-path "test/ClankerRoute.t.sol"
+
+      - name: Deploy
+        env:
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_KEY }}
+        run: |
+          RPC="${{ steps.net.outputs.rpc }}"; RPC="${RPC%%,*}"
+          if [ "${{ inputs.broadcast }}" = "true" ]; then
+            forge script script/DeployClankerRoute.s.sol --rpc-url "$RPC" --broadcast --slow --non-interactive | tee deploy.log
+          else
+            echo "DRY RUN: nothing is sent."
+            forge script script/DeployClankerRoute.s.sol --rpc-url "$RPC" | tee deploy.log
+          fi
+
+      - name: Save the address
+        if: ${{ inputs.broadcast }}
+        run: |
+          ADDR=$(grep -oE 'clankerRoute 0x[0-9a-fA-F]{40}' deploy.log | tail -1 | cut -d' ' -f2)
+          test -n "$ADDR"
+          F="deployments/${{ steps.net.outputs.id }}.json"
+          jq --arg a "$ADDR" '.clankerRoute = $a' "$F" > tmp.json && mv tmp.json "$F"
+          cd ..
+          git config user.name "arkhampad-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add contracts/deployments/*.json
+          git commit -m "Clanker route on ${{ inputs.chain }}: $ADDR" || echo "Nothing to save."
+          git pull --rebase
+          git push
+          echo "Clanker route on ${{ inputs.chain }}: $ADDR" >> "$GITHUB_STEP_SUMMARY"
