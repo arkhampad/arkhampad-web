@@ -97,6 +97,59 @@ async function signWithdraw(to, amount, fee) {
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const META = `data:application/json;base64,${Buffer.from(JSON.stringify({ description: "Relayer fork test coin.", x: "arkhampad", website: "example.com" })).toString("base64")}`;
 
+const LIVE_COIN = { 8453: "0xcfe1aeb9cc8b00795194e9878a4fade0cebb60a1", 56: "0x09456868a05eb1fe084603e41a241dc0da626305", 4663: "0x1a087dc194727c474292a84cd68d93b7c11d94f2" }[CHAIN_ID];
+const KYBER = { 8453: "base", 56: "bsc", 4663: "robinhood" }[CHAIN_ID];
+const EXT_TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "address"], ["amountIn", "uint256"], ["minOut", "uint256"], ["target", "address"], ["dataHash", "bytes32"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]].map(([name, type]) => ({ name, type })) };
+async function kyber(tokenIn, tokenOut, amountIn, sender) {
+  const head = { "x-client-id": "arkhampad", "content-type": "application/json" };
+  const r = await (await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/routes?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}&gasInclude=true`, { headers: head })).json().catch(() => null);
+  const sum = r?.data?.routeSummary;
+  if (!sum) return null;
+  const b = await (await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/route/build`, { method: "POST", headers: head, body: JSON.stringify({ routeSummary: sum, sender, recipient: sender, slippageTolerance: 300, deadline: Math.floor(Date.now() / 1000) + 3600 }) })).json().catch(() => null);
+  if (!b?.data?.data) return null;
+  return { amountOut: BigInt(sum.amountOut), target: getAddress(b.data.routerAddress), data: b.data.data };
+}
+async function extSwapCheck(relayer) {
+  const SWAP = entry.extSwap ? getAddress(entry.extSwap) : null;
+  if (!SWAP || !LIVE_COIN) { console.log("  · no PadExtSwap on this chain: skipped"); return; }
+  const coin = getAddress(LIVE_COIN);
+  if ((await pub.getCode({ address: coin }))?.length > 2 !== true) { console.log("  · live coin not on this fork yet: skipped"); return; }
+  const scale = 10n ** BigInt(DEC - 6);
+  const up = (v) => v * scale, down = (v) => v / scale;
+  const spendOf = (a) => a - (a * 100n) / 10_000n;
+  // the user approves PadExtSwap once (the site does it by permit, or with a small gas top-up on BNB)
+  await wUser.writeContract({ address: USDC, abi: ERC20, functionName: "approve", args: [SWAP, maxUint256] }).then(mined);
+  const fq = await relayer.feeQuote(CHAIN_ID, "extSwap");
+  const FEE = BigInt(fq.fee); // site units
+  // BUY $10
+  const amount = 10_000_000n, amountIn = up(amount);
+  const rb = await kyber(USDC, coin, spendOf(amountIn), SWAP);
+  if (!rb) { console.log(`  · KyberSwap has no route for our coin on chain ${CHAIN_ID}: one-tap trading of it needs another route (skipped)`); return; }
+  const sign = async (m) => wUser.signTypedData({ domain: { name: "ArkhamPad Swap", version: "1", chainId: CHAIN_ID, verifyingContract: SWAP }, types: EXT_TYPES, primaryType: "ExtSwap", message: m });
+  const nonce1 = BigInt(Date.now()), dl = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const mb = { user: userAcc.address, isBuy: true, coin, amountIn, minOut: (rb.amountOut * 90n) / 100n, target: rb.target, dataHash: keccak256(rb.data), fee: up(FEE), nonce: nonce1, deadline: dl };
+  const u0 = await bal(USDC, userAcc.address), c0 = await bal(coin, userAcc.address);
+  const res = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...Object.fromEntries(Object.entries(mb).map(([k2, v]) => [k2, typeof v === "bigint" ? String(v) : v])), data: rb.data, signature: await sign(mb) } });
+  assert.equal(res.status, "success", "one-tap buy failed");
+  const got = (await bal(coin, userAcc.address)) - c0;
+  assert.ok(got > 0n);
+  assert.equal(u0 - (await bal(USDC, userAcc.address)) <= amountIn + up(FEE), true, "user paid more than amount + fee");
+  ok(`one-tap BUY of our live coin: $10 -> ${Number(formatUnits(got, 18)).toFixed(0)} coins (paid ${formatUnits(u0 - (await bal(USDC, userAcc.address)), DEC)} USDC incl. fees)`);
+  // SELL them back
+  await wUser.writeContract({ address: coin, abi: ERC20, functionName: "approve", args: [SWAP, maxUint256] }).then(mined);
+  const rs = await kyber(coin, USDC, got, SWAP);
+  assert.ok(rs, "no sell route");
+  const quoted = rs.amountOut - (rs.amountOut * 100n) / 10_000n - up(FEE);
+  assert.ok(quoted > 0n);
+  const ms = { user: userAcc.address, isBuy: false, coin, amountIn: got, minOut: (quoted * 90n) / 100n, target: rs.target, dataHash: keccak256(rs.data), fee: up(FEE), nonce: nonce1 + 1n, deadline: dl };
+  const u1 = await bal(USDC, userAcc.address);
+  const res2 = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...Object.fromEntries(Object.entries(ms).map(([k2, v]) => [k2, typeof v === "bigint" ? String(v) : v])), data: rs.data, signature: await sign(ms) } });
+  assert.equal(res2.status, "success", "one-tap sell failed");
+  const back = (await bal(USDC, userAcc.address)) - u1;
+  assert.ok(back >= ms.minOut, "sell paid less than the signed minimum");
+  ok(`one-tap SELL back: received $${Number(formatUnits(back, DEC)).toFixed(2)} (site shows $${(Number(down(back)) / 1e6).toFixed(2)})`);
+}
+
 async function main() {
   console.log(`Chain ${CHAIN_ID} fork at block ${await pub.getBlockNumber()} · relayer ${relayerAddr} · user ${userAcc.address}`);
   await test.setBalance({ address: relayerAddr, value: parseEther("5") });
@@ -213,6 +266,11 @@ async function main() {
     assert.ok(Math.abs(t.feeRate - 0.01) < 0.0001, `fee rate ${t.feeRate}`);
   }
   ok("indexer turns pool swaps into dollar trades (price, market cap, 1% fee)");
+
+  // ---- 6. one-tap trading on ArkhamPad (PadExtSwap + KyberSwap) of our real live coin on this chain,
+  // with exactly the site's math (web/lib/ext.ts): dollars in the network's USDC units, 1% fee, network fee
+  await extSwapCheck(relayer);
+
   console.log(`\nALL RELAYER CHECKS PASSED on chain ${CHAIN_ID}`);
   process.exit(0);
 }
