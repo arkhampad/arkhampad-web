@@ -12,6 +12,8 @@ import { moderate } from "./moderation.mjs";
 import { makeFees } from "./fees.mjs";
 import { makeLimits, LIMITS } from "./limits.mjs";
 import * as priceGuard from "./priceguard.mjs";
+import { clankerHooks } from "./quality.mjs";
+import { WETH_ADDRESSES } from "clanker-sdk";
 import { deployTx, parseCreated, pickLocker, clankerOf, coinLink, CLANKER_CHAINS, mcAtTick } from "./clanker.mjs";
 
 // Arbitrum-based chains: gas units include the L1 data cost.
@@ -279,6 +281,15 @@ export function makeRelayer() {
       if (viaRoute) {
         try { routeCall = decodeFunctionData({ abi: CLANKER_ROUTE_ABI, data: hex(w.data, "data") }); } catch { routeCall = null; }
         if (!routeCall || routeCall.functionName !== (w.isBuy === true ? "buy" : "sell") || getAddress(routeCall.args[0]) !== coinAddr) {
+          const e = new Error("This trade doesn't match its coin."); e.status = 400; e.code = "BadRoute"; throw e;
+        }
+        // ...and the pool must be a real Clanker pool of this coin: coin/WETH, Clanker's fee flag and
+        // spacing, and one of Clanker's own hooks (never a pool someone made with a hook of their own)
+        const k = routeCall.args[2], weth = WETH_ADDRESSES[n.c.chainId];
+        const [c0, c1] = weth && BigInt(coinAddr) < BigInt(weth) ? [coinAddr, weth] : [weth, coinAddr];
+        const hooks = clankerHooks(n.c.chainId);
+        if (!weth || getAddress(k.currency0) !== getAddress(c0) || getAddress(k.currency1) !== getAddress(c1) || Number(k.fee) !== 0x800000 || Number(k.tickSpacing) !== 200 || !hooks.includes(getAddress(k.hooks))) {
+          log(`${n.c.name} extSwap refused, not a Clanker pool: ${coinAddr} hook ${k?.hooks}`);
           const e = new Error("This trade doesn't match its coin."); e.status = 400; e.code = "BadRoute"; throw e;
         }
       }

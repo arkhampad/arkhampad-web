@@ -51,13 +51,24 @@ const ROUTE_ABI = [
   { type: "function", name: "buy", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }, { name: "usdcIn", type: "uint256" }, { name: "coinKey", ...KEY_TYPE }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "sell", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }, { name: "coinsIn", type: "uint256" }, { name: "coinKey", ...KEY_TYPE }], outputs: [{ type: "uint256" }] },
 ] as const;
-/** The Clanker pool key of `coin`, checked against the pool id the indexer saved (coins.curve). */
-async function clankerKey(n: ExtNet, coin: Address, poolId: string): Promise<PoolKey> {
+/** A Clanker pool to trade through ArkhamPad's route: its pool id, and its hook when it isn't the
+ *  network's default (a Clanker coin launched elsewhere: the hook the indexer matched to the pool id). */
+export type RoutePool = { id: string; hook?: string | null };
+// Clanker's own fee hooks (clanker-sdk `related`), the only hooks the route trades through
+const HOOKS: Record<number, string[]> = {
+  8453: ["0xDd5EeaFf7BD481AD55Db083062b13a3cdf0A68CC", "0xb429d62f8f3bFFb98CdB9569533eA23bF0Ba28CC", "0x34a45c6B61876d739400Bd71228CbcbD4F53E8cC", "0xd60D6B218116cFd801E28F78d011a203D2b068Cc"],
+  56: ["0xC5d309026BCAb6630888d51CE21154AD2f4828cC", "0x011a8ed40095F2D7E9c19125B8254b19678D68Cc"],
+  4663: ["0x48B8F6AD3A1b4aA477314c9a23035b8F84dDe8cc", "0x65efDF8Cce99b53C925DF878Df275Df21cB6E8Cc"],
+};
+/** The Clanker pool key of `coin`, checked against the pool id the indexer saved. */
+async function clankerKey(n: ExtNet, coin: Address, rp: RoutePool): Promise<PoolKey> {
   if (!n.route) throw new TradeError("Trading this coin here opens soon.");
   const { encodeAbiParameters, keccak256 } = await import("viem");
   const [c0, c1] = BigInt(coin) < BigInt(n.weth) ? [coin, n.weth] : [n.weth, coin];
-  const key: PoolKey = { currency0: c0, currency1: c1, fee: 0x800000, tickSpacing: 200, hooks: n.hook };
-  if (keccak256(encodeAbiParameters([KEY_TYPE], [key])).toLowerCase() !== String(poolId).toLowerCase()) throw new TradeError("Trading this coin here opens soon.");
+  const hook = (rp.hook || n.hook) as Address;
+  if (!(HOOKS[n.id] ?? []).some((h) => h.toLowerCase() === hook.toLowerCase())) throw new TradeError("Trading this coin here opens soon.");
+  const key: PoolKey = { currency0: c0, currency1: c1, fee: 0x800000, tickSpacing: 200, hooks: hook };
+  if (keccak256(encodeAbiParameters([KEY_TYPE], [key])).toLowerCase() !== String(rp.id).toLowerCase()) throw new TradeError("Trading this coin here opens soon.");
   return key;
 }
 async function routeQuote(n: ExtNet, isBuy: boolean, coin: Address, amountIn: bigint, key: PoolKey): Promise<bigint> {
@@ -122,12 +133,13 @@ async function guard(n: ExtNet, coin: Address, isBuy: boolean, amountIn: bigint,
 }
 
 /** What the user gets: buy = coins for `usd` dollars (after 1%), sell = USDC for `coins` (after 1%). */
-/** poolId: a Clanker coin launched on ArkhamPad (coins.curve): quoted and traded through ArkhamPad's own route. */
-export async function extQuote(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, poolId?: string) {
+/** rp: a Clanker pool (a coin launched on ArkhamPad, or a Clanker coin from elsewhere whose pool the
+ *  indexer matched): quoted and traded through ArkhamPad's own route. */
+export async function extQuote(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, rp?: RoutePool) {
   const n = extNet(chainId);
   if (!n) throw new TradeError("Quotes aren't available for this network yet.");
-  if (poolId) {
-    const key = await clankerKey(n, coin, poolId);
+  if (rp) {
+    const key = await clankerKey(n, coin, rp);
     if (side === "buy") {
       const spend = spendOf(up(n, amount));
       const out = await routeQuote(n, true, coin, spend, key);
@@ -226,10 +238,10 @@ const TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "addr
 /** Buys or sells a coin from another DEX. Fills within 2% of the quote; thin pools move between the
  *  quote and the trade, so when the route fails or the price moved, it is quoted again and retried
  *  (twice) with 3%, then 4% room. The fair-price guard (7% from the market price) always holds. */
-export async function extTrade(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, poolId?: string) {
+export async function extTrade(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, rp?: RoutePool) {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await extTradeOnce(chainId, coin, side, amount, s, attempt, poolId);
+      return await extTradeOnce(chainId, coin, side, amount, s, attempt, rp);
     } catch (e) {
       // the pool moved between the quote and the trade: quote again and retry (twice), each time with
       // a little more room (2% -> 3% -> 4%), never past the fair-price guard (7% from the market price)
@@ -240,7 +252,7 @@ export async function extTrade(chainId: number, coin: Address, side: "buy" | "se
   }
 }
 
-async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, attempt: number, poolId?: string) {
+async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, attempt: number, rp?: RoutePool) {
   const n = extNet(chainId);
   if (!n || !n.swap) throw new TradeError("Trading coins from other DEXs opens on mainnet.");
   const isBuy = side === "buy";
@@ -252,9 +264,9 @@ async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell"
   const amountIn = isBuy ? up(n, amount) : amount;
   const spend = isBuy ? spendOf(amountIn) : amountIn;
   let r: { amountOut: bigint }, data: Hex, target: Address;
-  if (poolId) {
-    // a Clanker coin launched here: ArkhamPad's own route into its pool (quoted on-chain)
-    const key = await clankerKey(n, coin, poolId);
+  if (rp) {
+    // a Clanker coin: ArkhamPad's own route into its pool (quoted on-chain)
+    const key = await clankerKey(n, coin, rp);
     r = { amountOut: await routeQuote(n, isBuy, coin, spend, key) };
     await guard(n, coin, isBuy, spend, r.amountOut, key); // never trade far below the market price
     data = encodeFunctionData({ abi: ROUTE_ABI, functionName: isBuy ? "buy" : "sell", args: [coin, spend, key] });

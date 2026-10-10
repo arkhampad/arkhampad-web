@@ -10,7 +10,7 @@ import { refreshOrders } from "./orders";
 import { ProfitSheet } from "./profit";
 import { positionPnl } from "@/lib/pnl";
 import type { Pnl } from "@/lib/share";
-import { extBalance, extNet, extQuote, extTrade, extTradable, GUARD_MSG, NOSELL_MSG, UNLISTED_MSG } from "@/lib/ext";
+import { extBalance, extNet, extQuote, extTrade, extTradable, GUARD_MSG, NOSELL_MSG, UNLISTED_MSG, type RoutePool } from "@/lib/ext";
 import { useLaunchFee } from "./v2";
 import { PriceAlertButton } from "./alerts";
 import { BuyWarning, useBuyWarning } from "./safety";
@@ -45,8 +45,10 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const clanker = coin.venue === "clanker";
   const inPool = coin.own && !clanker && phase === 2; // graduated: trades in its locked Uniswap pool
   const ext = (!coin.own || clanker) && !!extNet(coin.chainId); // coin from another DEX on a network we can quote
-  // a Clanker coin launched here trades through ArkhamPad's own route into its pool (by its pool id)
-  const routePool = clanker && coin.curve ? coin.curve : undefined;
+  // Clanker coins trade through ArkhamPad's own route into their pool: launched here (pool id saved as
+  // `curve`), or launched elsewhere when the indexer matched the pool to one of Clanker's hooks
+  const routePool: RoutePool | undefined = clanker && coin.curve ? { id: coin.curve }
+    : !coin.own && coin.extRoute ? coin.extRoute : undefined;
   const extLive = ext && extTradable(coin.chainId); // ...and trade (mainnet)
   const tradable = (ext ? extLive : coin.own && (phase === 0 ? !!coin.curve : phase === 2)) && !launchFee.sniper;
   // coins from other DEXs that fail ArkhamPad's quality checks: no buying (holders can always sell)

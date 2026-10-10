@@ -17,7 +17,8 @@
 // Env (all optional): QUALITY_MAX (5000), QUALITY_MIN_LIQ (10000), QUALITY_MIN_VOL (5000),
 // QUALITY_ACTIVE_HOURS (24), QUALITY_MIN_AGE_HOURS (24), QUALITY_OFF=1.
 
-import { createPublicClient, http, parseAbi } from "viem";
+import { createPublicClient, http, parseAbi, encodeAbiParameters, keccak256, getAddress } from "viem";
+import { clankerConfigFor, WETH_ADDRESSES } from "clanker-sdk";
 import { upsertTokens } from "./markets.mjs";
 
 const GOPLUS = "https://api.gopluslabs.io/api/v1/token_security";
@@ -81,6 +82,35 @@ export function socialsOf(pairs, address) {
     if (web || x) any = true;
   }
   return any;
+}
+
+/** GeckoTerminal token info -> does it show an X account or a website? (free; used when DexScreener has none) */
+export function socialsFromGecko(info) {
+  const at = info?.data?.attributes ?? {};
+  const web = (Array.isArray(at.websites) ? at.websites : []).some((u) => /^https?:\/\//i.test(String(u ?? "")));
+  const x = typeof at.twitter_handle === "string" && at.twitter_handle.trim().length > 0;
+  return web || x;
+}
+
+// ---- coins launched through Clanker anywhere (not only on ArkhamPad): their coin/WETH pool can be
+// traded through ArkhamPad's own route. A Clanker v4 pool's key is coin/WETH, the dynamic-fee flag,
+// spacing 200 and one of Clanker's fee hooks, so the pool id tells which hook it uses.
+const KEY = [{ type: "address" }, { type: "address" }, { type: "uint24" }, { type: "int24" }, { type: "address" }];
+export function clankerHooks(chainId) {
+  const r = clankerConfigFor(Number(chainId), "clanker_v4")?.related ?? {};
+  return [...new Set([r.feeStaticHook, r.feeStaticHookV2, r.feeDynamicHook, r.feeDynamicHookV2].filter((h) => h && BigInt(h) !== 0n).map((h) => getAddress(h)))];
+}
+/** The Clanker hook of `coin`'s pool when `poolId` is a Clanker coin/WETH v4 pool, else null. */
+export function clankerHookOf(chainId, coin, poolId) {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(String(poolId ?? ""))) return null;
+  const weth = WETH_ADDRESSES[Number(chainId)];
+  if (!weth) return null;
+  const c = getAddress(coin), w = getAddress(weth);
+  const [c0, c1] = BigInt(c) < BigInt(w) ? [c, w] : [w, c];
+  for (const hook of clankerHooks(chainId)) {
+    if (keccak256(encodeAbiParameters(KEY, [c0, c1, 0x800000, 200, hook])).toLowerCase() === String(poolId).toLowerCase()) return hook;
+  }
+  return null;
 }
 
 /** The listing rule as one SQL statement (exported for tests).
@@ -188,7 +218,17 @@ async function socialsLoop(pool) {
         const addrs = rows.map((r) => r.address);
         const pairs = await ds(`/tokens/v1/${slug}/${addrs.join(",")}`);
         for (const a of addrs) {
-          await pool.query("update ext_tokens set has_socials = $3, socials_checked_at = now() where chain_id = $1 and address = $2", [Number(chainId), a, socialsOf(pairs, a)]);
+          let has = socialsOf(pairs, a);
+          if (!has) {
+            // GeckoTerminal's free token info often has the links DexScreener only shows for paid profiles
+            const net = (await pool.query("select network from ext_tokens where chain_id = $1 and address = $2", [Number(chainId), a])).rows[0]?.network;
+            if (net) {
+              const g = await fetch(`https://api.geckoterminal.com/api/v2/networks/${net}/tokens/${a}/info`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(15_000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+              has = socialsFromGecko(g);
+              await sleep(2_100); // GeckoTerminal free tier: 30 calls a minute
+            }
+          }
+          await pool.query("update ext_tokens set has_socials = $3, socials_checked_at = now() where chain_id = $1 and address = $2", [Number(chainId), a, has]);
         }
         did += addrs.length;
       } catch (e) {
@@ -202,10 +242,11 @@ async function socialsLoop(pool) {
 
 /** Market price in USD of one whole coin (DexScreener's deepest pair). */
 async function marketPrice(chainId, address) {
-  const pairs = await ds(`/tokens/v1/${SLUG[chainId]}/${address}`).catch(() => null);
+  const a = String(address).toLowerCase(); // checksummed or not
+  const pairs = await ds(`/tokens/v1/${SLUG[chainId]}/${a}`).catch(() => null);
   let best = null;
   for (const p of Array.isArray(pairs) ? pairs : []) {
-    if (String(p?.baseToken?.address ?? "").toLowerCase() !== address || !(num(p?.priceUsd) > 0)) continue;
+    if (String(p?.baseToken?.address ?? "").toLowerCase() !== a || !(num(p?.priceUsd) > 0)) continue;
     if (!best || (num(p?.liquidity?.usd) ?? 0) > (num(best?.liquidity?.usd) ?? 0)) best = p;
   }
   return best ? num(best.priceUsd) : null;
@@ -239,6 +280,25 @@ export async function routeCheck(net, address, decimals) {
   return { ok: fair >= RULES.routeFloor, price, fair };
 }
 
+const ROUTE_ABI = [{ type: "function", name: "quoteRoundTrip", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }, { type: "tuple", components: [{ name: "currency0", type: "address" }, { name: "currency1", type: "address" }, { name: "fee", type: "uint24" }, { name: "tickSpacing", type: "int24" }, { name: "hooks", type: "address" }] }], outputs: [{ type: "uint256" }, { type: "uint256" }] }];
+/** Through ArkhamPad's own route: $50 must buy near the market price and sell straight back for 90%+. */
+export async function clankerRouteCheck(net, pub, address, decimals, poolId, hook) {
+  const price = await marketPrice(net.chainId, address);
+  if (!price) return { ok: false, price: null, fair: 0 };
+  const weth = getAddress(WETH_ADDRESSES[Number(net.chainId)]), c = getAddress(address);
+  const [c0, c1] = BigInt(c) < BigInt(weth) ? [c, weth] : [weth, c];
+  const key = { currency0: c0, currency1: c1, fee: 0x800000, tickSpacing: 200, hooks: getAddress(hook) };
+  const usdIn = BigInt(RULES.routeUsd) * 10n ** BigInt(net.usdcDec);
+  let err = null;
+  const sim = await pub.simulateContract({ address: getAddress(net.route), abi: ROUTE_ABI, functionName: "quoteRoundTrip", args: [c, usdIn, key] }).catch((e) => { err = e.shortMessage ?? e.message; return null; });
+  if (!sim) return { ok: false, price, fair: 0, err };
+  const [coins, back] = sim.result;
+  const buy = ((Number(coins) / 10 ** decimals) * price) / RULES.routeUsd;
+  const sell = Number(back) / Number(usdIn);
+  const fair = Math.min(buy, sell);
+  return { ok: fair >= RULES.routeFloor, price, fair };
+}
+
 /** KyberSwap must buy and sell $50 of the coin within 10% of its market price. Every 3 h. */
 async function routeLoop(pool, nets) {
   const ERC = parseAbi(["function decimals() view returns (uint8)"]);
@@ -250,7 +310,7 @@ async function routeLoop(pool, nets) {
       const pub = createPublicClient({ transport: http(net.rpc.split(",")[0].trim(), { timeout: 15_000, retryCount: 1 }) });
       // only coins that already pass the cheaper checks
       const { rows } = await pool.query(
-        `select address, decimals from ext_tokens
+        `select address, decimals, pool from ext_tokens
          where chain_id = $1 and ${CANDIDATES} and has_socials is true
            and (route_checked_at is null or route_checked_at < now() - interval '3 hours')
          order by route_checked_at asc nulls first, vol_24h desc nulls last limit 10`,
@@ -259,8 +319,12 @@ async function routeLoop(pool, nets) {
       for (const r of rows) {
         try {
           const dec = r.decimals ?? Number(await pub.readContract({ address: r.address, abi: ERC, functionName: "decimals" }));
-          const { ok } = await routeCheck(net, r.address, dec);
-          await pool.query("update ext_tokens set decimals = $3, route_ok = $4, route_checked_at = now() where chain_id = $1 and address = $2", [net.chainId, r.address, dec, ok]);
+          // a Clanker coin (launched anywhere) trades through ArkhamPad's own route; others through KyberSwap
+          const hook = net.route ? clankerHookOf(net.chainId, r.address, r.pool) : null;
+          const { ok } = hook ? await clankerRouteCheck(net, pub, r.address, dec, r.pool, hook) : await routeCheck(net, r.address, dec);
+          // the pool id is saved with its hook: the site trades the pool that was checked, even if the
+          // coin's main pool on DexScreener changes later
+          await pool.query("update ext_tokens set decimals = $3, route_ok = $4, route_checked_at = now(), clanker_hook = $5, clanker_pool = $6 where chain_id = $1 and address = $2", [net.chainId, r.address, dec, ok, hook ? hook.toLowerCase() : null, hook ? String(r.pool).toLowerCase() : null]);
           did++;
         } catch (e) {
           log(`route ${net.chainId} ${r.address}: ${e.shortMessage ?? e.message}`);
@@ -360,7 +424,7 @@ async function listLoop(pool) {
   }
 }
 
-/** nets: [{ chainId, rpc, usdc, usdcDec }] for the sell-route check. */
+/** nets: [{ chainId, rpc, usdc, usdcDec, route }] for the sell-route check (route: PadClankerRoute). */
 export function startQuality(pool, nets = []) {
   if (process.env.QUALITY_OFF === "1") return log("off (QUALITY_OFF=1)");
   safetyLoop(pool);

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { safetyOf, socialsOf, routeFairness, attentionFrom, rowFromPairs, LIST_SQL, config, RULES } from "../quality.mjs";
+import { safetyOf, socialsOf, socialsFromGecko, clankerHooks, clankerHookOf, routeFairness, attentionFrom, rowFromPairs, LIST_SQL, config, RULES } from "../quality.mjs";
+import { encodeAbiParameters, keccak256 } from "viem";
 
 test("GoPlus flags map to columns", () => {
   const s = safetyOf({ is_honeypot: "1", cannot_sell_all: "0", buy_tax: "0.05", sell_tax: "0.99", owner_address: "", creator_percent: "0.02", holders: [] });
@@ -86,4 +87,24 @@ test("listing rule keeps every check", () => {
   assert.equal(c.minVol, 5000);
   assert.equal(c.minAgeHours, 24);
   assert.deepEqual([RULES.maxTax, RULES.maxTop10, RULES.maxCreator], [0.05, 0.5, 0.1]);
+});
+
+test("GeckoTerminal socials: a website or an X account counts, a Telegram alone doesn't", () => {
+  assert.equal(socialsFromGecko({ data: { attributes: { websites: ["https://coin.xyz"] } } }), true);
+  assert.equal(socialsFromGecko({ data: { attributes: { twitter_handle: "coinxyz" } } }), true);
+  assert.equal(socialsFromGecko({ data: { attributes: { telegram_handle: "coinxyz", websites: [] } } }), false);
+  assert.equal(socialsFromGecko(null), false);
+});
+
+test("Clanker pool id maps to Clanker's own hook, anything else to none", () => {
+  for (const c of [8453, 56, 4663]) assert.ok(clankerHooks(c).length >= 2, `hooks on ${c}`);
+  // FPENG on Base: its real pool id (DexScreener pair address)
+  const fpeng = "0xcFE1aeb9cC8b00795194E9878a4FaDE0cEBb60A1";
+  assert.equal(clankerHookOf(8453, fpeng, "0x67855fd6bd311a39fb3a8fb23d2026904e4a900fc7efd70f6bc0d44a749dbf31"), "0xb429d62f8f3bFFb98CdB9569533eA23bF0Ba28CC");
+  // a pool with the same coins but someone else's hook is not a Clanker pool
+  const KEY = [{ type: "address" }, { type: "address" }, { type: "uint24" }, { type: "int24" }, { type: "address" }];
+  const fake = keccak256(encodeAbiParameters(KEY, ["0x4200000000000000000000000000000000000006", fpeng, 0x800000, 200, "0x000000000000000000000000000000000000dEaD"]));
+  assert.equal(clankerHookOf(8453, fpeng, fake), null);
+  assert.equal(clankerHookOf(8453, fpeng, "0x1234"), null); // a V3 pair address
+  assert.equal(clankerHookOf(8453, fpeng, null), null);
 });
