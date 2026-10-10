@@ -25,6 +25,26 @@ export function clankerOf(chainId) {
   return { factory: getAddress(c.address), locker: getAddress(c.related.locker), feeLocker: getAddress(c.related.feeLocker), devbuy: getAddress(c.related.devbuy), hook: getAddress(c.related.feeStaticHookV2 || c.related.feeStaticHook), paired: getAddress(WETH_ADDRESSES[Number(chainId)]) };
 }
 
+// Clanker moves chains to newer lockers over time and the published SDK can be ahead of (or
+// behind) what the factory has switched on. Candidates per chain, SDK's first; at launch time the
+// relayer asks the factory which one is enabled with our hook (pickLocker).
+const LOCKER_FALLBACKS = {
+  56: ["0x1166022e1becc70E7E9aB2250aF1aC7842B9B420"],
+  4663: ["0x290F735F63824BB5836cDe24a35F5103A5B5Bc99"],
+};
+const ENABLED_ABI = [{ type: "function", name: "enabledLockers", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "bool" }] }];
+
+/** The first candidate locker the Clanker factory accepts together with our fee hook. */
+export async function pickLocker(pub, chainId) {
+  const k = clankerOf(chainId);
+  const list = [k.locker, ...(LOCKER_FALLBACKS[Number(chainId)] ?? []).map((a) => getAddress(a))];
+  for (const locker of list) {
+    const on = await pub.readContract({ address: k.factory, abi: ENABLED_ABI, functionName: "enabledLockers", args: [locker, k.hook] });
+    if (on) return locker;
+  }
+  throw new Error(`no enabled Clanker locker on chain ${chainId}`);
+}
+
 /**
  * Pool starting tick for a first market cap of `mcUsd` (whole supply), as if the coin were token0.
  * Price of one coin in WETH = 1.0001^tick; supply is 100B coins.
@@ -46,7 +66,7 @@ const clean = (s, max) => String(s ?? "").replace(/[\u0000-\u001f]/g, " ").trim(
  * The Clanker deployToken transaction for one ArkhamPad coin.
  * @returns {{ to, data, value, abi, args, tick }}
  */
-export async function deployTx({ chainId, name, symbol, image, description, coinUrl, user, devBuyWei, nativeUsd, treasury = ARKHAMPAD_TREASURY, admin = ARKHAMPAD_ADMIN }) {
+export async function deployTx({ locker, chainId, name, symbol, image, description, coinUrl, user, devBuyWei, nativeUsd, treasury = ARKHAMPAD_TREASURY, admin = ARKHAMPAD_ADMIN }) {
   chainId = Number(chainId);
   if (!CLANKER_CHAINS.includes(chainId)) throw new Error(`Clanker launches are not open on chain ${chainId}`);
   const k = clankerOf(chainId);
@@ -65,6 +85,7 @@ export async function deployTx({ chainId, name, symbol, image, description, coin
       socialMediaUrls: coinUrl ? [{ platform: "website", url: String(coinUrl) }] : [],
     },
     context: { interface: "ArkhamPad", platform: "ArkhamPad", messageId: String(coinUrl ?? ""), id: owner },
+    locker: { locker: locker ? getAddress(locker) : "Locker" },
     pool: { pairedToken: "WETH", tickIfToken0IsClanker: tick, tickSpacing: TICK_SPACING, positions: [{ tickLower: tick, tickUpper: TICK_TOP, positionBps: 10_000 }] },
     fees: { type: "static", clankerFee: FEE_BPS, pairedFee: FEE_BPS },
     rewards: { recipients: [
@@ -83,10 +104,12 @@ export async function deployTx({ chainId, name, symbol, image, description, coin
   }
   const value = devBuyWei > 0n ? devBuyWei : 0n;
   // safety: everything must point at Clanker's own contracts for this chain
-  if (getAddress(tx.address) !== k.factory || getAddress(cfg.lockerConfig.locker) !== k.locker || getAddress(cfg.poolConfig.hook) !== k.hook || getAddress(cfg.poolConfig.pairedToken) !== k.paired) throw new Error("Clanker config mismatch");
+  if (getAddress(tx.address) !== k.factory || !lockersOf(chainId).includes(getAddress(cfg.lockerConfig.locker)) || getAddress(cfg.poolConfig.hook) !== k.hook || getAddress(cfg.poolConfig.pairedToken) !== k.paired) throw new Error("Clanker config mismatch");
   const data = encodeFunctionData({ abi: tx.abi, functionName: "deployToken", args: [cfg] });
   return { to: k.factory, data, value, abi: tx.abi, args: [cfg], tick };
 }
+
+const lockersOf = (chainId) => [clankerOf(chainId).locker, ...(LOCKER_FALLBACKS[Number(chainId)] ?? []).map((a) => getAddress(a))];
 
 /** Reads the TokenCreated event from a deploy receipt. */
 export function parseCreated(chainId, logs, abi) {

@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { createPublicClient, createTestClient, createWalletClient, http, encodeAbiParameters, encodeFunctionData, keccak256, getAddress, maxUint256, parseEther, formatEther, formatUnits } from "viem";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
-import { deployTx, parseCreated, clankerOf, mcAtTick, ARKHAMPAD_TREASURY, START_MC_USD } from "../clanker.mjs";
+import { deployTx, parseCreated, clankerOf, pickLocker, mcAtTick, ARKHAMPAD_TREASURY, START_MC_USD } from "../clanker.mjs";
 
 const CHAIN_ID = Number(process.env.CHAIN_ID || 8453);
 const RPC = process.env.ANVIL_URL || "http://127.0.0.1:8545";
@@ -88,7 +88,9 @@ async function main() {
 
   // ---- 1. launch, exactly as the relayer does it: a $5 first buy for the creator
   const devBuyWei = BigInt(Math.round((5 / usd) * 1e18));
-  const tx = await deployTx({ chainId: CHAIN_ID, name: "Fork Test Coin", symbol: "FORK", image: "https://api.arkhampad.com/img/h-test", description: "A coin made by the ArkhamPad fork test.", coinUrl: `https://arkhampad.com/coin/${CHAIN_ID}/0x0`, user, devBuyWei, nativeUsd: usd });
+  const locker = await pickLocker(pub, CHAIN_ID);
+  console.log(`locker ${locker}${locker === k.locker ? " (SDK default)" : " (fallback)"}`);
+  const tx = await deployTx({ locker, chainId: CHAIN_ID, name: "Fork Test Coin", symbol: "FORK", image: "https://api.arkhampad.com/img/h-test", description: "A coin made by the ArkhamPad fork test.", coinUrl: `https://arkhampad.com/coin/${CHAIN_ID}/0x0`, user, devBuyWei, nativeUsd: usd });
   const before = await pub.getBalance({ address: relayer.address });
   const gas = await pub.estimateGas({ account: relayer.address, to: tx.to, data: tx.data, value: tx.value });
   console.log(`deploy gas estimate ${gas}`);
@@ -100,6 +102,7 @@ async function main() {
   console.log(`coin ${coin}`);
   assert.equal(getAddress(ev.tokenAdmin), getAddress(user)); ok("creator is the coin admin");
   assert.equal(getAddress(ev.msgSender), relayer.address);
+  assert.equal(getAddress(ev.locker), locker);
   assert.equal(ev.tokenName, "Fork Test Coin"); assert.equal(ev.tokenSymbol, "FORK");
   assert.equal(await pub.readContract({ address: coin, abi: ERC20, functionName: "name" }), "Fork Test Coin"); ok("name and ticker set");
   assert.equal(await pub.readContract({ address: coin, abi: ERC20, functionName: "totalSupply" }), 100_000_000_000n * 10n ** 18n); ok("supply 100B");
@@ -123,9 +126,9 @@ async function main() {
   assert.ok(spent >= devBuyWei && spent < devBuyWei + parseEther("0.01"));
 
   // ---- 3. rewards set-up: 50/50, creator + ArkhamPad treasury
-  const info = await pub.readContract({ address: k.locker, abi: LOCKER_ABI, functionName: "tokenRewards", args: [coin] });
+  const info = await pub.readContract({ address: locker, abi: LOCKER_ABI, functionName: "tokenRewards", args: [coin] });
   assert.deepEqual(info.rewardBps.map(Number), [5000, 5000]);
-  assert.deepEqual(info.rewardRecipients.map(getAddress), [getAddress(user), getAddress(ARKHAMPAD_TREASURY)]); ok("rewards 50% creator / 50% ArkhamPad");
+  assert.deepEqual(info.rewardRecipients.map((a) => getAddress(a)), [getAddress(user), getAddress(ARKHAMPAD_TREASURY)]); ok("rewards 50% creator / 50% ArkhamPad");
   const key = info.poolKey;
   assert.equal(keccak256(encodeAbiParameters([POOLKEY], [key])), ev.poolId); ok(`pool ${ev.poolId}`);
   const coinIs0 = getAddress(key.currency0) === coin;
@@ -160,7 +163,7 @@ async function main() {
   }
 
   // ---- 5. rewards: collect, check the 50/50 split in WETH/WBNB, claim
-  await wTrader.writeContract({ address: k.locker, abi: LOCKER_ABI, functionName: "collectRewards", args: [coin], gas: 3_000_000n }).then(mined);
+  await wTrader.writeContract({ address: locker, abi: LOCKER_ABI, functionName: "collectRewards", args: [coin], gas: 3_000_000n }).then(mined);
   const fu = await pub.readContract({ address: k.feeLocker, abi: FEELOCKER_ABI, functionName: "availableFees", args: [user, k.paired] });
   const ft = await pub.readContract({ address: k.feeLocker, abi: FEELOCKER_ABI, functionName: "availableFees", args: [ARKHAMPAD_TREASURY, k.paired] });
   const fuCoin = await pub.readContract({ address: k.feeLocker, abi: FEELOCKER_ABI, functionName: "availableFees", args: [user, coin] });
