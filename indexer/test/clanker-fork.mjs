@@ -16,7 +16,7 @@ const CHAIN_ID = Number(process.env.CHAIN_ID || 8453);
 const RPC = process.env.ANVIL_URL || "http://127.0.0.1:8545";
 const NATIVE = CHAIN_ID === 56 ? "BNB" : "ETH";
 // Uniswap's Universal Router and Permit2 (developers.uniswap.org/docs/protocols/v4/deployments)
-const UR = { 8453: "0x6fF5693b99212Da76ad316178A184AB56D299b43", 56: "0x1906c1d672b88cD1B9aC7593301cA990F94Eae07", 4663: "0x8876789976DECbFcBbbE364623c63652Db8C0904" }[CHAIN_ID];
+const UR = getAddress({ 8453: "0x6ff5693b99212da76ad316178a184ab56d299b43", 56: "0x1906c1d672b88cd1b9ac7593301ca990f94eae07", 4663: "0x8876789976decbfcbbbe364623c63652db8c0904" }[CHAIN_ID]);
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 
 const chain = { id: CHAIN_ID, name: `fork-${CHAIN_ID}`, nativeCurrency: { name: NATIVE, symbol: NATIVE, decimals: 18 }, rpcUrls: { default: { http: [RPC] } } };
