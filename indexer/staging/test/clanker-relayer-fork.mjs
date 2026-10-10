@@ -31,6 +31,7 @@ const relayerKey = generatePrivateKey();
 Object.assign(process.env, { CHAINS_FILE: file, FORK_RPC: RPC, RELAYER_KEY: relayerKey, PUBLIC_URL, CLANKER_FLOAT_USD: "0", FEE_MAX_USD: "100000", LIMITS_ON: "off" });
 const { makeRelayer } = await import("../relayer.mjs");
 const priceGuard = await import("../priceguard.mjs");
+const quality = await import("../quality.mjs");
 const { clankerOf, lockersOf, TOKEN_CREATED } = await import("../clanker.mjs");
 const { clankerTrade } = await import("../poolmath.mjs");
 
@@ -309,7 +310,39 @@ async function main() {
 
   // ---- 6. one-tap trading on ArkhamPad (PadExtSwap + KyberSwap) of our real live coin on this chain,
   // with exactly the site's math (web/lib/ext.ts): dollars in the network's USDC units, 1% fee, network fee
+  // coins that fail the quality list can't be bought (the relayer asks the database); selling stays open
+  if (entry.extSwap && LIVE_COIN) {
+    relayer.setDb({ query: async () => ({ rows: [{ ok: false }] }) }); // "not listed, not ours"
+    const base = { user: userAcc.address, coin: getAddress(LIVE_COIN), amountIn: "1000000", minOut: "1", target: getAddress(LIVE_COIN), data: "0x", fee: "0", nonce: "1", deadline: String(Math.floor(Date.now() / 1000) + 600), signature: "0x" + "11".repeat(65) };
+    const eb = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...base, isBuy: true } }).then(() => null, (x) => x);
+    assert.equal(eb?.code, "NotListed", `an unlisted coin's buy must be refused (${eb?.message ?? "it went through"})`);
+    const es = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...base, isBuy: false } }).then(() => null, (x) => x);
+    assert.notEqual(es?.code, "NotListed", "selling an unlisted coin must stay open");
+    relayer.setDb(null);
+    ok(`unlisted coins: buying refused ("${eb.message}"), selling open (refused here only by ${es?.code ?? "nothing"})`);
+  }
   for (const c of [LIVE_COIN, ...(EXTRA_COINS[CHAIN_ID] ?? [])].filter(Boolean)) await extSwapCheck(relayer, c);
+
+  // ---- 7. the quality list's checks on real coins, with the live free APIs (read-only)
+  console.log("\n  quality checks on real coins (GoPlus, DexScreener, KyberSwap):");
+  const net = { chainId: CHAIN_ID, usdc: USDC, usdcDec: DEC };
+  for (const c of [LIVE_COIN, ...(EXTRA_COINS[CHAIN_ID] ?? [])].filter(Boolean).map((x) => x.toLowerCase())) {
+    const dec = Number(await pub.readContract({ address: getAddress(c), abi: [{ type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] }], functionName: "decimals" }));
+    const pairs = await quality.ds(`/tokens/v1/${{ 8453: "base", 56: "bsc", 4663: "robinhood" }[CHAIN_ID]}/${c}`).catch((e) => { console.log(`    DexScreener: ${e.message}`); return []; });
+    assert.ok(Array.isArray(pairs), "DexScreener answer isn't a list");
+    const best = pairs.filter((p) => String(p?.baseToken?.address).toLowerCase() === c).sort((x, y) => (y.liquidity?.usd ?? 0) - (x.liquidity?.usd ?? 0))[0];
+    const ageH = best?.pairCreatedAt ? (Date.now() - best.pairCreatedAt) / 3.6e6 : null;
+    let s = null;
+    if (quality.GOPLUS_CHAINS.includes(CHAIN_ID)) {
+      const g = await quality.goplus(CHAIN_ID, [c]).catch((e) => { console.log(`    GoPlus: ${e.message}`); return {}; });
+      s = quality.safetyOf(g[c]);
+    }
+    const r = await quality.routeCheck(net, c, dec).catch((e) => ({ ok: false, err: e.message }));
+    console.log(`    ${best?.baseToken?.symbol ?? c.slice(0, 10)}: liquidity $${Math.round(best?.liquidity?.usd ?? 0)}, 24h volume $${Math.round(best?.volume?.h24 ?? 0)}, pool age ${ageH === null ? "?" : ageH.toFixed(1) + " h"}, X/website ${quality.socialsOf(pairs, c)}`);
+    if (s) console.log(`      GoPlus: honeypot ${s.honeypot}, taxes ${s.buy_tax}/${s.sell_tax}, owner risk ${s.owner_risk}, top 10 wallets ${s.top10_pct === null ? "?" : (s.top10_pct * 100).toFixed(1) + "%"}, creator ${s.creator_pct}`);
+    console.log(`      KyberSwap $50 buy+sell vs market: ${r.err ? r.err : `${(r.fair * 100).toFixed(1)}% of fair -> ${r.ok ? "ok" : "FAILS the route check"}`}`);
+  }
+  ok("quality checks ran on real coins");
 
   console.log(`\nALL RELAYER CHECKS PASSED on chain ${CHAIN_ID}`);
   process.exit(0);

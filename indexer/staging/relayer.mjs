@@ -246,8 +246,16 @@ export function makeRelayer() {
       to = getAddress(n.c.extSwap);
       data = encodeFunctionData({ abi: EXT_ABI, functionName: "swap", args: [{ user: addr(w.user, "user"), isBuy: w.isBuy === true, coin: addr(w.coin, "coin"), amountIn: big(w.amountIn, "amountIn"), minOut: big(w.minOut, "minOut"), target: addr(w.target, "target"), data: hex(w.data, "data"), fee: feeOf(w, n), nonce: big(w.nonce, "nonce"), deadline: big(w.deadline, "deadline"), signature: hex(w.signature, "signature") }] });
       fixedGas = 1_500_000n;
-      // never fill far below the coin's market price (a DEX route that sees only an empty pool)
       const coinAddr = addr(w.coin, "coin");
+      // buys only of coins that pass the quality list (or ArkhamPad's own coins); selling is always open
+      if (w.isBuy === true && db) {
+        const ok = (await db.query(
+          `select exists(select 1 from coins where chain_id=$1 and address=$2) or exists(select 1 from ext_tokens where chain_id=$1 and address=$2 and listed) as ok`,
+          [n.c.chainId, coinAddr.toLowerCase()],
+        )).rows[0]?.ok;
+        if (!ok) { const e = new Error(priceGuard.UNLISTED_MSG); e.status = 400; e.code = "NotListed"; throw e; }
+      }
+      // never fill far below the coin's market price (a DEX route that sees only an empty pool)
       const [price, coinDec] = await Promise.all([
         priceGuard.refPrice(n.c.chainId, coinAddr),
         n.pub.readContract({ address: coinAddr, abi: [{ type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] }], functionName: "decimals" }).then(Number).catch(() => 18),

@@ -5,7 +5,8 @@
 // more than MAX_DEV worse than that price is refused; with no market price at all it is refused too.
 export const MAX_DEV = 0.07; // 7% worse than the market price, before ArkhamPad's 1% and the 2% room
 export const GUARD_MSG = "We couldn't get a fair price for this coin right now, so the trade was stopped to protect you. Please try again in a few minutes.";
-const SLUG = { 8453: { dex: "base", gt: "base" }, 56: { dex: "bsc", gt: "bsc" }, 4663: { dex: "robinhood", gt: "robinhood" } };
+export const UNLISTED_MSG = "This coin doesn't pass ArkhamPad's safety checks, so buying it is turned off. If you hold it, you can still sell.";
+const SLUG ={ 8453: { dex: "base", gt: "base" }, 56: { dex: "bsc", gt: "bsc" }, 4663: { dex: "robinhood", gt: "robinhood" } };
 const cache = new Map();
 
 /** Market price in USD of one whole coin, or null when no screener has one. Cached 15 s. */
