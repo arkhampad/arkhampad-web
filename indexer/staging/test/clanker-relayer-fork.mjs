@@ -196,10 +196,15 @@ async function main() {
   const all = await pub.getLogs({ event: SWAP_EV, args: { id: ev.args.poolId }, fromBlock: from, toBlock: "latest" });
   // the indexer skips the locker's own fee-conversion swaps (bookkeeping, not trades)
   const lockers = new Set(lockersOf(CHAIN_ID).map((a) => a.toLowerCase()));
-  const swaps = all.filter((s) => !lockers.has(s.args.sender.toLowerCase()));
+  // ...whether the locker swaps itself (inside a trade) or through the Universal Router (when someone
+  // calls collectRewards: that transaction goes to the locker)
+  const txTo = new Map();
+  for (const s of all) if (!txTo.has(s.transactionHash)) txTo.set(s.transactionHash, String((await pub.getTransaction({ hash: s.transactionHash })).to).toLowerCase());
+  for (const s of all) console.log(`  · swap tx ${s.transactionHash.slice(0, 10)} sender ${s.args.sender.slice(0, 10)} tx.to ${txTo.get(s.transactionHash).slice(0, 10)}`);
+  const swaps = all.filter((s) => !lockers.has(s.args.sender.toLowerCase()) && !lockers.has(txTo.get(s.transactionHash)));
   console.log(`  · ${all.length} pool swaps: ${swaps.length} trades + ${all.length - swaps.length} locker fee conversions`);
   assert.equal(swaps.length, 6);
-  assert.ok(all.filter((s) => lockers.has(s.args.sender.toLowerCase())).every((s) => s.args.sender.toLowerCase() === getAddress(ev.args.locker).toLowerCase()));
+  assert.ok(swaps.every((s) => getAddress(s.args.sender) === UR), "a counted trade didn't come through the Universal Router");
   for (const s of swaps.slice(0, 2)) {
     const t = clankerTrade(s.args, coin, k.paired, usd);
     console.log(`  · ${t.isBuy ? "buy " : "sell"} $${t.usdc.toFixed(2)} ${Math.round(t.coins)} coins, fee $${t.fee.toFixed(4)} (${(t.feeRate * 100).toFixed(2)}%), market cap after $${Math.round(t.price * 1e11)}`);
