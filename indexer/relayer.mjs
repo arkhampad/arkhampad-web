@@ -11,6 +11,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { moderate } from "./moderation.mjs";
 import { makeFees } from "./fees.mjs";
 import { makeLimits, LIMITS } from "./limits.mjs";
+import { deployTx, parseCreated, pickLocker, clankerOf, coinLink, CLANKER_CHAINS, mcAtTick } from "./clanker.mjs";
 
 // Arbitrum-based chains: gas units include the L1 data cost.
 const ARB_CHAINS = new Set([4663, 46630, 42161]);
@@ -207,6 +208,7 @@ export function makeRelayer() {
     const n = nets.get(Number(body?.chainId));
     if (!n) { const e = new Error("unsupported chain"); e.status = 400; throw e; }
     const kind = body.kind;
+    if (kind === "clankerClaim") return clankerClaim(body);
     let to = n.router, data, fixedGas;
     if (kind === "permit") {
       const { r, s, v, yParity } = parseSignature(hex(body.signature, "signature"));
@@ -445,6 +447,9 @@ export function makeRelayer() {
 
   async function image(id) {
     if (!db) return null;
+    // a coin's launch picture, stored under its content hash before the coin existed
+    const hh = String(id).match(/^h-([0-9a-f]{64})$/);
+    if (hh) return (await db.query("select mime, data from coin_images where chain_id=-1 and coin=$1", [hh[1]])).rows[0] ?? null;
     const mm = String(id).match(/^(\d+)-(0x[0-9a-f]{40})$/);
     if (!mm) return null;
     const r = await db.query("select mime, data from coin_images where chain_id=$1 and coin=$2", [Number(mm[1]), mm[2]]);
@@ -467,8 +472,9 @@ export function makeRelayer() {
     const coin = addr(body.coin, "coin").toLowerCase();
     const triggerMc = Number(body.triggerMc);
     if (!Number.isFinite(triggerMc) || triggerMc <= 0 || triggerMc > 1e13) throw err("Pick a valid market cap.");
-    const row = (await db.query("select curve from coins where chain_id=$1 and address=$2", [n.c.chainId, coin])).rows[0];
+    const row = (await db.query("select curve, venue from coins where chain_id=$1 and address=$2", [n.c.chainId, coin])).rows[0];
     if (!row) throw err("Unknown coin.");
+    if (row.venue === "clanker") throw err("Automatic orders aren't available for this coin yet.");
     if (venue === "curve" && addr(r.curve, "curve").toLowerCase() !== row.curve) throw err("Order doesn't match this coin.");
     if (venue === "pool" && addr(r.coin, "coin").toLowerCase() !== coin) throw err("Order doesn't match this coin.");
     const dl = big(r.deadline, "deadline");
@@ -712,14 +718,14 @@ export function makeRelayer() {
         const body = String(p.body ?? "").replace(/[\u0000-\u0008\u000b-\u001f]/g, "").trim().slice(0, 280);
         if (body.length < 2) throw err("Write a little more.");
         if (/(https?:\/\/|www\.|t\.me\/|discord\.gg)/i.test(body)) throw err("Links aren't allowed in comments.");
-        const coinRow = (await db.query("select creator from coins where chain_id=$1 and address=$2", [n.c.chainId, coin])).rows[0];
+        const coinRow = (await db.query("select creator, supply from coins where chain_id=$1 and address=$2", [n.c.chainId, coin])).rows[0];
         if (!coinRow) throw err("Unknown coin.");
         const last = (await db.query(`select max(created_at) t from comments where "user"=$1`, [user])).rows[0].t;
         if (last && Date.now() - new Date(last).getTime() < 15_000) throw err("Slow down a little.", 429);
         const bal = await n.pub.readContract({ address: getAddress(coin), abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }], functionName: "balanceOf", args: [getAddress(user)] });
         const isCreator = coinRow.creator === user;
         if (bal === 0n && !isCreator) throw err("Only holders can comment. Buy any amount to join the chat.", 403);
-        const pct = Number(bal) / 1e18 / 1e9 * 100;
+        const pct = Number(bal) / 1e18 / (Number(coinRow.supply) || 1e9) * 100;
         // scams and spam are kept but hidden behind a notice (the writer still sees theirs)
         const mod = await moderate(body);
         const r = await db.query(`insert into comments (chain_id, coin, "user", body, holder_pct, hidden, hidden_reason) values ($1,$2,$3,$4,$5,$6,$7) returning id`, [n.c.chainId, coin, user, body, pct, mod.spam, mod.reason]);
@@ -830,6 +836,16 @@ export function makeRelayer() {
     // Arc: USDC is the gas token itself, nothing to swap
     if (n.c.chainId === 5042) { log(`${n.c.name}: gas refilled with $${REFILL_USD} of collected fees`); return null; }
     // 2) swap them for the gas token through KyberSwap
+    const why = await swapToNative(n, amount);
+    if (why) return why;
+    log(`${n.c.name}: gas refilled with $${REFILL_USD} of collected fees`);
+    return null;
+  }
+  /** Swaps `amount` of the relayer's own dollars for the chain's gas token (KyberSwap). Returns why not, or null. */
+  async function swapToNative(n, amount) {
+    const slug = KYBER_SLUG[n.c.chainId];
+    if (!slug) return "no swap route on this network";
+    const usdc = getAddress(n.c.usdc);
     const head = { "x-client-id": "arkhampad", "content-type": "application/json" };
     const rr = await fetch(`https://aggregator-api.kyberswap.com/${slug}/api/v1/routes?tokenIn=${usdc}&tokenOut=${NATIVE}&amountIn=${amount}`, { headers: head, signal: AbortSignal.timeout(15_000) }).then((r) => r.json());
     const sum = rr?.data?.routeSummary, router = rr?.data?.routerAddress;
@@ -844,8 +860,32 @@ export function makeRelayer() {
     const h2 = await send(n, getAddress(router), b.data.data);
     const rc = await waitRc(n, { hash: h2, timeout: 60_000 });
     if (rc.status !== "success") return "swap failed on-chain";
-    log(`${n.c.name}: gas refilled with $${REFILL_USD} of collected fees (${h2})`);
+    log(`${n.c.name}: swapped ${Number(amount) / 10 ** DEC(n)} dollars for gas token (${h2})`);
     return null;
+  }
+
+  // Clanker first buys are paid from the relayer's own ETH/BNB, and the dollars users paid for them
+  // land in the relayer. When that float runs low, those dollars are turned back into ETH/BNB.
+  // Runs in the chain's launch queue, so it never swaps dollars a running launch may still refund.
+  const FLOAT_USD = Number(process.env.CLANKER_FLOAT_USD ?? 40);
+  const floatLast = new Map();
+  function floatTopUp(n) {
+    if (!CLANKER_CHAINS.includes(n.c.chainId)) return Promise.resolve("not a launch chain");
+    if (Date.now() - (floatLast.get(n.c.chainId) ?? 0) < 120_000) return Promise.resolve("checked a moment ago");
+    floatLast.set(n.c.chainId, Date.now());
+    return serial(n.c.chainId, async () => {
+      const native = await fees.nativeUsd(n.c.native ?? "ETH");
+      const bal = Number(await n.pub.getBalance({ address: account.address })) / 1e18;
+      const short = FLOAT_USD - bal * native;
+      if (short < 5) return "float is full";
+      const have = await n.pub.readContract({ address: getAddress(n.c.usdc), abi: ERC20_MIN, functionName: "balanceOf", args: [account.address] });
+      const want = BigInt(Math.ceil(short * 100)) * 10n ** BigInt(DEC(n) - 2);
+      const amount = have < want ? have : want;
+      if (amount < 5n * 10n ** BigInt(DEC(n))) return "not enough dollars in the relayer yet";
+      const why = await swapToNative(n, amount);
+      if (!why) log(`${n.c.name}: launch float topped up with $${(Number(amount) / 10 ** DEC(n)).toFixed(2)}`);
+      return why;
+    });
   }
   const gasState = {};
   const warned = new Map();
@@ -853,6 +893,10 @@ export function makeRelayer() {
     for (const n of nets.values()) {
       try {
         const sym = n.c.native ?? "ETH";
+        if (CLANKER_CHAINS.includes(n.c.chainId)) {
+          const why = await floatTopUp(n).catch((e) => String(e.shortMessage || e.message).slice(0, 120));
+          if (why && !/full|moment ago/.test(why)) log(`${n.c.name}: launch float: ${why}`);
+        }
         let bal = Number(await n.pub.getBalance({ address: account.address })) / 1e18;
         // testnet gas is almost free, so a much smaller balance lasts for thousands of trades
         const TESTNET = new Set([84532, 46630, 97, 11155111, 421614]);
@@ -898,8 +942,8 @@ export function makeRelayer() {
       // coins traded in the last 2 days every round; every coin once every 12 rounds (~6 h)
       const rows = (await db.query(
         sweepRound % 12 === 1
-          ? "select address, curve, phase from coins where chain_id=$1"
-          : "select c.address, c.curve, c.phase from coins c where c.chain_id=$1 and (exists (select 1 from trades t where t.chain_id=c.chain_id and t.coin=c.address and t.ts > now() - interval '2 days') or c.graduated_at > now() - interval '2 days')",
+          ? "select address, curve, phase from coins where chain_id=$1 and venue is distinct from 'clanker'"
+          : "select c.address, c.curve, c.phase from coins c where c.chain_id=$1 and c.venue is distinct from 'clanker' and (exists (select 1 from trades t where t.chain_id=c.chain_id and t.coin=c.address and t.ts > now() - interval '2 days') or c.graduated_at > now() - interval '2 days')",
         [n.c.chainId],
       )).rows;
       let moved = 0;
@@ -921,6 +965,15 @@ export function makeRelayer() {
             if (sim && sim.result?.[0] >= MIN_POOL) { await send(n, pb, encodeFunctionData({ abi: SWEEP_ABI, functionName: "collectFees", args: [coin] })); moved += 1; }
           }
         } catch (e) { log(`${n.c.name} sweep ${r.address}: ${e.message}`); }
+      }
+      // ArkhamPad's 50% of Clanker coins' trading rewards (WETH / WBNB) to the treasury, from $2
+      if (CLANKER_CHAINS.includes(n.c.chainId)) {
+        try {
+          const k = clankerOf(n.c.chainId);
+          const a = await n.pub.readContract({ address: k.feeLocker, abi: FEE_LOCKER_ABI, functionName: "availableFees", args: [getAddress(TREASURY), k.paired] });
+          const usd = (Number(a) / 1e18) * (await fees.nativeUsd(n.c.native ?? "ETH"));
+          if (usd >= 2) { await send(n, k.feeLocker, encodeFunctionData({ abi: FEE_LOCKER_ABI, functionName: "claim", args: [getAddress(TREASURY), k.paired] })); moved += 1; log(`${n.c.name}: Clanker rewards $${usd.toFixed(2)} to the treasury`); }
+        } catch (e) { log(`${n.c.name} clanker rewards sweep: ${e.shortMessage || e.message}`); }
       }
       if (moved) log(`${n.c.name}: fee sweep sent ${moved} transaction(s)`);
       await payReferrals(n).catch((e) => log(`${n.c.name} referral payouts: ${e.message}`));
@@ -1007,7 +1060,215 @@ export function makeRelayer() {
     throw err("unknown request");
   }
 
-  return { handle, move, config, feeQuote, health, graduate, saveImage, saveAvatar, sweepFees, image, createOrder, listOrders, cancelOrder, setFollow, action, inbox, session, tokenUser, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
+  // ---------------------------------------------------------------- Clanker launches (Base, BNB, Robinhood)
+  // A coin is launched through Clanker v4, paired with the chain's own coin (WETH / WBNB), so DEX
+  // screeners and trading bots see it at once. The user pays in USDC with one signature (the router's
+  // signed Withdraw, to the relayer): the first buy plus the network fee. The relayer then makes the
+  // first buy with its own ETH/BNB and the coins go straight to the user. If the launch fails, the
+  // first buy's dollars go back to the user. Launches on one chain run one at a time.
+  const TREASURY = process.env.TREASURY || "0xd9D46EB26c9D753135683b7736FC2be097e7B099";
+  const MIN_CLANKER_BUY = Number(process.env.CLANKER_MIN_BUY_USD ?? 5);
+  const MAX_CLANKER_BUY = Number(process.env.CLANKER_MAX_BUY_USD ?? 500);
+  // ETH/BNB the relayer keeps for gas on top of a launch's first buy
+  const LAUNCH_GAS_RESERVE = { 8453: 3n * 10n ** 14n, 4663: 3n * 10n ** 14n, 56: 3n * 10n ** 15n };
+  const launchQueue = new Map(); // chainId -> promise (one launch at a time per chain)
+  const lockerCache = new Map(); // chainId -> { at, locker }
+  const serial = (chainId, fn) => {
+    const prev = launchQueue.get(chainId) ?? Promise.resolve();
+    const run = prev.catch(() => {}).then(fn);
+    launchQueue.set(chainId, run.catch(() => {}));
+    return run;
+  };
+  const META_PREFIX = "data:application/json;base64,";
+  const readMeta = (uri) => {
+    if (typeof uri !== "string" || !uri.startsWith(META_PREFIX) || uri.length > 1200) return null;
+    try { return JSON.parse(Buffer.from(uri.slice(META_PREFIX.length), "base64").toString("utf8")); } catch { return null; }
+  };
+  const httpsLink = (kind, v) => {
+    if (typeof v !== "string" || !v.trim()) return null;
+    let x = v.trim().slice(0, 100);
+    if (kind === "x") { x = x.replace(/^@/, ""); if (!/[./]/.test(x)) x = `x.com/${x}`; }
+    if (kind === "telegram") { x = x.replace(/^@/, ""); if (!/[./]/.test(x)) x = `t.me/${x}`; }
+    if (!/^https?:\/\//i.test(x)) x = `https://${x}`;
+    try { const u = new URL(x); return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null; } catch { return null; }
+  };
+  const ERC20_XFER = [{ type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] }];
+
+  /** Sends the user's dollars back after a launch that failed. Never throws (logs and alerts instead). */
+  async function refundLaunch(n, user, amount, why) {
+    try {
+      const hash = await send(n, getAddress(n.c.usdc), encodeFunctionData({ abi: ERC20_XFER, functionName: "transfer", args: [getAddress(user), amount] }));
+      const rc = await waitRc(n, { hash, timeout: 120_000 });
+      log(`${n.c.name} clanker launch refund ${user} ${amount} (${why}) ${hash} ${rc.status}`);
+      return rc.status === "success";
+    } catch (e) {
+      log(`REFUND FAILED ${n.c.name} ${user} ${amount} (${why}): ${e.shortMessage || e.message}`);
+      const to = (process.env.ALERT_WALLET || "").trim().toLowerCase();
+      if (to && notifier) notifier.notify(to, { kind: "system", title: `⚠️ Launch refund failed on ${n.c.name}`, body: `Send ${Number(amount) / 10 ** DEC(n)} back to ${user} by hand.`, url: "/" });
+      return false;
+    }
+  }
+
+  async function clankerLaunch(body, publicBase) {
+    const n = nets.get(Number(body?.chainId));
+    if (!n) throw err("unsupported chain");
+    if (!CLANKER_CHAINS.includes(n.c.chainId)) throw err("Launching isn't open on this network yet.");
+    const user = addr(body.user, "user");
+    const l = body.launch ?? {};
+    const name = str(l.name, "name", 32).trim(), symbol = str(l.symbol, "symbol", 10).trim();
+    if (!name) throw err("Give your coin a name.");
+    if (!/^[A-Za-z0-9]{1,10}$/.test(symbol)) throw err("Ticker must be 1 to 10 letters or numbers.");
+    // our name is ours: no coin may pose as ArkhamPad (or Arkham) on ArkhamPad
+    if (/arkham/i.test(name) || /arkham/i.test(symbol)) throw err("Coins can't use the ArkhamPad name.");
+    const metadataURI = str(l.metadataURI ?? "", "metadataURI", 1200);
+    const meta = readMeta(metadataURI) ?? {};
+    const description = typeof meta.description === "string" ? meta.description.slice(0, 280) : "";
+    const amount = big(body.amount, "amount"), fee = feeOf(body, n), sig = sigOf(body);
+    const D = 10 ** DEC(n);
+    const launchUsd = Number(amount) / D;
+    if (!(launchUsd >= MIN_CLANKER_BUY)) throw err(`Your first buy must be at least $${MIN_CLANKER_BUY}.`);
+    if (launchUsd > MAX_CLANKER_BUY) throw err(`The first buy can be up to $${MAX_CLANKER_BUY}.`);
+    // the launch picture is stored first (its link goes into the coin), checked like coin images
+    let bytes = null, mime = null;
+    if (body.dataUrl) {
+      const m = String(body.dataUrl).match(/^data:(image\/(?:webp|png|jpeg));base64,([A-Za-z0-9+/=]+)$/);
+      if (!m) throw err("Use a PNG, JPG or WebP image.");
+      bytes = Buffer.from(m[2], "base64"); mime = m[1];
+      if (bytes.length > IMG_MAX) throw err("Image is too large.", 413);
+    }
+    const oweKey = `${n.c.chainId}:${user.toLowerCase()}`;
+    const owes = owed.get(oweKey) ?? 0n;
+    await fees.check(n, "clankerLaunch", fee - owes);
+    await limits.check(db, n, user, launchUsd, [...nets.keys()]);
+    const withdrawData = encodeFunctionData({ abi: ROUTER_ABI, functionName: "withdraw", args: [user, account.address, amount, fee, sig] });
+
+    return serial(n.c.chainId, async () => {
+      const t0 = Date.now();
+      // a live price only: a stale or fallback price could make the first buy too big or too small
+      const native = await fees.freshUsd(n.c.native ?? "ETH");
+      if (!native) throw err("Prices are unavailable for a moment. Please try again.", 503);
+      // the first buy, at today's price (0.5% kept to cover turning the dollars back into ETH/BNB)
+      const devBuyWei = BigInt(Math.floor((launchUsd * 0.995 / native) * 1e6)) * 10n ** 12n;
+      if (devBuyWei <= 0n) throw err("Amount is too small.");
+      const bal = await n.pub.getBalance({ address: account.address });
+      if (bal < devBuyWei + (LAUNCH_GAS_RESERVE[n.c.chainId] ?? 10n ** 15n)) {
+        log(`${n.c.name} clanker launch: relayer float too low (${bal} wei, need ${devBuyWei} + reserve)`);
+        floatTopUp(n).catch(() => {});
+        throw err(`Launching on ${n.c.name} is busy right now. Please try again in a few minutes.`, 503);
+      }
+      // Clanker's locker for our fee hook (asked once every 10 minutes)
+      let lk = lockerCache.get(n.c.chainId);
+      if (!lk || Date.now() - lk.at > 600_000) { lk = { at: Date.now(), locker: await pickLocker(n.pub, n.c.chainId) }; lockerCache.set(n.c.chainId, lk); }
+      const salt = keccak256(new TextEncoder().encode(`${user}:${Date.now()}:${Math.random()}`));
+      const key = salt.slice(2, 18);
+      const hash = bytes ? keccak256(bytes).slice(2) : null;
+      const imageUrl = hash ? `${(process.env.PUBLIC_URL || publicBase).replace(/\/$/, "")}/img/h-${hash}` : "";
+      const socials = [["x", httpsLink("x", meta.x)], ["telegram", httpsLink("telegram", meta.telegram)]].filter(([, u]) => u).map(([platform, url]) => ({ platform, url }));
+      const tx = await deployTx({ locker: lk.locker, salt, socials, chainId: n.c.chainId, name, symbol, image: imageUrl, description, coinUrl: coinLink(n.c.chainId, key), user, devBuyWei, nativeUsd: native });
+      // 1) both steps must work before any money moves: the user's signed payment, and the launch itself
+      try { await n.pub.call({ account: account.address, to: n.router, data: withdrawData }); }
+      catch (e) {
+        const raw = e?.cause?.data ?? e?.data ?? e?.cause?.cause?.data;
+        let nm = null; if (typeof raw === "string") { try { nm = decodeErrorResult({ abi: ROUTER_ABI, data: raw }).errorName; } catch { /* unknown */ } }
+        const x = err(FRIENDLY[nm] ?? "Payment check failed. Please try again."); x.code = nm ?? "REVERT"; throw x;
+      }
+      let gas;
+      try { gas = ((await n.pub.estimateGas({ account: account.address, to: tx.to, data: tx.data, value: tx.value })) * 13n) / 10n; }
+      catch (e) { log(`${n.c.name} clanker launch simulation failed: ${e.shortMessage || e.message}`); throw err("Couldn't launch right now. Nothing was charged. Please try again.", 503); }
+      if (bytes) {
+        await db?.query(`insert into coin_images (chain_id, coin, mime, data, updated_at) values (-1,$1,$2,$3,now()) on conflict (chain_id, coin) do nothing`, [hash, mime, bytes]);
+      }
+      // fork tests only (never set in production): break the launch after the checks, to prove the refund
+      if (process.env.CLANKER_TEST_REVERT === "1") tx.data = tx.data.slice(0, 10);
+      // 2) the user's payment: first buy + network fee, to the relayer
+      const h1 = await send(n, n.router, withdrawData, 300_000n);
+      const rc1 = await waitRc(n, { hash: h1, pollingInterval: 150, timeout: 90_000 });
+      if (rc1.status !== "success") throw err("The payment didn't go through. Nothing was charged.");
+      if (owes > 0n) owed.delete(oweKey);
+      // 3) the launch; from here a failure sends the first buy's dollars back
+      let h2;
+      try { h2 = await n.wallet.sendTransaction({ to: tx.to, data: tx.data, value: tx.value, gas }); }
+      catch (e) {
+        log(`${n.c.name} clanker launch send failed: ${e.shortMessage || e.message}`);
+        await refundLaunch(n, user, amount, "launch not sent");
+        throw err("The launch didn't go through. Your first buy was refunded.", 502);
+      }
+      let rc2;
+      try { rc2 = await waitRc(n, { hash: h2, pollingInterval: 200, timeout: 180_000 }); }
+      catch {
+        // sent but not confirmed yet: never refund here (it may still go through)
+        log(`CHECK BY HAND ${n.c.name} clanker launch ${h2} for ${user}: no receipt yet`);
+        throw err("Your coin is still confirming. It will show up on your profile in a few minutes.", 504);
+      }
+      if (rc2.status !== "success") {
+        await refundLaunch(n, user, amount, `launch reverted ${h2}`);
+        throw err("The launch failed on-chain. Your first buy was refunded.", 502);
+      }
+      const ev = parseCreated(n.c.chainId, rc2.logs);
+      if (!ev) { log(`CHECK BY HAND ${n.c.name} clanker launch ${h2}: no TokenCreated`); throw err("Your coin is live but couldn't be read yet. It will show up on your profile shortly.", 504); }
+      const coin = String(ev.tokenAddress).toLowerCase();
+      fees.record(n, "clankerLaunch", { gasUsed: rc1.gasUsed + rc2.gasUsed, effectiveGasPrice: rc2.effectiveGasPrice, l1Fee: (typeof rc1.l1Fee === "bigint" ? rc1.l1Fee : 0n) + (typeof rc2.l1Fee === "bigint" ? rc2.l1Fee : 0n) });
+      // the coin page works at once (the indexer adds trades and anything missed)
+      if (db) {
+        const startMc = mcAtTick(Number(ev.startingTick), native);
+        const block = await n.pub.getBlock({ blockNumber: rc2.blockNumber }).catch(() => null);
+        const at = block ? new Date(Number(block.timestamp) * 1000) : new Date();
+        await db.query(
+          `insert into coins (chain_id, address, curve, creator, name, symbol, metadata_uri, lock_seconds, fee_mode, phase, price_usd, mc_usd, start_mc_usd,
+                              created_block, created_tx, created_at, graduated_at, venue, supply, paired, launch_key, image_url)
+           values ($1,$2,$3,$4,$5,$6,$7,0,0,2,$8,$9,$9,$10,$11,$12,$12,'clanker',100000000000,$13,$14,$15)
+           on conflict (chain_id, address) do update set metadata_uri=excluded.metadata_uri, launch_key=excluded.launch_key, venue='clanker', supply=excluded.supply, paired=excluded.paired,
+             image_url=coalesce(coins.image_url, excluded.image_url)`,
+          [n.c.chainId, coin, String(ev.poolId).toLowerCase(), user.toLowerCase(), name, symbol, metadataURI, startMc / 1e11, startMc, String(rc2.blockNumber), h2, at,
+           String(ev.pairedToken).toLowerCase(), key, imageUrl || null],
+        ).catch((e) => log(`${n.c.name} clanker coin row: ${e.message}`));
+        if (bytes) await db.query(`insert into coin_images (chain_id, coin, mime, data, updated_at) values ($1,$2,$3,$4,now()) on conflict (chain_id, coin) do nothing`, [n.c.chainId, coin, mime, bytes]).catch(() => {});
+      }
+      log(`${n.c.name} clanker launch ${symbol} ${coin} for ${user} ($${launchUsd}, ${Date.now() - t0}ms) ${h2}`);
+      return { hash: h2, status: "success", coin, poolId: ev.poolId, key, logs: [] };
+    });
+  }
+
+  /**
+   * Creator rewards of a Clanker coin (WETH / WBNB) are paid out from Clanker's fee locker to the
+   * creator's wallet. The user signs a zero-amount Withdraw whose fee pays the gas in USDC.
+   */
+  const FEE_LOCKER_ABI = [
+    { type: "function", name: "availableFees", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] },
+    { type: "function", name: "claim", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "address" }], outputs: [] },
+  ];
+  const LOCKER_COLLECT_ABI = [{ type: "function", name: "collectRewards", stateMutability: "nonpayable", inputs: [{ type: "address" }], outputs: [] }];
+  async function clankerClaim(body) {
+    const n = nets.get(Number(body?.chainId));
+    if (!n) throw err("unsupported chain");
+    if (!CLANKER_CHAINS.includes(n.c.chainId)) throw err("Not available on this network.");
+    const user = addr(body.user, "user");
+    const k = clankerOf(n.c.chainId);
+    const fee = feeOf(body, n), sig = sigOf(body);
+    const available = await n.pub.readContract({ address: k.feeLocker, abi: FEE_LOCKER_ABI, functionName: "availableFees", args: [user, k.paired] });
+    if (available === 0n) throw err("Nothing to claim yet. Rewards arrive as people trade.");
+    await fees.check(n, "clankerClaim", fee);
+    const h1 = await send(n, n.router, encodeFunctionData({ abi: ROUTER_ABI, functionName: "withdraw", args: [user, user, 0n, fee, sig] }), 200_000n);
+    const rc1 = await waitRc(n, { hash: h1, pollingInterval: 150, timeout: 90_000 });
+    if (rc1.status !== "success") throw err("Couldn't claim right now. Nothing was charged.");
+    const h2 = await send(n, k.feeLocker, encodeFunctionData({ abi: FEE_LOCKER_ABI, functionName: "claim", args: [user, k.paired] }));
+    const rc2 = await waitRc(n, { hash: h2, pollingInterval: 150, timeout: 90_000 });
+    fees.record(n, "clankerClaim", { gasUsed: rc1.gasUsed + rc2.gasUsed, effectiveGasPrice: rc2.effectiveGasPrice, l1Fee: (typeof rc1.l1Fee === "bigint" ? rc1.l1Fee : 0n) + (typeof rc2.l1Fee === "bigint" ? rc2.l1Fee : 0n) });
+    log(`${n.c.name} clanker rewards claimed ${user} ${available} ${h2} ${rc2.status}`);
+    if (rc2.status !== "success") throw err("Couldn't claim right now. Please try again.");
+    return { hash: h2, status: "success", amount: String(available), token: k.paired };
+  }
+  /** What a wallet can claim right now (WETH / WBNB, 18 decimals) and its value in dollars. */
+  async function clankerRewards(chainId, user) {
+    const n = nets.get(Number(chainId));
+    if (!n || !CLANKER_CHAINS.includes(n.c.chainId)) return { amount: "0", usd: 0 };
+    const k = clankerOf(n.c.chainId);
+    const a = await n.pub.readContract({ address: k.feeLocker, abi: FEE_LOCKER_ABI, functionName: "availableFees", args: [addr(user, "user"), k.paired] });
+    const usd = (Number(a) / 1e18) * (await fees.nativeUsd(n.c.native ?? "ETH"));
+    return { amount: String(a), usd, token: k.paired };
+  }
+
+  return { address: account.address, handle, move, config, feeQuote, health, graduate, saveImage, saveAvatar, sweepFees, image, clankerLaunch, clankerClaim, clankerRewards, createOrder, listOrders, cancelOrder, setFollow, action, inbox, session, tokenUser, setNotifier: (x) => { notifier = x; }, setOg: (x) => { og = x; }, ogCard: (id) => (og ? og(id) : null), vapid: () => notifier?.publicKey ?? null, setDb: (pool) => { db = pool; } };
 }
 
 // ---------------------------------------------------------------- HTTP (shared with the health check)
@@ -1100,6 +1361,27 @@ export function httpHandler(relayer, status) {
       const base = `${String(req.headers["x-forwarded-proto"] || "http").split(",")[0]}://${req.headers.host}`; // Railway sends https
       try { return res.end(JSON.stringify(await relayer.saveImage(body, base))); }
       catch (e) { res.statusCode = e.status || 500; return res.end(JSON.stringify({ error: e.status ? e.message : "Upload failed, please try again." })); }
+    }
+    if (url === "/launch" && req.method === "POST") {
+      // Clanker launch: the signed payment, the coin's details and its picture (up to ~200 KB)
+      const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+      if (limited(ip)) { res.statusCode = 429; return res.end(JSON.stringify({ error: "Too many requests, slow down." })); }
+      let raw = "";
+      for await (const ch of req) { raw += ch; if (raw.length > 420_000) { res.statusCode = 413; return res.end(JSON.stringify({ error: "Image is too large." })); } }
+      let body;
+      try { body = JSON.parse(raw); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad request" })); }
+      const base = `${String(req.headers["x-forwarded-proto"] || "http").split(",")[0]}://${req.headers.host}`;
+      try { res.setHeader("cache-control", "no-store"); return res.end(JSON.stringify(await relayer.clankerLaunch(body, base))); }
+      catch (e) {
+        res.statusCode = e.status || (/must be|missing|not an address|not hex|too long|too low/.test(e.message) ? 400 : 500);
+        if (res.statusCode >= 500) log("launch error", e.shortMessage || e.message);
+        return res.end(JSON.stringify({ error: res.statusCode >= 500 && !e.status ? "Network busy, please try again." : e.message, code: e.code }));
+      }
+    }
+    if (url === "/rewards" && req.method === "GET") {
+      const q = new URL(req.url, "http://x").searchParams;
+      try { res.setHeader("cache-control", "no-store"); return res.end(JSON.stringify(await relayer.clankerRewards(q.get("chainId"), q.get("user")))); }
+      catch (e) { res.statusCode = e.status || 400; return res.end(JSON.stringify({ error: e.message })); }
     }
     if (url === "/move" && req.method === "POST") {
       const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();

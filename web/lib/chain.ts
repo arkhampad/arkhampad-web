@@ -133,7 +133,7 @@ export const FEE = 10_000n; // smallest network fee ($0.01, site units: 6 decima
 
 // Live network fee per kind of request: what the relayer really spends on gas, in USDC.
 // Cached for 20 seconds and fetched ahead of time, so a trade never waits on it.
-type FeeKind = "buy" | "sell" | "poolBuy" | "poolSell" | "launch" | "withdraw" | "promote" | "extSwap";
+type FeeKind = "buy" | "sell" | "poolBuy" | "poolSell" | "launch" | "withdraw" | "promote" | "extSwap" | "clankerLaunch" | "clankerClaim";
 const feeCache = new Map<string, { at: number; fee: bigint }>();
 const feeLoads = new Map<string, Promise<bigint>>();
 export async function netFee(chainId: number, kind: FeeKind): Promise<bigint> {
@@ -575,6 +575,95 @@ export async function launch(chainId: number, l: LaunchInput, s: Signer): Promis
   const a = ev.args as { coin: Address };
   // the launch buy shows up from the indexer within seconds (it has no router event to read here)
   return { coin: a.coin, curve: a.coin };
+}
+
+// ---------------------------------------------------------------- Clanker launches (Base, BNB, Robinhood)
+/** Chains where new coins launch through Clanker (paired with ETH / BNB, seen by every DEX screener).
+ *  Base first; BNB Chain and Robinhood join after their own live test launch. */
+export const CLANKER_CHAINS = new Set([8453]);
+export const isClankerChain = (id: number) => CLANKER_CHAINS.has(id);
+/** Clanker coins have 100B coins; ArkhamPad's own pools 1B. */
+export const CLANKER_SUPPLY = 1e11;
+/** First market cap of a Clanker launch, in dollars. */
+export const CLANKER_START_MC = 4800;
+/** Clanker's sniper protection: high fees for bots in a coin's first two minutes. */
+export const CLANKER_SNIPER_SECONDS = 120;
+
+let relayerAddr: Promise<Address> | null = null;
+function relayerAddress(): Promise<Address> {
+  if (!relayerAddr) {
+    relayerAddr = fetch(`${RELAYER}/config`, { signal: AbortSignal.timeout(8000) }).then((r) => r.json()).then((j) => {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(String(j?.relayer ?? ""))) throw new Error("no relayer");
+      return j.relayer as Address;
+    });
+    relayerAddr.catch(() => { relayerAddr = null; });
+  }
+  return relayerAddr;
+}
+
+export type ClankerLaunchInput = { name: string; symbol: string; metadataURI: string; launchUsdc: bigint };
+/**
+ * Launches a coin through Clanker: the user signs one payment (first buy + network fee, in USDC);
+ * ArkhamPad makes the first buy in ETH/BNB and the coins land in the user's wallet.
+ */
+export async function clankerLaunch(chainId: number, l: ClankerLaunchInput, image: File | null, s: Signer): Promise<{ coin: Address; key: string }> {
+  const n = netOf(chainId);
+  if (!n) throw new TradeError("Unknown network");
+  if (!isClankerChain(chainId)) throw new TradeError("Launching isn't open on this network yet.");
+  if (l.launchUsdc < MIN_LAUNCH_BUY) throw new TradeError("Your first buy must be at least $5.");
+  const fee = (await netFee(chainId, "clankerLaunch")) + (await owedFor(chainId, s.address));
+  const need = l.launchUsdc + fee;
+  await ensureCash(chainId, need, s);
+  const bal = await usdcBalance(chainId, s.address);
+  if (bal < need) throw new TradeError(`You need at least $${fromUsdc(need).toFixed(2)} in cash to launch.`);
+  const [to, dataUrl] = await Promise.all([
+    relayerAddress().catch(() => { throw new TradeError("Can't reach ArkhamPad right now. Check your connection and try again."); }),
+    image ? squareImage(image, 256) : Promise.resolve(null),
+    ensureAllowance(n, s, n.usdc, up(n, need)),
+  ]);
+  const nonce = randomNonce(), dl = deadline();
+  const message = { user: s.address, to, amount: up(n, l.launchUsdc), fee: up(n, fee), nonce, deadline: dl };
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Withdraw: TYPES.Withdraw }, primaryType: "Withdraw", message });
+  let r: Response;
+  try {
+    r = await fetch(`${RELAYER}/launch`, {
+      method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(240_000),
+      body: JSON.stringify({ chainId, user: s.address, launch: { name: l.name, symbol: l.symbol, metadataURI: l.metadataURI }, dataUrl, amount: S(message.amount), fee: S(message.fee), nonce: S(nonce), deadline: S(dl), signature }),
+    });
+  } catch (e) {
+    if ((e as Error)?.name === "TimeoutError") throw new TradeError("This is taking longer than usual. Your coin may still go live: check your profile in a minute before trying again.");
+    throw new TradeError("Can't reach ArkhamPad right now. Check your connection and try again.");
+  }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.coin) {
+    if (j.code === "FEE_CHANGED") { feeCache.clear(); owedHint.add(chainId); }
+    throw new TradeError(j.error || "Launch failed. Please try again.");
+  }
+  return { coin: j.coin as Address, key: String(j.key ?? "") };
+}
+
+/** Trading rewards a creator can claim now (WETH / WBNB) and their value in dollars. */
+export async function clankerRewards(chainId: number, user: Address): Promise<{ amount: bigint; usd: number }> {
+  try {
+    const r = await fetch(`${RELAYER}/rewards?chainId=${chainId}&user=${user}`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+    const j = await r.json();
+    return { amount: BigInt(String(j?.amount ?? "0")), usd: Number(j?.usd ?? 0) };
+  } catch { return { amount: 0n, usd: 0 }; }
+}
+
+/** Sends the creator's trading rewards (WETH / WBNB) to their wallet; the network fee is paid in USDC. */
+export async function claimClankerRewards(chainId: number, s: Signer) {
+  const n = netOf(chainId);
+  if (!n) throw new TradeError("Unknown network");
+  const fee = await netFee(chainId, "clankerClaim");
+  await ensureCash(chainId, fee, s);
+  if ((await usdcBalance(chainId, s.address)) < fee) throw new TradeError(`You need $${fromUsdc(fee).toFixed(2)} in cash for the network fee.`);
+  await ensureAllowance(n, s, n.usdc, up(n, fee));
+  const nonce = randomNonce(), dl = deadline();
+  const signature = await s.signTypedData(n.id, { domain: routerDomain(n), types: { Withdraw: TYPES.Withdraw }, primaryType: "Withdraw", message: { user: s.address, to: s.address, amount: 0n, fee: up(n, fee), nonce, deadline: dl } });
+  const res = await relay({ chainId, kind: "clankerClaim", user: s.address, fee: S(up(n, fee)), nonce: S(nonce), deadline: S(dl), signature }) as Relayed & { amount?: string };
+  if (res.status !== "success") throw new TradeError("Couldn't claim right now. Please try again.");
+  return BigInt(String(res.amount ?? "0"));
 }
 
 export async function withdraw(chainId: number, to: Address, amount: bigint, s: Signer) {

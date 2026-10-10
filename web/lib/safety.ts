@@ -15,7 +15,6 @@ export type Facts = {
 };
 export type Safety = { level: Level; checks: Check[]; facts: Facts; summary: string; warn: string | null; holders: { wallet: string; amount: number }[]; unlockAt: number | null };
 
-const SUPPLY = 1e9;
 const pct = (n: number) => (n >= 10 ? n.toFixed(1) : n.toFixed(n >= 1 ? 1 : 2)) + "%";
 const age = (m: number) => (m < 60 ? `${Math.max(1, Math.round(m))}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`);
 
@@ -83,13 +82,14 @@ async function build(c: LiveCoin): Promise<Safety> {
   const total = [...byWallet.values()].reduce((a, v) => a + v, 0);
   const top3 = [...byWallet.values()].sort((a, b) => b - a).slice(0, 3).reduce((a, v) => a + v, 0);
   const created = c.createdAt ? Date.parse(c.createdAt) : Date.now();
+  const supply = c.supply && c.supply > 0 ? c.supply : 1e9;
   const unlockAt = c.lockSeconds ? created + c.lockSeconds * 1000 : null;
   const facts: Facts = {
     ageMin: Math.max(0, (Date.now() - created) / 60_000),
     lockLeftSec: unlockAt ? Math.max(0, Math.round((unlockAt - Date.now()) / 1000)) : 0,
     lockChosen: !!c.lockSeconds,
-    creatorPct: (creatorAmt / SUPPLY) * 100,
-    top10Pct: (top10 / SUPPLY) * 100,
+    creatorPct: (creatorAmt / supply) * 100,
+    top10Pct: (top10 / supply) * 100,
     holders: holders.length,
     buyers: byWallet.size,
     trades: trades.length,

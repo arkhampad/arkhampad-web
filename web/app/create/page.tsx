@@ -9,7 +9,7 @@ import { Confetti } from "@/components/celebrate";
 import { coinText, downloadCard, openX, prepareCard, shareCoinCard, type ShareCoin } from "@/lib/share";
 import { useWallet } from "@/components/wallet";
 import { launchSchedule } from "@/components/v2";
-import { lastFee, warmFees, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage, LIVE, dollarOf } from "@/lib/chain";
+import { lastFee, warmFees, NETS, TradeError, fromUsdc, launch, promote, toUsdc, uploadCoinImage, LIVE, dollarOf, clankerLaunch, isClankerChain } from "@/lib/chain";
 
 /**
  * An AI picture (data: URL) as a file to upload. Decoded by hand: the site's security
@@ -33,9 +33,9 @@ const OPTS0 = [
   { name: "Dip Hopper", tick: "HOPPR", desc: "A space frog that hops in every time the chart dips. Never sleeps, never sells.", c1: "#0B3B2E", c2: "#2BB38A" },
   { name: "Orbit Toad", tick: "OTOAD", desc: "Zero gravity, zero panic. This toad buys dips from low orbit.", c1: "#3B1B0B", c2: "#FF8A3D" },
 ];
-// Launching is paused on BNB Chain: its meme market lives on PancakeSwap, and DEX screeners
-// don't list Uniswap v4 pools there yet. Trading other BNB coins still works.
-const CREATE_PAUSED = new Set([56]);
+// Networks where launching is paused: BNB Chain until its Clanker launches are switched on
+// (DEX screeners don't list its Uniswap v4 USDC pools).
+const CREATE_PAUSED = new Set<number>([56]);
 function CreateView() {
   const q = useSearchParams();
   const { toast, openFunds } = useApp();
@@ -74,8 +74,11 @@ function CreateView() {
   const w = useWallet();
   const chainId = (CHAINS.find((c) => c.name === chain) ?? CHAINS[0]).id;
   const cash = LIVE ? w.totalUsdc : fromUsdc(w.usdc[chainId] ?? 0n); // live: one balance, moved to the coin's network automatically
-  useEffect(() => { warmFees(chainId, ["launch", "promote"]); }, [chainId]);
-  const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(lastFee(chainId, "launch")) + (boost === "none" ? 0 : fromUsdc(lastFee(chainId, "promote")));
+  const viaClanker = isClankerChain(chainId);
+  const launchKind = viaClanker ? "clankerLaunch" : "launch";
+  const native = chainId === 56 ? "BNB" : "ETH";
+  useEffect(() => { warmFees(chainId, [launchKind, "promote"]); }, [chainId, launchKind]);
+  const need = first + (boost === "none" ? 0 : Number(boost)) + fromUsdc(lastFee(chainId, launchKind)) + (boost === "none" ? 0 : fromUsdc(lastFee(chainId, "promote")));
   const o = OPTS[pick];
   const applyArt = async (dataUrl: string) => {
     const f = dataUrlToFile(dataUrl);
@@ -174,7 +177,7 @@ function CreateView() {
   const me = w.address?.toLowerCase() ?? "";
   const coinUrl = done ? `https://arkhampad.com/coin/?c=${done.chainId}-${done.coin}${me ? `&ref=${me}` : ""}` : "";
   const dexUrl = done && DEX_SLUG[done.chainId] ? `https://dexscreener.com/${DEX_SLUG[done.chainId]}/${done.coin}` : "";
-  const shareObj: ShareCoin = { name, tick, chain, mc: LIVE ? "$2K" : "$450", chg: 0, address: ca, id: done ? `${done.chainId}-${done.coin.toLowerCase()}` : "", c1: o.c1, c2: o.c2, own: true };
+  const shareObj: ShareCoin = { name, tick, chain, mc: viaClanker ? "$4.8K" : LIVE ? "$2K" : "$450", chg: 0, address: ca, id: done ? `${done.chainId}-${done.coin.toLowerCase()}` : "", c1: o.c1, c2: o.c2, own: true };
   const post = coinText(shareObj, { launched: true }).replace(/\nMarket cap.*\n/, "\n") + (desc ? `\n\n${desc.trim().slice(0, 140)}` : "") + (dexUrl ? `\n\nChart: ${dexUrl}` : "");
   const [cardUrl, setCardUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -199,8 +202,11 @@ function CreateView() {
     try {
       setBusy("Launching…");
       const lockSeconds = 0; // creators can always sell: no creator lock on ArkhamPad
-      const r = await launch(chainId, { name: nm, symbol: tk, metadataURI, lockSeconds, feeMode: fee === "burn" ? 1 : 0, launchUsdc: toUsdc(first) }, w.signer);
-      if (imgFile) {
+      // Clanker launches carry the picture inside the coin (sent with the launch)
+      const r = viaClanker
+        ? await clankerLaunch(chainId, { name: nm, symbol: tk, metadataURI, launchUsdc: toUsdc(first) }, imgFile, w.signer)
+        : await launch(chainId, { name: nm, symbol: tk, metadataURI, lockSeconds, feeMode: fee === "burn" ? 1 : 0, launchUsdc: toUsdc(first) }, w.signer);
+      if (imgFile && !viaClanker) {
         setBusy("Adding image…");
         // the indexer needs a moment to see the new coin before the image can be attached
         for (let i = 0; i < 10; i++) {
@@ -381,16 +387,20 @@ function CreateView() {
                 {pic(44, 12)}
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <b>{name || "Your coin"}</b> <span className="mono dim" style={{ fontSize: 11 }}>${tick || "TICKER"}</span>
-                  <span className="cr-tags"><span>{chain}</span><span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span></span>
+                  <span className="cr-tags"><span>{chain}</span>{viaClanker ? <span className="g">Fees to you in {native}</span> : <span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span>}</span>
                 </span>
               </div>
               <div className="cr-set"><div className="cr-lbl">Chain <span>{chain === "Base" ? "most apps and wallets support it" : "one per coin"}</span></div>
                 <div className="cr-sg">{CHAINS.map(({ name: n, color: col }) => <button key={n} type="button" className={chain === n ? "on" : ""} onClick={() => setChain(n)}><span className="dot" style={{ width: 8, height: 8, background: col }} />{n}</button>)}</div>
               </div>
 
-              <div className="cr-set"><div className="cr-lbl">Your 30% of trading fees <span>{fee === "burn" ? "buys your coin back and burns it" : "from every trade, in any app"}</span></div>
-                <div className="cr-sg"><button type="button" className={fee === "you" ? "on" : ""} onClick={() => setFee("you")}>To you</button><button type="button" className={fee === "burn" ? "on" : ""} onClick={() => setFee("burn")}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</button></div>
-              </div>
+              {viaClanker ? (
+                <div className="cr-set"><div className="cr-lbl">Your 50% of trading fees <span>from every trade, in any app or bot, paid in {native}</span></div></div>
+              ) : (
+                <div className="cr-set"><div className="cr-lbl">Your 30% of trading fees <span>{fee === "burn" ? "buys your coin back and burns it" : "from every trade, in any app"}</span></div>
+                  <div className="cr-sg"><button type="button" className={fee === "you" ? "on" : ""} onClick={() => setFee("you")}>To you</button><button type="button" className={fee === "burn" ? "on" : ""} onClick={() => setFee("burn")}><IFire size={14} color="var(--burn)" />Buyback &amp; burn</button></div>
+                </div>
+              )}
               <div className="cr-set"><div className="cr-lbl">Your first buy <span>at least $5 · makes the first trade</span></div>
                 <div className="cr-chips">{[5, 10, 25, 50, 100].map((v) => <button key={v} type="button" className={first === v && !firstTxt ? "on" : ""} onClick={() => { setFirst(v); setFirstTxt(""); }}>${v}</button>)}</div>
                 <label className="amt-field" htmlFor="first-amt">
@@ -409,12 +419,18 @@ function CreateView() {
                 </div>
               </div>
               <div className="cr-facts">
-                {LIVE
+                {viaClanker
+                  ? <span>Opens at a <b className="mono">$4.8K</b> market cap in a locked Uniswap pool, paired with {native}</span>
+                  : LIVE
                   ? <span>Opens at a <b className="mono">$2K</b> market cap in a locked Uniswap pool</span>
                   : <span>Opens at a <b className="mono">$450</b> market cap in a Uniswap pool <span className="dim">(testnet; $2K on mainnet)</span></span>}
                 <span>Liquidity locked forever. Nobody can pull it, not even us.</span>
-                <span>Tradable in other apps from the first trade.</span>
-                <span>Launch fee protects you from bots: <b className="mono">{launchSchedule(chainId).start}%</b> falling to <b className="mono">2%</b> in {launchSchedule(chainId).decay === 300 ? "five" : "two"} minutes.</span>
+                {viaClanker
+                  ? <span>Launched through Clanker: DexScreener, GMGN and trading bots see it the moment it&apos;s live.</span>
+                  : <span>Tradable in other apps from the first trade.</span>}
+                {viaClanker
+                  ? <span>Sniper protection: bots that buy in the first moments pay up to <b className="mono">66%</b> fees, and half of that goes to you. Then every trade pays <b className="mono">1%</b>.</span>
+                  : <span>Launch fee protects you from bots: <b className="mono">{launchSchedule(chainId).start}%</b> falling to <b className="mono">2%</b> in {launchSchedule(chainId).decay === 300 ? "five" : "two"} minutes.</span>}
                 <span>{LIVE ? "Your cash" : `Your ${dollarOf(chainId)} on ${chain}`}: <b className="mono">{w.signedIn ? `$${cash.toFixed(2)}` : "—"}</b></span>
               </div>
             </div>
@@ -426,7 +442,7 @@ function CreateView() {
             <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>Live preview</span>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>{pic(64, 18)}<span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}><span style={{ fontWeight: 900, fontSize: 20, overflowWrap: "anywhere" }}>{name || "Your coin"}</span><span className="mono dim" style={{ fontSize: 12 }}>${tick || "TICKER"} · {chain}</span></span></div>
             {desc && <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>{desc}</p>}
-            <div className="cr-tags"><span>{chain}</span><span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span>{boost !== "none" && <span className="g">Boost {boost === "10" ? "6h" : "24h"}</span>}{first > 0 && <span>First buy ${first}</span>}</div>
+            <div className="cr-tags"><span>{chain}</span>{viaClanker ? <span className="g">Fees to you in {native}</span> : <span className={fee === "burn" ? "o" : "g"}>{fee === "burn" ? "Buyback & burn" : "Fees to you"}</span>}{boost !== "none" && <span className="g">Boost {boost === "10" ? "6h" : "24h"}</span>}{first > 0 && <span>First buy ${first}</span>}</div>
             <span style={{ fontSize: 12, color: "var(--faint)" }}>You review everything before it goes live.</span>
           </div>
         </aside>

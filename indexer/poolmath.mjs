@@ -26,3 +26,10 @@ export function poolTrade(args, usdcIs0, dec = 6) {
   const feeRate = args.fee === undefined || args.fee === null ? 0.01 : Number(args.fee) / 1e6;
   return { isBuy: du < 0n, usdc, coins: Number(abs(dc)) / 1e18, fee: usdc * feeRate, feeRate, price };
 }
+
+/** One Swap event in a Clanker pool (coin paired with WETH / WBNB, both 18 decimals) -> trade numbers
+ *  in dollars, at `nativeUsd` dollars per ETH / BNB. */
+export function clankerTrade(args, coin, paired, nativeUsd) {
+  const w = poolTrade(args, BigInt(paired) < BigInt(coin), 18);
+  return { ...w, usdc: w.usdc * nativeUsd, fee: w.fee * nativeUsd, price: w.price * nativeUsd };
+}

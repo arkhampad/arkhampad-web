@@ -12,11 +12,18 @@ import { startMarkets } from "./markets.mjs";
 import { startQuality } from "./quality.mjs";
 import { startDexWatch } from "./dexwatch.mjs";
 import { makeRelayer, httpHandler } from "./relayer.mjs";
-import { poolIdOf, poolTrade } from "./poolmath.mjs";
+import { poolIdOf, poolTrade, clankerTrade } from "./poolmath.mjs";
 import { makeNotifier } from "./notify.mjs";
 import { makeOg } from "./og.mjs";
 import { announce as indexNow, coinPath, startIndexNow } from "./indexnow.mjs";
+import { makeFees } from "./fees.mjs";
+import { CLANKER_CHAINS, TOKEN_CREATED, clankerOf, lockersOf, mcAtTick } from "./clanker.mjs";
 const relayer = process.env.ONCE ? null : makeRelayer();
+// ETH / BNB prices in dollars, for coins paired with the chain's own coin (Clanker launches)
+const prices = makeFees({ log: (...a) => console.log(new Date().toISOString(), ...a) });
+/** The wallet that launches ArkhamPad's Clanker coins (the relayer). */
+const LAUNCHER = (relayer?.address ?? process.env.LAUNCHER_ADDRESS ?? "").toLowerCase();
+const CLANKER_SUPPLY = 100_000_000_000;
 
 const POLL_DEFAULT = process.env.POLL_SECONDS ? Number(process.env.POLL_SECONDS) * 1000 : null;
 const RANGE_DEFAULT = process.env.BLOCK_RANGE ? BigInt(process.env.BLOCK_RANGE) : null;
@@ -32,7 +39,20 @@ const EV = {
   // Uniswap v4 PoolManager: amounts are from the swapper's side (negative = paid in)
   transfer: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
   swap: parseAbiItem("event Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)"),
+  // PadExtSwap: the ArkhamPad user behind a one-tap trade of a coin on another DEX (or a Clanker coin)
+  extSwapped: parseAbiItem("event ExtSwapped(address indexed user, address indexed coin, bool isBuy, uint256 usdcAmount, uint256 coinAmount, uint256 tradeFee, uint256 networkFee, uint256 nonce)"),
 };
+
+/** Creator details for the site, from a Clanker coin's on-chain metadata (when the relayer's row is missing). */
+function clankerMetaUri(raw) {
+  try {
+    const j = JSON.parse(raw || "{}");
+    const desc = String(j.description ?? "").replace(/\n*Launched on ArkhamPad\s*$/, "").slice(0, 280);
+    const find = (p) => (Array.isArray(j.socialMediaUrls) ? j.socialMediaUrls.find((x) => x?.platform === p)?.url : undefined);
+    const meta = { description: desc || undefined, x: find("x"), telegram: find("telegram") };
+    return `data:application/json;base64,${Buffer.from(JSON.stringify(meta)).toString("base64")}`;
+  } catch { return ""; }
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Dollar amounts from the chain's dollar token (6 decimals for USDC/USDG, 18 on BNB). */
@@ -118,10 +138,12 @@ async function syncChain(c, client) {
     };
     // One getLogs call for everything we watch (hub + promote + our coins' Transfer
     // events for the holder map), which keeps RPC usage low.
-    const ALL = [EV.created, EV.promoted, EV.transfer];
+    // Clanker launches: the factory's TokenCreated rides along in the same request
+    const clanker = CLANKER_CHAINS.includes(c.chainId) && LAUNCHER ? clankerOf(c.chainId) : null;
+    const ALL = [EV.created, EV.promoted, EV.transfer, ...(clanker ? [TOKEN_CREATED] : [])];
     const knownRows = (await pool.query("select address from coins where chain_id=$1", [c.chainId])).rows;
     const tokens = knownRows.map((r) => getAddress(r.address));
-    const watched = [c.hub, ...(c.promote ? [c.promote] : []), ...tokens];
+    const watched = [c.hub, ...(c.promote ? [c.promote] : []), ...(clanker ? [clanker.factory] : []), ...tokens];
     let logs = [];
     for (let i = 0; i < watched.length; i += 500) {
       const address = watched.slice(i, i + 500);
@@ -130,7 +152,12 @@ async function syncChain(c, client) {
     const routerLogs = c.router ? await call("getLogs router", () => client.getLogs({ address: c.router, events: [EV.rpromoted, EV.ptraded], fromBlock: from, toBlock: to })) : [];
     const isHub = (e) => lc(e.address) === lc(c.hub);
     const created = logs.filter((e) => e.eventName === "CoinCreated" && isHub(e));
-    const freshTokens = created.map((e) => getAddress(e.args.coin)).filter((a) => !tokens.includes(a));
+    // only coins ArkhamPad launched (sent by our launcher, interface "ArkhamPad")
+    const clankerCreated = clanker ? logs.filter((e) => {
+      if (e.eventName !== "TokenCreated" || lc(e.address) !== lc(clanker.factory) || lc(e.args.msgSender) !== LAUNCHER) return false;
+      try { return JSON.parse(e.args.tokenContext).interface === "ArkhamPad"; } catch { return false; }
+    }) : [];
+    const freshTokens = [...created.map((e) => getAddress(e.args.coin)), ...clankerCreated.map((e) => getAddress(e.args.tokenAddress))].filter((a) => !tokens.includes(a));
     if (freshTokens.length) logs = logs.concat(await call("getLogs new tokens", () => client.getLogs({ address: freshTokens, event: EV.transfer, fromBlock: from, toBlock: to })));
     const tokenSet = new Set([...tokens, ...freshTokens].map(lc));
     const transfers = logs.filter((e) => e.eventName === "Transfer" && tokenSet.has(lc(e.address)));
@@ -165,6 +192,21 @@ async function syncChain(c, client) {
           [c.chainId, lc(a.coin), (process.env.PUBLIC_URL || "https://arkhampad-web-production.up.railway.app").replace(/\/$/, "")],
         ).catch((err) => log(`${c.name}: image attach: ${err.message}`));
       }
+      // Clanker coins (the relayer normally saved the row already: then nothing changes here)
+      for (const e of clankerCreated) {
+        const a = e.args;
+        const at = await ts(e.blockNumber);
+        const native = await prices.nativeUsd(c.native ?? "ETH");
+        const startMc = mcAtTick(Number(a.startingTick), native);
+        const key = (() => { try { const m = String(JSON.parse(a.tokenContext).messageId ?? "").match(/[?&]k=\d+-([0-9a-f]{16})/); return m ? m[1] : null; } catch { return null; } })();
+        await db.query(
+          `insert into coins (chain_id, address, curve, creator, name, symbol, metadata_uri, lock_seconds, fee_mode, phase, price_usd, mc_usd, start_mc_usd,
+                              created_block, created_tx, created_at, graduated_at, venue, supply, paired, launch_key, image_url)
+           values ($1,$2,$3,$4,$5,$6,$7,0,0,2,$8,$9,$9,$10,$11,$12,$12,'clanker',$13,$14,$15,$16) on conflict (chain_id, address) do nothing`,
+          [c.chainId, lc(a.tokenAddress), lc(a.poolId), lc(a.tokenAdmin), a.tokenName, a.tokenSymbol, clankerMetaUri(a.tokenMetadata), startMc / CLANKER_SUPPLY, startMc,
+           String(e.blockNumber), e.transactionHash, at, CLANKER_SUPPLY, lc(a.pairedToken), key, /^https:\/\//.test(a.tokenImage) ? a.tokenImage.slice(0, 300) : null],
+        );
+      }
       const fresh = []; // buys to announce once this batch is saved
       for (const e of promos) {
         const a = e.args;
@@ -178,23 +220,62 @@ async function syncChain(c, client) {
       // Trades in every coin's locked Uniswap pool, from any app (ArkhamPad, aggregators, bots).
       let poolTrades = 0;
       if (c.poolManager && c.guard && c.usdc) {
-        const all = (await db.query("select address, creator, created_tx from coins where chain_id=$1", [c.chainId])).rows;
+        const all = (await db.query("select address, creator, created_tx, curve, venue, paired, supply from coins where chain_id=$1", [c.chainId])).rows;
         if (all.length) {
-          const byId = new Map(all.map((r) => [lc(poolIdOf(c.usdc, r.address, c.guard)), r]));
+          // our own pools are found from the coin; Clanker pools by the pool id saved at launch
+          const byId = new Map(all.map((r) => [r.venue === "clanker" ? lc(r.curve) : lc(poolIdOf(c.usdc, r.address, c.guard)), r]));
+          let extUsers = null; // tx -> ArkhamPad user, for one-tap trades of Clanker coins (read once per range)
+          const native = all.some((r) => r.venue === "clanker") ? await prices.nativeUsd(c.native ?? "ETH") : 0;
+          const clankerLockers = new Set(CLANKER_CHAINS.includes(c.chainId) ? lockersOf(c.chainId).map(lc) : []);
           const ids = [...byId.keys()];
           const viaPool = new Map();
           for (const e of routerLogs) if (e.eventName === "PoolTraded") viaPool.set(`${e.transactionHash}:${lc(e.args.coin)}`, lc(e.args.user));
           const txFrom = new Map(); // other apps: the wallet that sent the transaction
+          const txTo = new Map(); // ...and the contract it called (Clanker coins)
           for (let i = 0; i < ids.length; i += 100) {
             const swaps = await call("getLogs pools", () => client.getLogs({ address: c.poolManager, event: EV.swap, args: { id: ids.slice(i, i + 100) }, fromBlock: from, toBlock: to }));
             for (const e of swaps) {
               const r = byId.get(lc(e.args.id));
               if (!r) continue;
-              const usdcIs0 = BigInt(c.usdc) < BigInt(r.address);
-              const t = poolTrade(e.args, usdcIs0, c.usdDecimals ?? 6);
+              const isClanker = r.venue === "clanker";
+              // Clanker's locker swaps the coin side of collected fees into WETH/WBNB inside the pool:
+              // bookkeeping, not a trade
+              if (isClanker && clankerLockers.has(lc(e.args.sender))) continue;
+              let t;
+              if (isClanker) {
+                // paired with WETH / WBNB (18 decimals): amounts and price in the chain's coin, then dollars
+                t = clankerTrade(e.args, r.address, r.paired, native);
+              } else {
+                const usdcIs0 = BigInt(c.usdc) < BigInt(r.address);
+                t = poolTrade(e.args, usdcIs0, c.usdDecimals ?? 6);
+              }
+              const supply = Number(r.supply) || SUPPLY;
               const sender = lc(e.args.sender);
               let trader, via;
-              if (c.router && sender === lc(c.router)) {
+              if (isClanker && lc(e.transactionHash) === lc(r.created_tx)) {
+                trader = r.creator; via = "launch"; // the creator's first buy, inside the launch
+              } else if (isClanker) {
+                if (!txFrom.has(e.transactionHash)) {
+                  const tx = await call("getTransaction", () => client.getTransaction({ hash: e.transactionHash }));
+                  txFrom.set(e.transactionHash, lc(tx.from));
+                  if (tx.to) txTo.set(e.transactionHash, lc(tx.to));
+                }
+                // someone asked the locker to collect fees: it swaps them through the Universal
+                // Router, which looks like a trade but is bookkeeping
+                if (clankerLockers.has(txTo.get(e.transactionHash) ?? "")) continue;
+                trader = txFrom.get(e.transactionHash);
+                via = "external";
+                if (LAUNCHER && trader === LAUNCHER && c.extSwap) {
+                  // sent by our relayer: a one-tap trade on ArkhamPad; the event names the user
+                  if (!extUsers) {
+                    extUsers = new Map();
+                    const xs = await call("getLogs extSwap", () => client.getLogs({ address: getAddress(c.extSwap), event: EV.extSwapped, fromBlock: from, toBlock: to }));
+                    for (const x of xs) extUsers.set(`${x.transactionHash}:${lc(x.args.coin)}`, lc(x.args.user));
+                  }
+                  const u = extUsers.get(`${e.transactionHash}:${r.address}`);
+                  if (u) { trader = u; via = "arkhampad"; }
+                }
+              } else if (c.router && sender === lc(c.router)) {
                 trader = viaPool.get(`${e.transactionHash}:${r.address}`) ?? sender;
                 via = "arkhampad";
               } else if (c.poolBuilder && sender === lc(c.poolBuilder)) {
@@ -214,13 +295,13 @@ async function syncChain(c, client) {
               const ins = await db.query(
                 `insert into trades (chain_id, tx_hash, log_index, coin, trader, is_buy, usdc, coins, fee, price_usd, mc_usd, block, ts, via)
                  values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) on conflict do nothing`,
-                [c.chainId, e.transactionHash, e.logIndex, r.address, trader, t.isBuy, t.usdc, t.coins, t.fee, t.price, t.price * SUPPLY, String(e.blockNumber), at, via],
+                [c.chainId, e.transactionHash, e.logIndex, r.address, trader, t.isBuy, t.usdc, t.coins, t.fee, t.price, t.price * supply, String(e.blockNumber), at, via],
               );
               if (ins.rowCount && t.isBuy && via !== "buyback") fresh.push({ type: "buy", trader, coin: r.address, usdc: t.usdc, at });
               if (ins.rowCount) {
                 poolTrades++;
                 await db.query("update coins set price_usd=$3, mc_usd=$4, trades_count=trades_count+1, volume_usd=volume_usd+$5, last_trade_at=$6 where chain_id=$1 and address=$2",
-                  [c.chainId, r.address, t.price, t.price * SUPPLY, t.usdc, at]);
+                  [c.chainId, r.address, t.price, t.price * supply, t.usdc, at]);
               }
             }
           }
@@ -229,11 +310,12 @@ async function syncChain(c, client) {
       for (const e of transfers) await saveTransfer(db, c, e);
       // new coin pages go to search engines right away (IndexNow)
       for (const e of created) indexNow(coinPath(c.chainId, e.args.coin));
+      for (const e of clankerCreated) indexNow(coinPath(c.chainId, e.args.tokenAddress));
       await db.query("update sync_state set last_block=$2, updated_at=now() where chain_id=$1 and hub=$3", [c.chainId, String(to), c.hub.toLowerCase()]);
       await db.query("commit");
       if (fresh.length) announce(c, fresh).catch((e) => log(`${c.name}: announce error ${e.message}`));
-      if (created.length || promos.length || poolTrades)
-        log(`${c.name}: blocks ${from}-${to} coins+${created.length} trades+${poolTrades} promos+${promos.length}`);
+      if (created.length || clankerCreated.length || promos.length || poolTrades)
+        log(`${c.name}: blocks ${from}-${to} coins+${created.length + clankerCreated.length} trades+${poolTrades} promos+${promos.length}`);
     } catch (err) {
       await db.query("rollback");
       throw err;

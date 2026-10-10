@@ -7,7 +7,7 @@ const MIN_USD = Number(process.env.FEE_MIN_USD ?? 0.01);
 const MAX_USD = Number(process.env.FEE_MAX_USD ?? 1.0);   // above this the network counts as "busy"
 const ACCEPT = Number(process.env.FEE_ACCEPT ?? 0.7);      // a signed fee may be this much below the live quote
 // gas units for a request we have no history for yet (generous; replaced by real receipts)
-const DEFAULT_GAS = { buy: 260_000n, sell: 240_000n, poolBuy: 420_000n, poolSell: 420_000n, launch: 3_600_000n, withdraw: 110_000n, promote: 160_000n, extSwap: 650_000n };
+const DEFAULT_GAS = { buy: 260_000n, sell: 240_000n, poolBuy: 420_000n, poolSell: 420_000n, launch: 3_600_000n, withdraw: 110_000n, promote: 160_000n, extSwap: 650_000n, clankerLaunch: 5_000_000n, clankerClaim: 200_000n };
 export const FEE_KINDS = Object.keys(DEFAULT_GAS);
 const NATIVE_FALLBACK = { ETH: 3000, BNB: 600 };
 
@@ -33,6 +33,15 @@ export function makeFees({ log }) {
     const hit = usdCache.get(symbol);
     if (hit) { if (Date.now() - hit.at > 300_000) fetchUsd(symbol).catch(() => {}); return hit.usd; }
     return (await fetchUsd(symbol)) ?? NATIVE_FALLBACK[symbol] ?? 3000;
+  }
+
+  /** A real, recent price (never the fallback): null when no source answered in the last 10 minutes. */
+  async function freshUsd(symbol, maxAgeMs = 600_000) {
+    const hit = usdCache.get(symbol);
+    if (hit && Date.now() - hit.at < 120_000) return hit.usd;
+    const v = await fetchUsd(symbol);
+    if (v) return v;
+    return hit && Date.now() - hit.at < maxAgeMs ? hit.usd : null;
   }
 
   async function fetchGas(n) { const price = await n.pub.getGasPrice(); gasCache.set(n.c.chainId, { at: Date.now(), price }); return price; }
@@ -93,5 +102,5 @@ export function makeFees({ log }) {
     if (signed < need) { const e = new Error("The network fee changed. Please try again."); e.status = 409; e.code = "FEE_CHANGED"; throw e; }
   }
 
-  return { record, quote, check, nativeUsd, warm };
+  return { record, quote, check, nativeUsd, freshUsd, warm };
 }

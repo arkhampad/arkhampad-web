@@ -129,7 +129,7 @@ export function HoldersCard({ c }: { c: LiveCoin }) {
   // shares one load with the safety check (balances read on-chain, refreshed after trades)
   const s = useSafety(c);
   const rows = s ? s.holders : null;
-  const supply = 1e9;
+  const supply = c.supply && c.supply > 0 ? c.supply : 1e9;
   return (
     <div className="card" style={{ gap: 8 }}>
       <span style={{ fontWeight: 700 }}>Top holders</span>

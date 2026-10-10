@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getCoin, useCoinMarket, shareCoin, prepareCard, usd, short, ago, listCoins, type LiveCoin } from "@/lib/live";
+import { getCoin, getCoinByKey, useCoinMarket, shareCoin, prepareCard, usd, short, ago, listCoins, supplyOf, isClanker, type LiveCoin } from "@/lib/live";
 import { Avatar, ChainTag, useIsMobile } from "@/components/bits";
 import { Intervals } from "@/components/trade";
 import { TradePanel } from "@/components/tradepanel";
@@ -17,7 +17,7 @@ const TvChart = dynamic(() => import("@/components/tvchart"), { ssr: false, load
 const ExtChart = dynamic(() => import("@/components/extchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 420, borderRadius: 12 }} /> });
 import { ICopy, IShare } from "@/components/icons";
 import { useApp } from "@/components/shell";
-import { DexListed, LaunchFeeCard, PoolCard } from "@/components/v2";
+import { DexListed, LaunchFeeCard, PoolCard, ClankerRewardsCard } from "@/components/v2";
 import { LIVE } from "@/lib/chain";
 
 const IS_MAINNET_CHAIN = (id: number) => id === 8453 || id === 4663 || id === 56;
@@ -30,6 +30,7 @@ function Stat({ k, v, cls }: { k: string; v: string; cls?: string }) {
 function CoinView() {
   const q = useSearchParams();
   const id = q.get("c") || "";
+  const launchKey = q.get("k") || ""; // the link stored inside a Clanker coin (made before its address was known)
   const { toast } = useApp();
   const [c, setC] = useState<LiveCoin | null | undefined>(undefined);
   const [iv, setIv] = useState("15m");
@@ -49,18 +50,19 @@ function CoinView() {
   const candles = m.candles, own = m.own, ext = m.ext;
 
   // Always start at the top of the page when a coin opens.
-  useEffect(() => { window.scrollTo({ top: 0, left: 0 }); }, [id]);
+  useEffect(() => { window.scrollTo({ top: 0, left: 0 }); }, [id, launchKey]);
 
   // Unknown or old links open the top trending coin.
   useEffect(() => {
     let alive = true;
     (async () => {
-      let coin = await getCoin(id).catch(() => null);
+      let coin = launchKey ? await getCoinByKey(launchKey.toLowerCase()).catch(() => null) : await getCoin(id).catch(() => null);
+      if (!coin && launchKey) { if (alive) setC(null); return; }
       if (!coin && !/^\d+-0x/.test(id)) coin = (await listCoins("Trending", { limit: 1 }).catch(() => []))[0] ?? null;
       if (alive) setC(coin);
     })();
     return () => { alive = false; };
-  }, [id]);
+  }, [id, launchKey]);
 
   if (c === undefined) return <div className="wrap page"><div className="skel" style={{ height: 80, borderRadius: 16 }} /><div className="skel" style={{ height: 380, borderRadius: 16 }} /></div>;
   if (c === null) return (
@@ -123,7 +125,7 @@ function CoinView() {
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}><span className="mono coin-price" style={{ fontWeight: 800, fontSize: 28, letterSpacing: -0.8 }}>{c.price}</span><span className={`mono ${up ? "up" : "down"}`} style={{ fontWeight: 700 }}>{up ? "+" : ""}{c.chg.toFixed(1)}%</span></div>
               {c.own && <Intervals value={iv} onChange={setIv} />}
             </div>
-            {c.own ? <TvChart candles={candles} supply={1e9} empty="No trades yet for a chart." height={mobile ? 250 : undefined} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} token={c.address} supply={c.priceNum && c.mcNum ? c.mcNum / c.priceNum : null} height={mobile ? 300 : undefined} />}
+            {c.own ? <TvChart candles={candles} supply={supplyOf(c)} empty="No trades yet for a chart." height={mobile ? 250 : undefined} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} token={c.address} supply={c.priceNum && c.mcNum ? c.mcNum / c.priceNum : null} height={mobile ? 300 : undefined} />}
           </div>
           <div className="show-m coin-strip">
             <span><i>Vol 24h</i><b className="mono">{c.vol}</b></span>
@@ -156,7 +158,7 @@ function CoinView() {
         <aside className="side-col" style={{ flexBasis: 360 }}>
           {c.own && <OrdersList coin={c.address} chainId={c.chainId} title="Your open orders" />}
           <AboutCard c={c} />
-          {c.own && <CreatorCard c={c} onImage={(url) => setC({ ...c, image: url })} />}
+          {c.own && (isClanker(c) ? <ClankerRewardsCard c={c} /> : <CreatorCard c={c} onImage={(url) => setC({ ...c, image: url })} />)}
 
           {c.own && <div className="hide-m"><PoolCard c={c} /></div>}
           {!c.own && !LIVE && (

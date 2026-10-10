@@ -135,7 +135,7 @@ function TerminalView() {
 
         <div className="panel" style={{ padding: mobile ? 8 : 12, gap: 8 }}>
           {c?.own && <Intervals value={iv} onChange={setIv} />}
-          {c && (c.own ? <TvChart candles={m.candles} supply={1e9} empty="No trades yet for a chart." height={mobile ? 260 : 420} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} token={c.address} supply={c.priceNum && c.mcNum ? c.mcNum / c.priceNum : null} height={mobile ? 300 : 460} />)}
+          {c && (c.own ? <TvChart candles={m.candles} supply={c.supply && c.supply > 0 ? c.supply : 1e9} empty="No trades yet for a chart." height={mobile ? 260 : 420} seriesKey={`${c.id}|${iv}`} /> : <ExtChart network={c.network} pool={c.pool} token={c.address} supply={c.priceNum && c.mcNum ? c.mcNum / c.priceNum : null} height={mobile ? 300 : 460} />)}
         </div>
 
         {c && <div className="show-m"><TradePanel coin={c} onShare={() => shareCoin(c)} /></div>}

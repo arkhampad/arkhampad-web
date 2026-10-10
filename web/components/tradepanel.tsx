@@ -23,7 +23,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const { toast, openFunds } = useApp(); void withLimit;
   const caution = useBuyWarning(coin);
   // fetch today's network fees now, so pressing Buy or Sell never waits for them
-  useEffect(() => { if (coin.own) warmFees(coin.chainId, ["buy", "sell", "poolBuy", "poolSell"]); }, [coin.chainId, coin.own]);
+  useEffect(() => { if (coin.own) warmFees(coin.chainId, coin.venue === "clanker" ? ["extSwap"] : ["buy", "sell", "poolBuy", "poolSell"]); }, [coin.chainId, coin.own, coin.venue]);
   const w = useWallet();
   const [side, setSide] = useState<"buy" | "sell">(initialSide);
   const [mode, setMode] = useState("Market");
@@ -39,21 +39,25 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const [sl, setSl] = useState<number | null>(25); // Auto: stop loss at -Y%
   const phase = coin.phase ?? 0;
   const launchFee = useLaunchFee(coin);
-  const inPool = coin.own && phase === 2; // graduated: trades in its locked Uniswap pool
-  const ext = !coin.own && !!extNet(coin.chainId); // coin from another DEX on a network we can quote
+  // Clanker coins launched here trade through DEX routes (like coins from other DEXs), after
+  // Clanker's sniper protection in their first two minutes
+  const clanker = coin.venue === "clanker";
+  const inPool = coin.own && !clanker && phase === 2; // graduated: trades in its locked Uniswap pool
+  const ext = (!coin.own || clanker) && !!extNet(coin.chainId); // coin from another DEX on a network we can quote
   const extLive = ext && extTradable(coin.chainId); // ...and trade (mainnet)
-  const tradable = ext ? extLive : coin.own && (phase === 0 ? !!coin.curve : phase === 2);
+  const tradable = (ext ? extLive : coin.own && (phase === 0 ? !!coin.curve : phase === 2)) && !launchFee.sniper;
   const [extDec, setExtDec] = useState(18);
   const [result, setResult] = useState<Pnl | null>(null);
   const curve = coin.curve as Address | undefined;
   // one cash balance everywhere: cash on another network is moved over automatically when buying
-  const cash = LIVE ? w.totalUsdc : coin.own ? fromUsdc(w.usdc[coin.chainId] ?? 0n) : w.totalUsdc;
+  const cash = LIVE ? w.totalUsdc : coin.own && !clanker ? fromUsdc(w.usdc[coin.chainId] ?? 0n) : w.totalUsdc;
   const usd = Number(amt) || 0;
   const sellAmount = (held * BigInt(pct)) / 100n;
 
   // what this wallet holds of the coin (refreshed after every trade)
   useEffect(() => {
     if (!w.address || (!coin.own && !ext)) { setHeld(0n); return; }
+    // (Clanker coins are read like coins from other DEXs)
     let alive = true;
     // after a trade here the new amount shows at once; a node that lags a block must not put the old one back
     let stale: bigint | null = null, staleUntil = 0;
@@ -182,7 +186,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
         const who = w.address;
         setTimeout(async () => {
           if (!who) return;
-          const r = await positionPnl(coin.chainId, coin.address, who, { name: coin.name, tick: coin.tick, chain: coin.chain, image: coin.image, c1: coin.c1, c2: coin.c2, mcNow: coin.mcNum ?? 0 }).catch(() => null);
+          const r = await positionPnl(coin.chainId, coin.address, who, { name: coin.name, tick: coin.tick, chain: coin.chain, image: coin.image, c1: coin.c1, c2: coin.c2, mcNow: coin.mcNum ?? 0, supply: coin.supply }).catch(() => null);
           if (r && r.pct >= 5) setResult(r);
         }, 3000);
         toast(`Sold for $${((t?.usdc ?? 0) - fromUsdc(lastFee(coin.chainId, inPool ? "poolSell" : "sell"))).toFixed(2)}`);
@@ -195,9 +199,10 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
     }
   };
 
-  const modes = ["Market", "Limit", "Auto"];
+  // automatic orders run on ArkhamPad's own pools only
+  const modes = clanker ? ["Market"] : ["Market", "Limit", "Auto"];
   const soon = LIVE ? `${coin.chain} trading opens soon` : "Opens on mainnet";
-  const label = ext && !extLive ? soon : !coin.own && !ext ? soon : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
+  const label = launchFee.sniper ? `Trading opens in ${launchFee.left}s` : ext && !extLive ? soon : !coin.own && !ext ? soon : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
     : mode === "Limit" ? `Set limit ${side === "buy" ? "buy" : "sell"}` : mode === "Auto" ? "Set take profit / stop loss" : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
   return (
     <div className="card tp" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
@@ -249,11 +254,12 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       )}
       {coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable && <BuyWarning text={caution.text} onAck={caution.ack} />}
       {!(coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable) && <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={go} disabled={busy || !tradable} aria-busy={busy} style={{ fontSize: 17, opacity: !tradable ? 0.55 : 1 }}>{label}</button>}
+      {clanker && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>{launchFee.sniper ? "Clanker's sniper protection is on: bots pay up to 66% right now." : extLive ? "Trades in its Uniswap pool at the best price · 1% pool fee + 1% ArkhamPad fee" : `Trading ${coin.chain} coins here opens soon. It trades on DEXs and in trading bots now.`}</span>}
       {!coin.own && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>{extLive ? "Trades through other DEXs at the best price · 1% fee" : LIVE ? `Live price from other DEXs. Trading ${coin.chain} coins here opens soon.` : ext ? "Live price from other DEXs. Trading these coins here opens on mainnet." : "This coin trades on another DEX. Trading it here opens on mainnet."}</span>}
-      {coin.own && launchFee.live && launchFee.fee !== null && (
+      {coin.own && !clanker && launchFee.live && launchFee.fee !== null && (
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Fee right now</span><b className="mono" style={{ color: "var(--burn)" }}>{launchFee.fee.toFixed(1)}%</b></div>
       )}
-      {coin.own && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{LIVE ? "Trades in its locked Uniswap pool" : "Trades in its locked Uniswap pool · Testnet · test USDC has no value"}</span>}
+      {coin.own && !clanker && <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{LIVE ? "Trades in its locked Uniswap pool" : "Trades in its locked Uniswap pool · Testnet · test USDC has no value"}</span>}
       <div style={{ display: "flex", gap: 8 }}>
         <span style={{ flex: 1, display: "flex" }}><PriceAlertButton c={coin} className="btn ghost sm grow" /></span>
         <button type="button" className="btn ghost sm" style={{ flex: 1, height: 40 }} onClick={onShare}><IShare size={15} />Share</button>

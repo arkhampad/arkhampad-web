@@ -13,7 +13,6 @@ export type Link = { a: string; b: string; amount: number; n: number };
 export type Cluster = { id: number; group: Group; color: string; label: string; size: number; pct: number };
 export type HolderMap = { holders: Holder[]; links: Link[]; clusters: Cluster[]; total: number; earlyBuyers: number; fromTransfers: boolean };
 
-const SUPPLY = 1e9;
 const PALETTE = ["#F6465D", "#8B5CF6", "#06B6D4", "#EC4899", "#14B8A6", "#F97316"];
 export const POOL_COLOR = "#3B82F6";
 export const CREATOR_COLOR = "#F59E0B";
@@ -31,10 +30,10 @@ export async function loadHolderMap(c: LiveCoin): Promise<HolderMap | false> {
   const exclude = net ? [net.hub, net.router].map((a) => a.toLowerCase()) : [];
   const { data, error } = await db().rpc("coin_holder_graph", { p_chain: c.chainId, p_coin: c.address.toLowerCase(), p_exclude: exclude });
   if (error || !data) return false;
-  return build(data as Raw);
+  return build(data as Raw, c.supply && c.supply > 0 ? c.supply : 1e9);
 }
 
-function build(r: Raw): HolderMap {
+function build(r: Raw, SUPPLY: number): HolderMap {
   const curve = (r.curve || "").toLowerCase(), creator = (r.creator || "").toLowerCase();
   const launch = r.launch_ts ? Date.parse(r.launch_ts) : 0;
   const rows = r.holders.map((h) => ({ ...h, w: h.w.toLowerCase(), pct: (Number(h.bal) / SUPPLY) * 100 }));

@@ -15,7 +15,24 @@ async function coinInfo(env, chainId, address) {
   return ext ? { name: ext.name, symbol: ext.symbol, mc: ext.mcap_usd || ext.fdv_usd, own: false } : null;
 }
 
+/** ?k=<chain>-<key>: the link stored inside a Clanker coin (made before its address existed) -> its page. */
+async function byLaunchKey(env, k) {
+  const m = String(k || "").toLowerCase().match(/^(\d+)-([0-9a-f]{16})$/);
+  if (!m) return null;
+  const base = env.NEXT_PUBLIC_SUPABASE_URL || SUPA, key = env.NEXT_PUBLIC_SUPABASE_KEY || KEY;
+  const r = await fetch(`${base}/rest/v1/coins?select=address&chain_id=eq.${m[1]}&launch_key=eq.${m[2]}&limit=1`, { headers: { apikey: key, authorization: `Bearer ${key}` }, cf: { cacheTtl: 300 } }).catch(() => null);
+  const row = r && r.ok ? (await r.json())[0] : null;
+  return row ? `${m[1]}-${row.address}` : null;
+}
+
 export async function onRequestGet(ctx) {
+  try {
+    const u = new URL(ctx.request.url);
+    if (u.searchParams.get("k") && !u.searchParams.get("c")) {
+      const id = await byLaunchKey(ctx.env, u.searchParams.get("k"));
+      if (id) return Response.redirect(`${u.origin}/coin/?c=${id}`, 302);
+    }
+  } catch { /* the page itself resolves the key */ }
   const res = await ctx.next();
   try {
     const url = new URL(ctx.request.url);

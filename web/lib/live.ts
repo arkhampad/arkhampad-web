@@ -72,6 +72,10 @@ export type LiveCoin = Coin & {
   creatorFees?: number;
   /** When DexScreener first listed the coin (mainnet coins only). */
   dexListedAt?: string | null;
+  /** "clanker": launched here through Clanker (paired with ETH / BNB, trades through DEX routes). */
+  venue?: string | null;
+  /** Total supply in whole coins (1B for ArkhamPad's own pools, 100B for Clanker coins). */
+  supply?: number;
 };
 
 /** Creator-written details stored with the coin (description and links). */
@@ -85,7 +89,7 @@ export function parseMeta(uri: string | null | undefined): LiveCoin["about"] {
 }
 
 type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null };
-type OwnRow = { dex_listed_at?: string | null; creator_fees_usd?: number | null; pool_usd?: number | null; image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
+type OwnRow = { venue?: string | null; supply?: number | string | null; dex_listed_at?: string | null; creator_fees_usd?: number | null; pool_usd?: number | null; image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
 
 /** Names with no Latin letters or digits, or placeholder "?" names, are spam in lists (search still finds them). */
 // Fake market caps (hundreds of billions on a day-old token) never show either.
@@ -123,7 +127,20 @@ export function fromOwn(r: OwnRow): LiveCoin {
     about: parseMeta(r.metadata_uri), feeMode: r.fee_mode, lockSeconds: Number(r.lock_seconds ?? 0),
     creatorFees: Number(r.creator_fees_usd ?? 0),
     dexListedAt: r.dex_listed_at ?? null,
+    venue: r.venue ?? null,
+    supply: Number(r.supply) > 0 ? Number(r.supply) : 1e9,
   };
+}
+/** Total supply in whole coins (our own pools: 1B). */
+export const supplyOf = (c: Pick<LiveCoin, "supply"> | null | undefined) => (c?.supply && c.supply > 0 ? c.supply : 1e9);
+export const isClanker = (c: Pick<LiveCoin, "venue"> | null | undefined) => c?.venue === "clanker";
+
+/** A coin launched here through Clanker, from the short key in its on-chain link (?k=<chain>-<key>). */
+export async function getCoinByKey(k: string): Promise<LiveCoin | null> {
+  const m = k.match(/^(\d+)-([0-9a-f]{16})$/);
+  if (!m) return null;
+  const { data } = await db().from("coin_list").select("*").eq("chain_id", Number(m[1])).eq("launch_key", m[2]).limit(1);
+  return data && data.length ? fromOwn(data[0] as OwnRow) : null;
 }
 
 // ---------------------------------------------------------------- queries
