@@ -64,12 +64,17 @@ async function nativeUsd() {
 }
 
 /** Universal Router V4_SWAP: exact input on one pool. */
-function swapCall(key, zeroForOne, amountIn, minOut) {
+// Newer Universal Router builds add minHopPriceX36 to the single-pool swap (picked by probing).
+let NEW_PARAMS = false;
+function swapCall(key, zeroForOne, amountIn, minOut, newParams = NEW_PARAMS) {
   const inC = zeroForOne ? key.currency0 : key.currency1, outC = zeroForOne ? key.currency1 : key.currency0;
   const actions = "0x060c0f"; // SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL
   const params = [
-    encodeAbiParameters([{ type: "tuple", components: [{ name: "poolKey", ...POOLKEY }, { name: "zeroForOne", type: "bool" }, { name: "amountIn", type: "uint128" }, { name: "amountOutMinimum", type: "uint128" }, { name: "hookData", type: "bytes" }] }],
-      [{ poolKey: key, zeroForOne, amountIn, amountOutMinimum: minOut, hookData: "0x" }]),
+    newParams
+      ? encodeAbiParameters([{ type: "tuple", components: [{ name: "poolKey", ...POOLKEY }, { name: "zeroForOne", type: "bool" }, { name: "amountIn", type: "uint128" }, { name: "amountOutMinimum", type: "uint128" }, { name: "minHopPriceX36", type: "uint256" }, { name: "hookData", type: "bytes" }] }],
+        [{ poolKey: key, zeroForOne, amountIn, amountOutMinimum: minOut, minHopPriceX36: 0n, hookData: "0x" }])
+      : encodeAbiParameters([{ type: "tuple", components: [{ name: "poolKey", ...POOLKEY }, { name: "zeroForOne", type: "bool" }, { name: "amountIn", type: "uint128" }, { name: "amountOutMinimum", type: "uint128" }, { name: "hookData", type: "bytes" }] }],
+        [{ poolKey: key, zeroForOne, amountIn, amountOutMinimum: minOut, hookData: "0x" }]),
     encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [inC, amountIn]),
     encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [outC, minOut]),
   ];
@@ -143,6 +148,13 @@ async function main() {
   // after Clanker's protection (max 2 minutes) trading is normal
   await test.increaseTime({ seconds: 180 }); await test.mine({ blocks: 5 });
 
+  // which swap format does this chain's Universal Router take?
+  const probe = async (np) => pub.call({ account: trader.address, to: UR, data: swapCall(key, !coinIs0, buyIn, 1n, np) }).then(() => "ok", (e) => `${e.shortMessage ?? e.message}`.split("\n")[0].slice(0, 140));
+  const pOld = await probe(false), pNew = await probe(true);
+  console.log(`  · router format: classic ${pOld} | new ${pNew}`);
+  assert.ok(pOld === "ok" || pNew === "ok", "no swap format works on this router");
+  NEW_PARAMS = pOld !== "ok";
+  ok(`Universal Router swap format: ${NEW_PARAMS ? "new (minHopPriceX36)" : "classic"}`);
   const w0 = await bal(k.paired, trader.address);
   await wTrader.sendTransaction({ to: UR, data: swapCall(key, !coinIs0, buyIn, 1n), gas: 1_500_000n }).then(mined);
   const coins = await bal(coin, trader.address);
