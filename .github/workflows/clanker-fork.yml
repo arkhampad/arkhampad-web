@@ -54,3 +54,11 @@ jobs:
         env:
           CHAIN_ID: ${{ matrix.id }}
         run: node test/clanker-fork.mjs
+
+      - name: Real Clanker coins - screeners and trading routes (read-only)
+        if: always()
+        continue-on-error: true
+        env:
+          CHAIN_ID: ${{ matrix.id }}
+          RPC: ${{ secrets[matrix.rpc] }}
+        run: node test/clanker-probe.mjs
