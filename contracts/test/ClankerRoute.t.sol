@@ -164,6 +164,57 @@ abstract contract ClankerRouteBase is Test {
         _routeHoldsNothing();
     }
 
+    /// The round-trip quote matches a real buy followed by a real sale.
+    function test_roundTripMatchesRealTrades() public {
+        address me = address(0xCAFE);
+        usdc.mint(me, 100e6);
+        (uint256 qc, uint256 qb) = route.quoteRoundTrip(address(coin), 100e6, coinKey);
+        vm.startPrank(me);
+        usdc.approve(address(route), 100e6);
+        uint256 got = route.buy(address(coin), 100e6, coinKey);
+        coin.approve(address(route), got);
+        uint256 back = route.sell(address(coin), got, coinKey);
+        vm.stopPrank();
+        assertEq(qc, got, "round trip: coins");
+        if (_mode() < 2) assertEq(qb, back, "round trip: dollars back");
+        else assertApproxEqRel(qb, back, 0.001e18, "round trip: dollars back (v3 hops quoted on today's pool)");
+        _routeHoldsNothing();
+    }
+
+    /// A Clanker-style pool at its starting price holds only coins: a sale quoted on its own returns
+    /// almost nothing, but buying and selling straight back works. The round-trip quote shows it.
+    function test_startingPricePool() public {
+        RouteCoin fresh = new RouteCoin();
+        fresh.mint(address(this), 1e40);
+        fresh.approve(address(lp), type(uint256).max);
+        bool coinIs0 = address(fresh) < address(weth);
+        PoolKey memory k = PoolKey(Currency.wrap(coinIs0 ? address(fresh) : address(weth)), Currency.wrap(coinIs0 ? address(weth) : address(fresh)), 10_000, 200, IHooks(address(0)));
+        int24 t = coinIs0 ? int24(-184200) : int24(184200);
+        pm.initialize(k, TickMath.getSqrtPriceAtTick(t));
+        // all coins, no ETH: coin = token0 -> range above the price; coin = token1 -> range below it
+        ModifyLiquidityParams memory p = coinIs0 ? ModifyLiquidityParams(t, t + 40_000, 1e24, 0) : ModifyLiquidityParams(t - 40_000, t, 1e24, 0);
+        lp.modifyLiquidity(k, p, "");
+        (uint256 qc, uint256 qb) = route.quoteRoundTrip(address(fresh), 10e6, k);
+        assertGt(qc, 0);
+        // a sale quoted on its own: the pool has no ETH to pay (reverts NoOutput, or returns dust)
+        uint256 alone;
+        try route.quote(false, address(fresh), qc, k) returns (uint256 x) { alone = x; } catch { alone = 0; }
+        assertLt(alone, 1e6, "a sale on its own finds no ETH");
+        assertGt(qb, 9.5e6, "buy then sell back returns most of it");
+        // and real trades do the same
+        address me = address(0xBEEF);
+        usdc.mint(me, 10e6);
+        vm.startPrank(me);
+        usdc.approve(address(route), 10e6);
+        uint256 got = route.buy(address(fresh), 10e6, k);
+        fresh.approve(address(route), got);
+        uint256 back = route.sell(address(fresh), got, k);
+        vm.stopPrank();
+        assertEq(got, qc);
+        if (_mode() < 2) assertEq(back, qb);
+        else assertApproxEqRel(back, qb, 0.001e18);
+    }
+
     function test_refusesWrongPools() public {
         address me = address(0xCAFE);
         usdc.mint(me, 10e6);
@@ -199,6 +250,8 @@ abstract contract ClankerRouteBase is Test {
         route.quoteInner(true, false, address(coin), 1e6, coinKey);
         vm.expectRevert(PadClankerRoute.NotSelf.selector);
         route.v3QuoteInner(true, 1e6);
+        vm.expectRevert(PadClankerRoute.NotSelf.selector);
+        route.roundInner(false, address(coin), 1e6, coinKey);
     }
 
     function test_badDollarPoolRefused() public {

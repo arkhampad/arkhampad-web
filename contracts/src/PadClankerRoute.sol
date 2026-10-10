@@ -62,6 +62,7 @@ contract PadClankerRoute is IUnlockCallback, ReentrancyGuardTransient {
 
     uint8 private constant BUY = 1;
     uint8 private constant SELL = 2;
+    uint8 private constant ROUND = 3; // quote only: a buy, then selling everything it got straight back
     // transient flags: the v3 pool may call back only while this route is swapping in it
     bytes32 private constant V3_ACTIVE = keccak256("PadClankerRoute.v3.active");
     bytes32 private constant V3_QUOTE = keccak256("PadClankerRoute.v3.quote");
@@ -75,6 +76,7 @@ contract PadClankerRoute is IUnlockCallback, ReentrancyGuardTransient {
     error ZeroAmount();
     error NoOutput();
     error QuoteResult(uint256 amountOut);
+    error RoundTripResult(uint256 coinsOut, uint256 amountBack);
     error NotSelf();
     error Unsettled();
 
@@ -171,10 +173,31 @@ contract PadClankerRoute is IUnlockCallback, ReentrancyGuardTransient {
         return _catchQuote(abi.encodeCall(this.v3QuoteInner, (false, e)));
     }
 
+    /// @notice A buy of `usdcIn`, then selling every coin it got straight back, as one simulation:
+    /// what the buyer gets and what an immediate sale would return (USDC). This is the honest
+    /// "can it be sold?" check: a Clanker pool at its starting price holds no ETH until someone buys,
+    /// so a sale quoted on its own (before the buy) says nothing. Call it with eth_call.
+    function quoteRoundTrip(address coin, uint256 usdcIn, PoolKey calldata coinKey) external returns (uint256 coinsOut, uint256 usdcBack) {
+        _checkCoinKey(coin, coinKey);
+        if (usdcIn == 0) revert ZeroAmount();
+        if (dollarV3 == address(0)) return _catchRound(abi.encodeCall(this.roundInner, (false, coin, usdcIn, coinKey)));
+        // v3 dollar pool: its two hops are quoted on today's pool (a deep pool; one trade barely moves it)
+        uint256 eth = _catchQuote(abi.encodeCall(this.v3QuoteInner, (true, usdcIn)));
+        uint256 ethBack;
+        (coinsOut, ethBack) = _catchRound(abi.encodeCall(this.roundInner, (true, coin, eth, coinKey)));
+        usdcBack = _catchQuote(abi.encodeCall(this.v3QuoteInner, (false, ethBack)));
+    }
+
     /// @dev Only for quote(): runs the v4 swaps and reverts with the output.
     function quoteInner(bool isBuy, bool coinOnly, address coin, uint256 amountIn, PoolKey calldata coinKey) external {
         if (msg.sender != address(this)) revert NotSelf();
         poolManager.unlock(abi.encode(Job(isBuy ? BUY : SELL, true, coinOnly, coin, amountIn, address(0), coinKey)));
+    }
+
+    /// @dev Only for quoteRoundTrip(): buy then sell back inside one unlock, reverts with both results.
+    function roundInner(bool coinOnly, address coin, uint256 amountIn, PoolKey calldata coinKey) external {
+        if (msg.sender != address(this)) revert NotSelf();
+        poolManager.unlock(abi.encode(Job(ROUND, true, coinOnly, coin, amountIn, address(0), coinKey)));
     }
 
     /// @dev Only for quote(): runs the v3 swap and reverts with the output.
@@ -194,6 +217,19 @@ contract PadClankerRoute is IUnlockCallback, ReentrancyGuardTransient {
         }
     }
 
+    function _catchRound(bytes memory call) private returns (uint256 coinsOut, uint256 back) {
+        (bool ok, bytes memory r) = address(this).call(call);
+        if (ok) revert NoOutput(); // the inner calls always revert
+        if (r.length == 68 && bytes4(r) == RoundTripResult.selector) {
+            assembly {
+                coinsOut := mload(add(r, 36))
+                back := mload(add(r, 68))
+            }
+        } else {
+            assembly { revert(add(r, 32), mload(r)) }
+        }
+    }
+
     // ------------------------------------------------------------------ inside the v4 unlock
 
     function unlockCallback(bytes calldata raw) external returns (bytes memory) {
@@ -201,6 +237,13 @@ contract PadClankerRoute is IUnlockCallback, ReentrancyGuardTransient {
         Job memory j = abi.decode(raw, (Job));
         bool coinIs0 = Currency.unwrap(j.coinKey.currency0) == j.coin;
         uint256 out;
+        if (j.side == ROUND) {
+            // quote only: buy, then sell every coin straight back (nothing is settled: it all reverts)
+            uint256 e = j.coinOnly ? j.amountIn : _swapIn(_dollarKey(), dollarC0 == usdc, j.amountIn);
+            uint256 coins = _swapIn(j.coinKey, !coinIs0, e);
+            uint256 eBack = _swapIn(j.coinKey, coinIs0, coins);
+            revert RoundTripResult(coins, j.coinOnly ? eBack : _swapIn(_dollarKey(), dollarC0 != usdc, eBack));
+        }
         if (j.side == BUY) {
             uint256 eth = j.amountIn; // v3 dollar pool: the WETH is already here
             if (!j.coinOnly) {

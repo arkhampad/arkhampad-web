@@ -66,10 +66,11 @@ contract DeployClankerRoute is Script {
         console2.log("clankerRoute", address(route));
         // check it on the real pools: a $10 buy of the live coin, and selling those coins back
         PoolKey memory k = IClankerLockerView(c.locker).tokenRewards(c.liveCoin).poolKey;
-        uint256 coins = route.quote(true, c.liveCoin, c.ten, k);
-        uint256 back = route.quote(false, c.liveCoin, coins, k);
+        // a buy, then selling every coin straight back (a pool at its starting price holds no ETH
+        // until someone buys, so the sale must be quoted after the buy)
+        (uint256 coins, uint256 back) = route.quoteRoundTrip(c.liveCoin, c.ten, k);
         console2.log("quote: $10 buys coins", coins / 1e18);
-        console2.log("quote: selling them back gives (chain units)", back);
+        console2.log("quote: selling them straight back gives (chain units)", back);
         require(coins > 0 && back > (c.ten * 90) / 100, "route quote check failed");
     }
 }

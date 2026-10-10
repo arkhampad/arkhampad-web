@@ -98,6 +98,9 @@ abstract contract ClankerRouteForkBase is Test {
         uint256 spend = amountIn - (amountIn * 100) / 10_000;
         uint256 q = route.quote(true, _coin(), spend, coinKey);
         assertGt(q, 0, "no quote");
+        // the check the relayer runs before every buy: buying and selling straight back
+        (uint256 rc, uint256 rb) = route.quoteRoundTrip(_coin(), spend, coinKey);
+        assertEq(rc, q, "round trip: coins");
         PadExtSwap.Swap memory s = _signed(PadExtSwap.Swap(user, true, _coin(), amountIn, (q * 98) / 100, address(route),
             abi.encodeCall(PadClankerRoute.buy, (_coin(), spend, coinKey)), fee, 1, block.timestamp + 120, ""));
         uint256 u0 = IERC20(_usdc()).balanceOf(user);
@@ -118,6 +121,8 @@ abstract contract ClankerRouteForkBase is Test {
         vm.prank(relayer);
         uint256 back = sw.swap(s2);
         assertEq(back, expect, "sell != quote");
+        // the round-trip quote (before the buy) said what the sale returns
+        assertApproxEqRel(rb, qs, 0.001e18, "round trip: dollars back");
         assertEq(IERC20(_usdc()).balanceOf(user) - u1, back);
         assertEq(IERC20(_coin()).balanceOf(user), 0, "all coins sold");
         _nothingLeft();
