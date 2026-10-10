@@ -116,7 +116,8 @@ export async function deployTx({ locker, salt, socials = [], chainId, name, symb
   return { to: k.factory, data, value, abi: tx.abi, args: [cfg], tick, expected: tx.expectedAddress ? getAddress(tx.expectedAddress) : null };
 }
 
-const lockersOf = (chainId) => [clankerOf(chainId).locker, ...(LOCKER_FALLBACKS[Number(chainId)] ?? []).map((a) => getAddress(a))];
+/** Every Clanker locker we may use on a chain (their own fee-conversion swaps are not trades). */
+export const lockersOf = (chainId) => [clankerOf(chainId).locker, ...(LOCKER_FALLBACKS[Number(chainId)] ?? []).map((a) => getAddress(a))];
 
 /** Reads the TokenCreated event from a deploy receipt. */
 export function parseCreated(chainId, logs, abi = [TOKEN_CREATED]) {

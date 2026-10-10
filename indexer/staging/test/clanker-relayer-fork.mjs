@@ -30,7 +30,7 @@ fs.writeFileSync(file, JSON.stringify([forkEntry]));
 const relayerKey = generatePrivateKey();
 Object.assign(process.env, { CHAINS_FILE: file, FORK_RPC: RPC, RELAYER_KEY: relayerKey, PUBLIC_URL, CLANKER_FLOAT_USD: "0", FEE_MAX_USD: "100000", LIMITS_ON: "off" });
 const { makeRelayer } = await import("../relayer.mjs");
-const { clankerOf, TOKEN_CREATED } = await import("../clanker.mjs");
+const { clankerOf, lockersOf, TOKEN_CREATED } = await import("../clanker.mjs");
 const { clankerTrade } = await import("../poolmath.mjs");
 
 const chain = { id: CHAIN_ID, name: `fork-${CHAIN_ID}`, nativeCurrency: { name: NATIVE, symbol: NATIVE, decimals: 18 }, rpcUrls: { default: { http: [RPC] } } };
@@ -193,8 +193,13 @@ async function main() {
 
   // ---- 5. the indexer's numbers for these trades
   const usd = Number((await (await fetch(`https://api.coinbase.com/v2/prices/${NATIVE}-USD/spot`)).json()).data.amount);
-  const swaps = await pub.getLogs({ event: SWAP_EV, args: { id: ev.args.poolId }, fromBlock: from, toBlock: "latest" });
+  const all = await pub.getLogs({ event: SWAP_EV, args: { id: ev.args.poolId }, fromBlock: from, toBlock: "latest" });
+  // the indexer skips the locker's own fee-conversion swaps (bookkeeping, not trades)
+  const lockers = new Set(lockersOf(CHAIN_ID).map((a) => a.toLowerCase()));
+  const swaps = all.filter((s) => !lockers.has(s.args.sender.toLowerCase()));
+  console.log(`  · ${all.length} pool swaps: ${swaps.length} trades + ${all.length - swaps.length} locker fee conversions`);
   assert.equal(swaps.length, 6);
+  assert.ok(all.filter((s) => lockers.has(s.args.sender.toLowerCase())).every((s) => s.args.sender.toLowerCase() === getAddress(ev.args.locker).toLowerCase()));
   for (const s of swaps.slice(0, 2)) {
     const t = clankerTrade(s.args, coin, k.paired, usd);
     console.log(`  · ${t.isBuy ? "buy " : "sell"} $${t.usdc.toFixed(2)} ${Math.round(t.coins)} coins, fee $${t.fee.toFixed(4)} (${(t.feeRate * 100).toFixed(2)}%), market cap after $${Math.round(t.price * 1e11)}`);
