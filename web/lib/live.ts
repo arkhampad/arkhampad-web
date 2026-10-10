@@ -160,7 +160,8 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
   const limit = opts.limit ?? 50, from = opts.offset ?? 0;
   const ownTab = tab === "Launched here" || tab === "Bonding" || tab === "Graduated";
   const ownIds = opts.chain ? OWN_CHAINS.filter((c) => chainName(c) === opts.chain) : OWN_CHAINS;
-  const extIds = opts.chain === "Base" ? [8453] : opts.chain === "Robinhood" ? [4663] : opts.chain === "BNB" ? [56] : opts.chain === "Arc" ? [5042] : [8453, 4663, 56, 5042];
+  // Arc coins are hidden until they can be traded here (no swap route on Arc yet)
+  const extIds = opts.chain === "Base" ? [8453] : opts.chain === "Robinhood" ? [4663] : opts.chain === "BNB" ? [56] : opts.chain === "Arc" ? [-1] : [8453, 4663, 56];
   const words = opts.cat ? CAT_WORDS[opts.cat] : null;
   const like = (col: string) => (words ? words.map((w) => `${col}.ilike.*${w}*`).join(",") : null);
 
@@ -230,7 +231,7 @@ export async function findCoins(f: import("./finder").Finder, limit = 60): Promi
     })());
   }
   if (wantExt) {
-    const ids = f.chain === "Base" ? [8453] : f.chain === "Robinhood" ? [4663] : f.chain === "BNB" ? [56] : f.chain === "Arc" ? [5042] : [8453, 4663, 56, 5042];
+    const ids = f.chain === "Base" ? [8453] : f.chain === "Robinhood" ? [4663] : f.chain === "BNB" ? [56] : f.chain === "Arc" ? [-1] : [8453, 4663, 56];
     jobs.push((async () => {
       let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,spark,trending_rank").in("chain_id", ids);
       if (await listedReady()) q = q.eq("listed", true);
@@ -280,6 +281,7 @@ export async function getCoin(id: string): Promise<LiveCoin | null> {
     if (data) return fromOwn(data as OwnRow);
   }
   // 2. a coin from another DEX (on mainnet both live on the same chains, e.g. Base)
+  if (chainId === 5042) return null; // Arc hidden until it can be traded here
   const { data: ext } = await db().from("ext_tokens").select("*").eq("chain_id", chainId).eq("address", address).maybeSingle();
   if (ext) return fromExt(ext as ExtRow);
   // 3. launched here seconds ago and not indexed yet: read it from the chain
@@ -513,7 +515,7 @@ export async function findByAddress(address: string): Promise<LiveCoin | null> {
   if (!/^0x[0-9a-f]{40}$/.test(a)) return null;
   const own = await db().from("coin_list").select("*").eq("address", a).limit(1);
   if (own.data && own.data.length) return fromOwn(own.data[0] as OwnRow);
-  const ext = await db().from("ext_tokens").select("*").eq("address", a).limit(1);
+  const ext = await db().from("ext_tokens").select("*").eq("address", a).neq("chain_id", 5042).limit(1);
   if (ext.data && ext.data.length) return fromExt(ext.data[0] as ExtRow);
   return null;
 }

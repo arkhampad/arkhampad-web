@@ -17,7 +17,7 @@ export type Finder = {
   sort?: "trending" | "new" | "gainers" | "losers" | "volume" | "mc" | "graduation";
 };
 
-const CHAINS = ["Base", "Robinhood", "BNB", "Arc"] as const;
+const CHAINS = ["Base", "Robinhood", "BNB"] as const; // Arc hidden until it can be traded here
 const TOPICS = ["AI", "Animals", "Gaming", "Culture"] as const;
 const SORTS = ["trending", "new", "gainers", "losers", "volume", "mc", "graduation"] as const;
 const n = (v: unknown, lo: number, hi: number) => { const x = Number(v); return v !== null && v !== "" && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : undefined; };

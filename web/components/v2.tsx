@@ -198,7 +198,7 @@ export function StatusBar() {
       <span><b className="mono">{n(s.trades)}</b> trades today</span>
       <span><b className="mono">{n(s.traders)}</b> traders today</span>
       <span style={{ flex: 1 }} />
-      <span className="dim">Base · Robinhood Chain</span>
+      <span className="dim">Base · BNB Chain · Robinhood Chain</span>
       <span className="sb-ok">All systems normal</span>
     </div>
   );

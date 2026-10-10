@@ -14,7 +14,8 @@ import { FinderBar, FinderResults, useFinder } from "@/components/finder";
 import { LIVE, NET_NAMES } from "@/lib/chain";
 
 const TABS: Tab[] = ["Trending", "New", "Launched here", "Gainers", "Top volume", "Losers"];
-const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB", "Arc"];
+// Arc is hidden until coins there can be traded here (no swap route on Arc yet)
+const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB"];
 const PAGE = 50;
 
 function Skeleton({ rows = 8 }: { rows?: number }) {
@@ -34,7 +35,7 @@ export default function Discover() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const chain = cat === "Base" || cat === "Robinhood" || cat === "BNB" || cat === "Arc" ? cat : null;
+  const chain = cat === "Base" || cat === "Robinhood" || cat === "BNB" ? cat : null;
   const topic = chain || cat === "All" ? null : cat;
 
   const load = useCallback(async (offset: number) => {
