@@ -2,7 +2,7 @@
 // Trading coins listed on other DEXs (mainnet only): live quotes from the KyberSwap aggregator,
 // gasless execution through PadExtSwap (the user signs; ArkhamPad takes 1%).
 import { createPublicClient, domainSeparator, encodeFunctionData, http, parseAbi, type Address, type Hex } from "viem";
-import { TradeError, ensureCash, netFee, type Signer } from "./chain";
+import { TradeError, ensureCash, netFee, receipt, type Signer } from "./chain";
 
 type ExtNet = { id: number; slug: string; usdc: Address; usdcDecimals: number; rpc: string; swap: Address | null; permitUsdc: boolean };
 // NEXT_PUBLIC_* values reach the browser only when written as literal process.env.NAME
@@ -94,11 +94,8 @@ async function approveWithGas(n: ExtNet, s: Signer, token: Address, need: bigint
   const hash = await withTimeout(s.sendTx(n.id, { to: token, data: encodeFunctionData({ abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [n.swap!, 2n ** 256n - 1n] }) }), 60_000);
   const c = pub(n);
   // ask for the receipt directly: a load-balanced node a block behind must not fail the wait
-  for (let end = Date.now() + 60_000; ; ) {
-    if (await c.getTransactionReceipt({ hash }).catch(() => null)) break;
-    if (Date.now() > end) throw new TradeError("Approval is taking longer than usual. Please try again in a minute.");
-    await new Promise((ok) => setTimeout(ok, 300));
-  }
+  await receipt(n.id, hash, 60_000, 300).catch(() => { throw new TradeError("Approval is taking longer than usual. Please try again in a minute."); });
+  void c;
   for (let i = 0; i < 12; i++) {
     if ((await c.readContract({ address: token, abi: ERC, functionName: "allowance", args: [s.address, n.swap!] }).catch(() => 0n)) >= need) return owed;
     await new Promise((ok) => setTimeout(ok, 700));

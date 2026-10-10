@@ -144,7 +144,9 @@ export function makeRelayer() {
     if (!rpc || !c.router) continue;
     const chain = { id: c.chainId, name: c.name, nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } };
     const transport = http(rpc, { retryCount: 2, timeout: 20_000 });
-    nets.set(c.chainId, { c, pub: createPublicClient({ chain, transport }), wallet: createWalletClient({ account, chain, transport }), router: getAddress(c.router), faucet: c.faucet ? getAddress(c.usdc) : null });
+    // read-only backups, used to look up receipts when the main RPC lags or forgets (BNB)
+    const backups = (c.receiptRpcs ?? []).filter((u) => u !== rpc).map((u) => createPublicClient({ chain, transport: http(u, { retryCount: 0, timeout: 8_000 }) }));
+    nets.set(c.chainId, { c, pub: createPublicClient({ chain, transport }), backups, wallet: createWalletClient({ account, chain, transport }), router: getAddress(c.router), faucet: c.faucet ? getAddress(c.usdc) : null });
   }
   const faucetLast = new Map();
   let db = null;
@@ -165,8 +167,10 @@ export function makeRelayer() {
    */
   async function waitRc(n, { hash, pollingInterval = 300, timeout = 60_000 }) {
     const end = Date.now() + timeout;
-    for (;;) {
-      const rc = await n.pub.getTransactionReceipt({ hash }).catch(() => null);
+    // some public nodes never return a fresh receipt: ask the main RPC and the backups in turn
+    const all = [n.pub, ...(n.backups ?? [])];
+    for (let i = 0; ; i++) {
+      const rc = await all[i % all.length].getTransactionReceipt({ hash }).catch(() => null);
       if (rc) return rc;
       if (Date.now() > end) throw new Error(`no receipt for ${hash} after ${Math.round(timeout / 1000)}s`);
       await new Promise((ok) => setTimeout(ok, Math.max(pollingInterval, 250)));

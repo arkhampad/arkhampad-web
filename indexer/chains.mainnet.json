@@ -66,6 +66,12 @@
     "v2": true,
     "extSwap": "0x3f49Ab48d9e04bd12D9D5613d2d879Eb754a5CA9",
     "vault": "0x9Ce7025C69044F3EB599BaF1aEf8fBE7B50BF570",
-    "headLag": 3
+    "headLag": 3,
+    "receiptRpcs": [
+      "https://bsc-dataseed.bnbchain.org",
+      "https://bsc-dataseed1.defibit.io",
+      "https://bsc.drpc.org",
+      "https://bsc-rpc.publicnode.com"
+    ]
   }
 ]

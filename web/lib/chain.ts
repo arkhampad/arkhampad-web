@@ -46,7 +46,7 @@ export const viemChain = (id: number) => (id === 84532 ? baseSepolia : id === 46
 const BACKUP_RPCS: Record<number, string[]> = {
   8453: ["https://mainnet.base.org", "https://base-rpc.publicnode.com"],
   84532: ["https://sepolia.base.org", "https://base-sepolia-rpc.publicnode.com"],
-  56: ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed.bnbchain.org"],
+  56: ["https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com", "https://bsc.drpc.org"],
   // the official endpoint sits behind a Cloudflare challenge that blocks apps now and then
   4663: ["https://robinhood.drpc.org", "https://rpc.mainnet.chain.robinhood.com"],
 };
@@ -58,10 +58,23 @@ const clients = new Map<number, PublicClient>();
  * load-balanced public RPC (BNB) can answer from a node a block behind, which fails the wait
  * even though the transaction went through. Here any error just means "not yet".
  */
+const receiptClients = new Map<number, PublicClient[]>();
+/** One client per RPC: a node that never returns a fresh receipt answers "null", not an error. */
+function receiptClientsFor(id: number): PublicClient[] {
+  let l = receiptClients.get(id);
+  if (!l) {
+    const n = netOf(id);
+    const urls = [...new Set([n?.rpc, ...(n?.rpcs ?? []), ...(BACKUP_RPCS[id] ?? [])].filter(Boolean) as string[])];
+    l = urls.map((u) => createPublicClient({ chain: viemChain(id), transport: http(u, { retryCount: 0, timeout: 8_000 }) }) as PublicClient);
+    receiptClients.set(id, l);
+  }
+  return l;
+}
 export async function receipt(id: number, hash: Hex, timeout = 60_000, every = 300) {
   const end = Date.now() + timeout;
-  for (;;) {
-    const rc = await client(id).getTransactionReceipt({ hash }).catch(() => null);
+  const all = receiptClientsFor(id);
+  for (let i = 0; ; i++) {
+    const rc = await (all.length ? all[i % all.length] : client(id)).getTransactionReceipt({ hash }).catch(() => null);
     if (rc) return rc;
     if (Date.now() > end) throw new Error("Timed out waiting for the transaction.");
     await new Promise((ok) => setTimeout(ok, every));
