@@ -33,9 +33,9 @@ const OPTS0 = [
   { name: "Dip Hopper", tick: "HOPPR", desc: "A space frog that hops in every time the chart dips. Never sleeps, never sells.", c1: "#0B3B2E", c2: "#2BB38A" },
   { name: "Orbit Toad", tick: "OTOAD", desc: "Zero gravity, zero panic. This toad buys dips from low orbit.", c1: "#3B1B0B", c2: "#FF8A3D" },
 ];
-// Networks where launching is paused: BNB Chain until its Clanker launches are switched on
-// (DEX screeners don't list its Uniswap v4 USDC pools).
-const CREATE_PAUSED = new Set<number>([56]);
+// Networks where launching is paused (none: Base, BNB Chain and Robinhood launch through Clanker,
+// paired with ETH / BNB, so DEX screeners and trading bots see every coin at once).
+const CREATE_PAUSED = new Set<number>();
 function CreateView() {
   const q = useSearchParams();
   const { toast, openFunds } = useApp();

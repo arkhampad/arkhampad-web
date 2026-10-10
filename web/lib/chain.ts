@@ -578,9 +578,8 @@ export async function launch(chainId: number, l: LaunchInput, s: Signer): Promis
 }
 
 // ---------------------------------------------------------------- Clanker launches (Base, BNB, Robinhood)
-/** Chains where new coins launch through Clanker (paired with ETH / BNB, seen by every DEX screener).
- *  Base first; BNB Chain and Robinhood join after their own live test launch. */
-export const CLANKER_CHAINS = new Set([8453]);
+/** Chains where new coins launch through Clanker (paired with ETH / BNB, seen by every DEX screener). */
+export const CLANKER_CHAINS = new Set([8453, 56, 4663]);
 export const isClankerChain = (id: number) => CLANKER_CHAINS.has(id);
 /** Clanker coins have 100B coins; ArkhamPad's own pools 1B. */
 export const CLANKER_SUPPLY = 1e11;
