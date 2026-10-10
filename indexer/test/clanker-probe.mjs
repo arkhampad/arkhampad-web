@@ -7,11 +7,13 @@ import { createPublicClient, http } from "viem";
 import { clankerOf, TOKEN_CREATED } from "../clanker.mjs";
 
 const CHAIN_ID = Number(process.env.CHAIN_ID || 8453);
-const RPC = String(process.env.RPC || "").split(",")[0].trim();
+// the secret first, then public nodes (some nodes refuse log searches)
+const PUBLIC = { 8453: ["https://mainnet.base.org", "https://base-rpc.publicnode.com"], 56: ["https://bsc-rpc.publicnode.com", "https://bsc.drpc.org", "https://1rpc.io/bnb"], 4663: ["https://robinhood.drpc.org"] }[Number(process.env.CHAIN_ID || 8453)] ?? [];
+const RPCS = [...String(process.env.RPC || "").split(",").map((u) => u.trim()).filter(Boolean), ...PUBLIC];
 const SLUG = { 8453: { dex: "base", gt: "base", kyber: "base" }, 56: { dex: "bsc", gt: "bsc", kyber: "bsc" }, 4663: { dex: "robinhood", gt: "robinhood", kyber: "robinhood" } }[CHAIN_ID];
 const USDC = { 8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 56: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", 4663: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168" }[CHAIN_ID];
 const USDC_DEC = CHAIN_ID === 56 ? 18 : 6;
-const pub = createPublicClient({ transport: http(RPC, { timeout: 30_000, retryCount: 2 }) });
+let pub = createPublicClient({ transport: http(RPCS[0], { timeout: 30_000, retryCount: 2 }) });
 const k = clankerOf(CHAIN_ID);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const getJson = async (url, headers = {}) => { try { const r = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) }); return { status: r.status, j: await r.json().catch(() => null) }; } catch (e) { return { status: 0, j: null, err: e.message }; } };
@@ -25,14 +27,23 @@ async function blockAt(secondsAgo) {
 
 async function main() {
   console.log(`Chain ${CHAIN_ID} · Clanker factory ${k.factory}`);
+  // pick the first node that answers a log search
+  for (const u of RPCS) {
+    const c = createPublicClient({ transport: http(u, { timeout: 30_000, retryCount: 1 }) });
+    const tip = await c.getBlockNumber().catch(() => null);
+    if (tip === null) continue;
+    const okLogs = await c.getLogs({ address: k.factory, event: TOKEN_CREATED, fromBlock: tip - 100n, toBlock: tip - 1n }).then(() => true, (e) => { console.log(`  node ${u.replace(/\/\/([^/]+).*/, "//$1")}: ${String(e.shortMessage ?? e.message).slice(0, 80)}`); return false; });
+    if (okLogs) { pub = c; console.log(`  using ${u.replace(/\/\/([^/]+).*/, "//$1")}`); break; }
+  }
   const { at, per } = await blockAt(3 * 3600); // coins from ~3 hours ago and earlier
   console.log(`block time ~${per.toFixed(2)}s, looking back from block ${at}`);
   const found = [];
   let to = at;
   const STEP = 500n;
-  for (let i = 0; i < 400 && found.length < 12; i++) {
+  let fails = 0;
+  for (let i = 0; i < 400 && found.length < 12 && fails < 20; i++) {
     const from = to - STEP + 1n;
-    const logs = await pub.getLogs({ address: k.factory, event: TOKEN_CREATED, fromBlock: from, toBlock: to }).catch((e) => { console.log(`  getLogs ${from}-${to}: ${e.shortMessage ?? e.message}`); return []; });
+    const logs = await pub.getLogs({ address: k.factory, event: TOKEN_CREATED, fromBlock: from, toBlock: to }).catch((e) => { fails++; console.log(`  getLogs ${from}-${to}: ${e.shortMessage ?? e.message}`); return []; });
     for (const l of logs) found.push({ token: l.args.tokenAddress, name: l.args.tokenName, paired: l.args.pairedToken, ctx: l.args.tokenContext, block: l.blockNumber });
     to = from - 1n;
   }
