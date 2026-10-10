@@ -1,0 +1,56 @@
+name: Clanker fork test
+
+# Launches a test coin through Clanker on a local copy of each real chain (nothing is sent
+# to the real chain, nothing is spent) and checks every ArkhamPad setting.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "indexer/clanker.mjs"
+      - "indexer/test/clanker-fork.mjs"
+
+jobs:
+  fork:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { chain: base, id: 8453, rpc: BASE_RPC }
+          - { chain: bnb, id: 56, rpc: BNB_RPC }
+          - { chain: robinhood, id: 4663, rpc: ROBINHOOD_RPC }
+    name: ${{ matrix.chain }}
+    defaults:
+      run:
+        working-directory: indexer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Foundry (anvil)
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+
+      - name: Install packages
+        run: npm ci
+
+      - name: Start a local copy of the chain
+        env:
+          RPC: ${{ secrets[matrix.rpc] }}
+        run: |
+          RPC="${RPC%%,*}"
+          anvil --fork-url "$RPC" --chain-id ${{ matrix.id }} --port 8545 --silent &
+          for i in $(seq 1 60); do
+            cast block-number --rpc-url http://127.0.0.1:8545 >/dev/null 2>&1 && break
+            sleep 2
+          done
+          cast block-number --rpc-url http://127.0.0.1:8545
+
+      - name: Launch and trade a test coin
+        env:
+          CHAIN_ID: ${{ matrix.id }}
+        run: node test/clanker-fork.mjs
