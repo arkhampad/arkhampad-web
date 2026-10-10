@@ -50,7 +50,7 @@ export async function sellBackOk({ chainId, coin, coins, coinDec, usdc, usdcDec,
   const s = SLUG[chainId];
   if (!s || !(price > 0) || coins <= 0n) return { ok: false, back: 0 };
   try {
-    const r = await fetchFn(`https://aggregator-api.kyberswap.com/${s.dex}/api/v1/routes?tokenIn=${coin}&tokenOut=${usdc}&amountIn=${coins}`, { headers: { "x-client-id": "arkhampad" }, signal: AbortSignal.timeout(8000) });
+    const r = await fetchFn(`https://aggregator-api.kyberswap.com/${s.dex}/api/v1/routes?tokenIn=${coin}&tokenOut=${usdc}&amountIn=${coins}&excludeRFQSources=true`, { headers: { "x-client-id": "arkhampad" }, signal: AbortSignal.timeout(8000) });
     const j = await r.json().catch(() => null);
     const out = j?.data?.routeSummary?.amountOut;
     if (!out) return { ok: false, back: 0 };

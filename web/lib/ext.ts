@@ -29,7 +29,7 @@ const spendOf = (amountIn: bigint) => amountIn - (amountIn * FEE_BPS) / 10_000n;
 
 type Route = { amountOut: bigint; summary: unknown; router: Address };
 async function route(n: ExtNet, tokenIn: Address, tokenOut: Address, amountIn: bigint): Promise<Route> {
-  const r = await fetch(`${API}/${n.slug}/api/v1/routes?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}&gasInclude=true`, { headers: HEAD }).catch(() => null);
+  const r = await fetch(`${API}/${n.slug}/api/v1/routes?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}&excludeRFQSources=true&gasInclude=true`, { headers: HEAD }).catch(() => null);
   const j = r ? await r.json().catch(() => null) : null;
   const d = j?.data;
   if (!r?.ok || !d?.routeSummary) throw new TradeError("No price for this coin right now.");
@@ -76,7 +76,7 @@ async function guard(n: ExtNet, coin: Address, isBuy: boolean, amountIn: bigint,
   if (!(fair >= 1 - MAX_DEV)) throw new TradeError(GUARD_MSG);
   if (isBuy) {
     // a buy only when what it gets can be sold back near the market price (the relayer checks it too)
-    const r = await fetch(`${API}/${n.slug}/api/v1/routes?tokenIn=${coin}&tokenOut=${n.usdc}&amountIn=${amountOut}`, { headers: HEAD }).catch(() => null);
+    const r = await fetch(`${API}/${n.slug}/api/v1/routes?tokenIn=${coin}&tokenOut=${n.usdc}&amountIn=${amountOut}&excludeRFQSources=true`, { headers: HEAD }).catch(() => null);
     const j = r ? await r.json().catch(() => null) : null;
     const out = j?.data?.routeSummary?.amountOut;
     const back = out ? usd(BigInt(out)) / (coins(amountOut) * price) : 0;
@@ -193,8 +193,7 @@ async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell"
   const NET_FEE = await netFee(n.id, "extSwap"); // live network fee (site units: 6 decimals)
   // cash on another network comes over first (a few cents of room for any gas still owed)
   if (isBuy) await ensureCash(n.id, amount + NET_FEE + 50_000n, s);
-  // BNB Chain opens after its sell path passes the fork test
-  if (n.usdcDecimals !== 6) throw new TradeError("Trading BNB Chain coins here opens soon.");
+  // BNB Chain (18-decimal USDC): full buy + sell passed the fork test (Oct 10, CAKE, RFQ sources left out)
   // what goes on-chain: a buy's dollars in the network's USDC units; a sell's coins as they are
   const amountIn = isBuy ? up(n, amount) : amount;
   const spend = isBuy ? spendOf(amountIn) : amountIn;

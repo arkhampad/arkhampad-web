@@ -212,7 +212,7 @@ async function marketPrice(chainId, address) {
 }
 
 async function kyberOut(chainId, tokenIn, tokenOut, amountIn) {
-  const r = await fetch(`${KYBER}/${SLUG[chainId]}/api/v1/routes?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}`, { headers: { "x-client-id": "arkhampad" }, signal: AbortSignal.timeout(15_000) });
+  const r = await fetch(`${KYBER}/${SLUG[chainId]}/api/v1/routes?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}&excludeRFQSources=true`, { headers: { "x-client-id": "arkhampad" }, signal: AbortSignal.timeout(15_000) });
   if (r.status === 429) throw Object.assign(new Error("KyberSwap rate limit"), { wait: true });
   const j = await r.json().catch(() => null);
   const out = j?.data?.routeSummary?.amountOut;
