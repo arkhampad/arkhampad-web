@@ -223,15 +223,18 @@ async function approveWithGas(n: ExtNet, s: Signer, token: Address, need: bigint
 
 const TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "address"], ["amountIn", "uint256"], ["minOut", "uint256"], ["target", "address"], ["dataHash", "bytes32"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]].map(([name, type]) => ({ name, type })) };
 
-/** Buys or sells a coin from another DEX. Never fills worse than the quote minus 2%.
- *  Thin pools move between the quote and the trade: when the DEX route fails, it is quoted
- *  again and retried (twice) with a little more room inside the route, never below the 2% floor. */
+/** Buys or sells a coin from another DEX. Fills within 2% of the quote; thin pools move between the
+ *  quote and the trade, so when the route fails or the price moved, it is quoted again and retried
+ *  (twice) with 3%, then 4% room. The fair-price guard (7% from the market price) always holds. */
 export async function extTrade(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, poolId?: string) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await extTradeOnce(chainId, coin, side, amount, s, attempt, poolId);
     } catch (e) {
-      if (attempt >= 2 || (e as { code?: string })?.code !== "SwapFailed") throw e;
+      // the pool moved between the quote and the trade: quote again and retry (twice), each time with
+      // a little more room (2% -> 3% -> 4%), never past the fair-price guard (7% from the market price)
+      const code = (e as { code?: string })?.code;
+      if (attempt >= 2 || (code !== "SwapFailed" && code !== "Slippage")) throw e;
       await new Promise((ok) => setTimeout(ok, 600));
     }
   }
@@ -276,7 +279,7 @@ async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell"
   // buys: coins out; sells: USDC to the user after the 1% fee and the network fee (chain units)
   const quoted = isBuy ? r.amountOut : r.amountOut - (r.amountOut * FEE_BPS) / 10_000n - feeChain;
   if (!isBuy && quoted <= 0n) throw new TradeError("This sale is too small to cover the network fee.");
-  const minOut = (quoted * 98n) / 100n;
+  const minOut = (quoted * ([98n, 97n, 96n][attempt] ?? 96n)) / 100n; // more room on each retry
   const { keccak256 } = await import("viem");
   const nonce = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000));
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
