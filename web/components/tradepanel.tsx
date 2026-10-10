@@ -45,6 +45,8 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const clanker = coin.venue === "clanker";
   const inPool = coin.own && !clanker && phase === 2; // graduated: trades in its locked Uniswap pool
   const ext = (!coin.own || clanker) && !!extNet(coin.chainId); // coin from another DEX on a network we can quote
+  // a Clanker coin launched here trades through ArkhamPad's own route into its pool (by its pool id)
+  const routePool = clanker && coin.curve ? coin.curve : undefined;
   const extLive = ext && extTradable(coin.chainId); // ...and trade (mainnet)
   const tradable = (ext ? extLive : coin.own && (phase === 0 ? !!coin.curve : phase === 2)) && !launchFee.sniper;
   // coins from other DEXs that fail ArkhamPad's quality checks: no buying (holders can always sell)
@@ -85,8 +87,8 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
         const token = coin.address as Address;
         if (ext) {
           if (n === seq.current) setQuoteNote("");
-          if (side === "buy") { const raw = usd <= 0 ? 0n : await extQuote(coin.chainId, token, "buy", toUsdc(usd)); if (n === seq.current) setQuote(Number(raw) / 10 ** extDec); }
-          else { const raw = sellAmount <= 0n ? 0n : await extQuote(coin.chainId, token, "sell", sellAmount); if (n === seq.current) setQuote(Number(raw) / 1e6); }
+          if (side === "buy") { const raw = usd <= 0 ? 0n : await extQuote(coin.chainId, token, "buy", toUsdc(usd), routePool); if (n === seq.current) setQuote(Number(raw) / 10 ** extDec); }
+          else { const raw = sellAmount <= 0n ? 0n : await extQuote(coin.chainId, token, "sell", sellAmount, routePool); if (n === seq.current) setQuote(Number(raw) / 1e6); }
           return;
         }
         if (side === "buy") {
@@ -120,7 +122,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           if (buyBlocked) throw new TradeError(UNLISTED_MSG);
           if (usd <= 0) throw new TradeError("Enter an amount.");
           const before = held;
-          await extTrade(coin.chainId, token, "buy", toUsdc(usd), w.signer);
+          await extTrade(coin.chainId, token, "buy", toUsdc(usd), w.signer, routePool);
           w.adjust(coin.chainId, -toUsdc(usd));
           toast(`Bought ${coin.tick}`);
           // public nodes can be a block behind: keep reading until the new coins show
@@ -132,7 +134,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
             for (let i = 0; i < 8 && amount <= 0n; i++) { const b = await extBalance(coin.chainId, token, me); setHeld(b); amount = (b * BigInt(pct)) / 100n; if (amount <= 0n) await new Promise((ok) => setTimeout(ok, 700)); }
           }
           if (amount <= 0n) throw new TradeError("You don't hold this coin.");
-          await extTrade(coin.chainId, token, "sell", amount, w.signer);
+          await extTrade(coin.chainId, token, "sell", amount, w.signer, routePool);
           toast(`Sold ${coin.tick}`);
           setHeld(await extBalance(coin.chainId, token, me));
         }

@@ -19,7 +19,8 @@
     "relayRpcEnv": "BASE_RELAY_RPC",
     "v2": true,
     "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231",
-    "vault": "0x43Ca3cEe078d8cb8528915B16e8bDcc9aDBe6090"
+    "vault": "0x43Ca3cEe078d8cb8528915B16e8bDcc9aDBe6090",
+    "clankerRoute": "0xB4B9F1706537eA2E876Ce8e3684dc982f05Da69E"
   },
   {
     "name": "robinhood",
@@ -41,7 +42,8 @@
     "relayRpcEnv": "ROBINHOOD_RELAY_RPC",
     "v2": true,
     "extSwap": "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231",
-    "vault": "0xB4B9F1706537eA2E876Ce8e3684dc982f05Da69E"
+    "vault": "0xB4B9F1706537eA2E876Ce8e3684dc982f05Da69E",
+    "clankerRoute": "0x5abe87751c6d0942805f53F33a4fa022255C08D1"
   },
   {
     "name": "bnb",
@@ -73,6 +75,7 @@
       "https://bsc-dataseed1.defibit.io",
       "https://bsc.drpc.org",
       "https://bsc-rpc.publicnode.com"
-    ]
+    ],
+    "clankerRoute": "0xD8cAF98C955D8c1071807d4884BB04Ea2Ac55a49"
   }
 ]

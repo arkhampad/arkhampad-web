@@ -4,13 +4,18 @@
 import { createPublicClient, domainSeparator, encodeFunctionData, http, parseAbi, type Address, type Hex } from "viem";
 import { TradeError, client, ensureCash, netFee, netOf, receipt, type Signer } from "./chain";
 
-type ExtNet = { id: number; slug: string; usdc: Address; usdcDecimals: number; rpc: string; swap: Address | null; permitUsdc: boolean };
+// route: PadClankerRoute, ArkhamPad's own route into Clanker pools (no aggregator); weth + hook build a Clanker pool's key
+type ExtNet = { id: number; slug: string; usdc: Address; usdcDecimals: number; rpc: string; swap: Address | null; permitUsdc: boolean; route: Address | null; weth: Address; hook: Address };
 // NEXT_PUBLIC_* values reach the browser only when written as literal process.env.NAME
 const env = (k: string) => (process.env as Record<string, string | undefined>)[k] || "";
+const BNB_ROUTE: Address | null = "0xD8cAF98C955D8c1071807d4884BB04Ea2Ac55a49"; // PadClankerRoute on BNB Chain
 export const EXT_NETS: ExtNet[] = [
-  { id: 8453, slug: "base", usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", usdcDecimals: 6, rpc: "https://mainnet.base.org", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_8453 || null) as Address | null, permitUsdc: true },
-  { id: 4663, slug: "robinhood", usdc: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", usdcDecimals: 6, rpc: "https://robinhood.drpc.org", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_4663 || "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231") as Address | null, permitUsdc: true },
-  { id: 56, slug: "bsc", usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", usdcDecimals: 18, rpc: "https://bsc-rpc.publicnode.com", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_56 || "0x3f49Ab48d9e04bd12D9D5613d2d879Eb754a5CA9") as Address | null, permitUsdc: false },
+  { id: 8453, slug: "base", usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", usdcDecimals: 6, rpc: "https://mainnet.base.org", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_8453 || null) as Address | null, permitUsdc: true,
+    route: "0xB4B9F1706537eA2E876Ce8e3684dc982f05Da69E", weth: "0x4200000000000000000000000000000000000006", hook: "0xb429d62f8f3bFFb98CdB9569533eA23bF0Ba28CC" },
+  { id: 4663, slug: "robinhood", usdc: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", usdcDecimals: 6, rpc: "https://robinhood.drpc.org", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_4663 || "0x9Ff5e104Dc5EEA1118bF719fF347cB09dccd6231") as Address | null, permitUsdc: true,
+    route: "0x5abe87751c6d0942805f53F33a4fa022255C08D1", weth: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73", hook: "0x48B8F6AD3A1b4aA477314c9a23035b8F84dDe8cc" },
+  { id: 56, slug: "bsc", usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", usdcDecimals: 18, rpc: "https://bsc-rpc.publicnode.com", swap: (process.env.NEXT_PUBLIC_EXT_SWAP_56 || "0x3f49Ab48d9e04bd12D9D5613d2d879Eb754a5CA9") as Address | null, permitUsdc: false,
+    route: BNB_ROUTE, weth: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", hook: "0xC5d309026BCAb6630888d51CE21154AD2f4828cC" },
 ];
 export const extNet = (chainId: number) => EXT_NETS.find((n) => n.id === chainId) ?? null;
 /** Can this coin be traded here right now? (needs PadExtSwap on its network = mainnet) */
@@ -34,6 +39,37 @@ async function route(n: ExtNet, tokenIn: Address, tokenOut: Address, amountIn: b
   const d = j?.data;
   if (!r?.ok || !d?.routeSummary) throw new TradeError("No price for this coin right now.");
   return { amountOut: BigInt(d.routeSummary.amountOut), summary: d.routeSummary, router: d.routerAddress as Address };
+}
+
+// ---- ArkhamPad's own route into Clanker pools (PadClankerRoute): no aggregator needed.
+// A Clanker coin's pool: coin/WETH, Clanker's dynamic fee flag, spacing 200, Clanker's fee hook.
+type PoolKey = { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address };
+const KEY_TYPE = { type: "tuple", components: [{ name: "currency0", type: "address" }, { name: "currency1", type: "address" }, { name: "fee", type: "uint24" }, { name: "tickSpacing", type: "int24" }, { name: "hooks", type: "address" }] } as const;
+const ROUTE_ABI = [
+  { type: "function", name: "quote", stateMutability: "nonpayable", inputs: [{ name: "isBuy", type: "bool" }, { name: "coin", type: "address" }, { name: "amountIn", type: "uint256" }, { name: "coinKey", ...KEY_TYPE }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "quoteRoundTrip", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }, { name: "usdcIn", type: "uint256" }, { name: "coinKey", ...KEY_TYPE }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
+  { type: "function", name: "buy", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }, { name: "usdcIn", type: "uint256" }, { name: "coinKey", ...KEY_TYPE }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "sell", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }, { name: "coinsIn", type: "uint256" }, { name: "coinKey", ...KEY_TYPE }], outputs: [{ type: "uint256" }] },
+] as const;
+/** The Clanker pool key of `coin`, checked against the pool id the indexer saved (coins.curve). */
+async function clankerKey(n: ExtNet, coin: Address, poolId: string): Promise<PoolKey> {
+  if (!n.route) throw new TradeError("Trading this coin here opens soon.");
+  const { encodeAbiParameters, keccak256 } = await import("viem");
+  const [c0, c1] = BigInt(coin) < BigInt(n.weth) ? [coin, n.weth] : [n.weth, coin];
+  const key: PoolKey = { currency0: c0, currency1: c1, fee: 0x800000, tickSpacing: 200, hooks: n.hook };
+  if (keccak256(encodeAbiParameters([KEY_TYPE], [key])).toLowerCase() !== String(poolId).toLowerCase()) throw new TradeError("Trading this coin here opens soon.");
+  return key;
+}
+async function routeQuote(n: ExtNet, isBuy: boolean, coin: Address, amountIn: bigint, key: PoolKey): Promise<bigint> {
+  const r = await pub(n).simulateContract({ address: n.route!, abi: ROUTE_ABI, functionName: "quote", args: [isBuy, coin, amountIn, key] }).catch(() => null);
+  if (!r || !(r.result > 0n)) throw new TradeError(GUARD_MSG);
+  return r.result;
+}
+/** Buy, then sell everything straight back (one simulation): must return at least 85% of the dollars. */
+async function routeSellBack(n: ExtNet, coin: Address, usdcIn: bigint, key: PoolKey) {
+  const r = await pub(n).simulateContract({ address: n.route!, abi: ROUTE_ABI, functionName: "quoteRoundTrip", args: [coin, usdcIn, key] }).catch(() => null);
+  const back = r ? r.result[1] : 0n;
+  if (!(Number(back) >= Number(usdcIn) * SELL_FLOOR)) throw new TradeError(NOSELL_MSG);
 }
 
 // Fair-price guard (the relayer checks the same): a DEX route can see only a nearly empty pool
@@ -68,12 +104,13 @@ async function refPrice(n: ExtNet, coin: Address): Promise<number | null> {
   return p;
 }
 /** Throws when the route fills more than 7% worse than the market price (amounts in chain units). */
-async function guard(n: ExtNet, coin: Address, isBuy: boolean, amountIn: bigint, amountOut: bigint) {
+async function guard(n: ExtNet, coin: Address, isBuy: boolean, amountIn: bigint, amountOut: bigint, key?: PoolKey) {
   const [price, dec] = await Promise.all([refPrice(n, coin), extDecimals(n.id, coin)]);
   if (!price) throw new TradeError(GUARD_MSG);
   const usd = (v: bigint) => Number(v) / 10 ** n.usdcDecimals, coins = (v: bigint) => Number(v) / 10 ** dec;
   const fair = isBuy ? (coins(amountOut) * price) / usd(amountIn) : usd(amountOut) / (coins(amountIn) * price);
   if (!(fair >= 1 - MAX_DEV)) throw new TradeError(GUARD_MSG);
+  if (isBuy && key) return routeSellBack(n, coin, amountIn, key); // own route: buy-then-sell simulation
   if (isBuy) {
     // a buy only when what it gets can be sold back near the market price (the relayer checks it too)
     const r = await fetch(`${API}/${n.slug}/api/v1/routes?tokenIn=${coin}&tokenOut=${n.usdc}&amountIn=${amountOut}&excludeRFQSources=true`, { headers: HEAD }).catch(() => null);
@@ -85,9 +122,23 @@ async function guard(n: ExtNet, coin: Address, isBuy: boolean, amountIn: bigint,
 }
 
 /** What the user gets: buy = coins for `usd` dollars (after 1%), sell = USDC for `coins` (after 1%). */
-export async function extQuote(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint) {
+/** poolId: a Clanker coin launched on ArkhamPad (coins.curve): quoted and traded through ArkhamPad's own route. */
+export async function extQuote(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, poolId?: string) {
   const n = extNet(chainId);
   if (!n) throw new TradeError("Quotes aren't available for this network yet.");
+  if (poolId) {
+    const key = await clankerKey(n, coin, poolId);
+    if (side === "buy") {
+      const spend = spendOf(up(n, amount));
+      const out = await routeQuote(n, true, coin, spend, key);
+      await guard(n, coin, true, spend, out, key);
+      return out;
+    }
+    const o = await routeQuote(n, false, coin, amount, key);
+    await guard(n, coin, false, amount, o, key);
+    const out = down(n, o);
+    return out - (out * FEE_BPS) / 10_000n;
+  }
   if (side === "buy") {
     const spend = spendOf(up(n, amount));
     const r = await route(n, n.usdc, coin, spend);
@@ -175,10 +226,10 @@ const TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "addr
 /** Buys or sells a coin from another DEX. Never fills worse than the quote minus 2%.
  *  Thin pools move between the quote and the trade: when the DEX route fails, it is quoted
  *  again and retried (twice) with a little more room inside the route, never below the 2% floor. */
-export async function extTrade(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer) {
+export async function extTrade(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, poolId?: string) {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await extTradeOnce(chainId, coin, side, amount, s, attempt);
+      return await extTradeOnce(chainId, coin, side, amount, s, attempt, poolId);
     } catch (e) {
       if (attempt >= 2 || (e as { code?: string })?.code !== "SwapFailed") throw e;
       await new Promise((ok) => setTimeout(ok, 600));
@@ -186,7 +237,7 @@ export async function extTrade(chainId: number, coin: Address, side: "buy" | "se
   }
 }
 
-async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, attempt: number) {
+async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint, s: Signer, attempt: number, poolId?: string) {
   const n = extNet(chainId);
   if (!n || !n.swap) throw new TradeError("Trading coins from other DEXs opens on mainnet.");
   const isBuy = side === "buy";
@@ -197,13 +248,24 @@ async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell"
   // what goes on-chain: a buy's dollars in the network's USDC units; a sell's coins as they are
   const amountIn = isBuy ? up(n, amount) : amount;
   const spend = isBuy ? spendOf(amountIn) : amountIn;
-  const r = await route(n, isBuy ? n.usdc : coin, isBuy ? coin : n.usdc, spend);
-  await guard(n, coin, isBuy, spend, r.amountOut); // never trade far below the market price
-  const build = await fetch(`${API}/${n.slug}/api/v1/route/build`, { method: "POST", headers: { ...HEAD, "content-type": "application/json" }, body: JSON.stringify({ routeSummary: r.summary, sender: n.swap, recipient: n.swap, slippageTolerance: [150, 300, 500][attempt] ?? 500, deadline: Math.floor(Date.now() / 1000) + 600 }) }).catch(() => null);
-  const b = build ? await build.json().catch(() => null) : null;
-  if (!build?.ok || !b?.data?.data) throw new TradeError("Couldn't prepare the trade. Please try again.");
-  const data = b.data.data as Hex;
-  const target = b.data.routerAddress as Address;
+  let r: { amountOut: bigint }, data: Hex, target: Address;
+  if (poolId) {
+    // a Clanker coin launched here: ArkhamPad's own route into its pool (quoted on-chain)
+    const key = await clankerKey(n, coin, poolId);
+    r = { amountOut: await routeQuote(n, isBuy, coin, spend, key) };
+    await guard(n, coin, isBuy, spend, r.amountOut, key); // never trade far below the market price
+    data = encodeFunctionData({ abi: ROUTE_ABI, functionName: isBuy ? "buy" : "sell", args: [coin, spend, key] });
+    target = n.route!;
+  } else {
+    const kr = await route(n, isBuy ? n.usdc : coin, isBuy ? coin : n.usdc, spend);
+    r = kr;
+    await guard(n, coin, isBuy, spend, kr.amountOut); // never trade far below the market price
+    const build = await fetch(`${API}/${n.slug}/api/v1/route/build`, { method: "POST", headers: { ...HEAD, "content-type": "application/json" }, body: JSON.stringify({ routeSummary: kr.summary, sender: n.swap, recipient: n.swap, slippageTolerance: [150, 300, 500][attempt] ?? 500, deadline: Math.floor(Date.now() / 1000) + 600 }) }).catch(() => null);
+    const b = build ? await build.json().catch(() => null) : null;
+    if (!build?.ok || !b?.data?.data) throw new TradeError("Couldn't prepare the trade. Please try again.");
+    data = b.data.data as Hex;
+    target = b.data.routerAddress as Address;
+  }
   const extra = await ensurePermit(n, s, isBuy ? n.usdc : coin, isBuy ? up(n, amount + NET_FEE) : amount); // site units back
   // a first-time approval top-up is repaid here, never by ArkhamPad (the relayer keeps the
   // amount, so an earlier attempt that stopped half way is still counted exactly once)
