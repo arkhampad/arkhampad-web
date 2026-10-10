@@ -114,7 +114,7 @@ async function kyber(tokenIn, tokenOut, amountIn, sender, slippage = 300) {
   let r = null;
   for (let i = 0; i < 4 && !r?.data?.routeSummary; i++) {
     if (i) await new Promise((ok) => setTimeout(ok, 2000));
-    const res = await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/routes?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}&gasInclude=true`, { headers: head });
+    const res = await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/routes?tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}&excludeRFQSources=true&gasInclude=true`, { headers: head });
     r = await res.json().catch(() => null);
     if (!r?.data?.routeSummary) console.log(`  · Kyber route try ${i + 1}: ${res.status} ${String(r?.message ?? "").slice(0, 120)}`);
   }
@@ -122,7 +122,8 @@ async function kyber(tokenIn, tokenOut, amountIn, sender, slippage = 300) {
   if (!sum) return null;
   const b = await (await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/route/build`, { method: "POST", headers: head, body: JSON.stringify({ routeSummary: sum, sender, recipient: sender, slippageTolerance: slippage, deadline: Math.floor(Date.now() / 1000) + 3600 }) })).json().catch(() => null);
   if (!b?.data?.data) return null;
-  return { amountOut: BigInt(sum.amountOut), target: getAddress(b.data.routerAddress), data: b.data.data };
+  const via = [...new Set((sum.route ?? []).flat().map((h) => h.exchange))].join("+");
+  return { amountOut: BigInt(sum.amountOut), target: getAddress(b.data.routerAddress), data: b.data.data, via };
 }
 async function extSwapCheck(relayer, which) {
   const SWAP = entry.extSwap ? getAddress(entry.extSwap) : null;
@@ -175,8 +176,8 @@ async function extSwapCheck(relayer, which) {
   const fill = async (m, r, isBuy, amt) => {
     for (let attempt = 0; ; attempt++) {
       try { return await send(m, r.data); } catch (e) {
-        if (e.code !== "SwapFailed" || attempt >= 2) throw e;
-        console.log(`  · the DEX route couldn't fill (try ${attempt + 1}): quoting again`);
+        if (e.code !== "SwapFailed" || attempt >= 2) { if (e.code === "SwapFailed") console.log(`  · last route via ${r.via}`); throw e; }
+        console.log(`  · the DEX route via ${r.via} couldn't fill (try ${attempt + 1}): quoting again`);
         r = await kyber(isBuy ? USDC : coin, isBuy ? coin : USDC, amt, SWAP, [500, 500][attempt]);
         assert.ok(r, "no route on retry");
         const q = isBuy ? r.amountOut : r.amountOut - (r.amountOut * 100n) / 10_000n - up(FEE);
