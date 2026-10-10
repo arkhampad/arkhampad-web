@@ -403,7 +403,7 @@ async function loop(c) {
 
 if (!process.env.DATABASE_URL) { console.error("DATABASE_URL is required"); process.exit(1); }
 if (process.env.PORT) http.createServer(httpHandler(relayer, status)).listen(process.env.PORT);
-if (!process.env.ONCE) { startMarkets(pool); startQuality(pool); startIndexNow(); startDexWatch(pool, { log, notifier }); }
+if (!process.env.ONCE) { startMarkets(pool); startQuality(pool, CHAINS.map((c) => ({ chainId: c.chainId, rpc: (process.env[c.rpcEnv] || "").trim(), usdc: c.usdc, usdcDec: c.usdDecimals ?? 6 }))); startIndexNow(); startDexWatch(pool, { log, notifier }); }
 // platform fees into the vault, creator payouts, pool fees and referral rewards: every 30 minutes
 if (relayer) {
   const sweep = () => relayer.sweepFees().catch((e) => console.log(new Date().toISOString(), `fee sweep: ${e.message}`));

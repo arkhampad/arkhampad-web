@@ -36,12 +36,67 @@ async function route(n: ExtNet, tokenIn: Address, tokenOut: Address, amountIn: b
   return { amountOut: BigInt(d.routeSummary.amountOut), summary: d.routeSummary, router: d.routerAddress as Address };
 }
 
+// Fair-price guard (the relayer checks the same): a DEX route can see only a nearly empty pool
+// and quote a tiny fraction of a coin's real value. A route more than 7% worse than the market
+// price DexScreener (or GeckoTerminal) shows is never traded; with no market price, neither.
+const MAX_DEV = 0.07;
+export const UNLISTED_MSG = "This coin doesn't pass ArkhamPad's safety checks, so buying it is turned off. If you hold it, you can still sell.";
+export const NOSELL_MSG = "This coin can't be sold through ArkhamPad right now, so buying it is turned off to protect you. Please try again later.";
+const SELL_FLOOR = 0.85;
+export const GUARD_MSG = "We couldn't get a fair price for this coin right now, so the trade was stopped to protect you. Please try again in a few minutes.";
+const refCache = new Map<string, { t: number; p: number }>();
+async function refPrice(n: ExtNet, coin: Address): Promise<number | null> {
+  const c = coin.toLowerCase(), key = `${n.id}:${c}`;
+  const hit = refCache.get(key);
+  if (hit && Date.now() - hit.t < 15_000) return hit.p;
+  let p: number | null = null;
+  try {
+    const j = await (await fetch(`https://api.dexscreener.com/latest/dex/tokens/${c}`, { signal: AbortSignal.timeout(6000) })).json();
+    const pairs = ((j?.pairs ?? []) as { chainId: string; baseToken?: { address?: string }; priceUsd?: string; liquidity?: { usd?: number } }[])
+      .filter((x) => x.chainId === n.slug && String(x.baseToken?.address ?? "").toLowerCase() === c && Number(x.priceUsd) > 0)
+      .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+    if (pairs[0]) p = Number(pairs[0].priceUsd);
+  } catch { /* GeckoTerminal next */ }
+  if (!p) {
+    try {
+      const j = await (await fetch(`https://api.geckoterminal.com/api/v2/simple/networks/${n.slug}/token_price/${c}`, { signal: AbortSignal.timeout(6000) })).json();
+      const v = Number(j?.data?.attributes?.token_prices?.[c]);
+      if (v > 0) p = v;
+    } catch { /* no price */ }
+  }
+  if (p) refCache.set(key, { t: Date.now(), p });
+  return p;
+}
+/** Throws when the route fills more than 7% worse than the market price (amounts in chain units). */
+async function guard(n: ExtNet, coin: Address, isBuy: boolean, amountIn: bigint, amountOut: bigint) {
+  const [price, dec] = await Promise.all([refPrice(n, coin), extDecimals(n.id, coin)]);
+  if (!price) throw new TradeError(GUARD_MSG);
+  const usd = (v: bigint) => Number(v) / 10 ** n.usdcDecimals, coins = (v: bigint) => Number(v) / 10 ** dec;
+  const fair = isBuy ? (coins(amountOut) * price) / usd(amountIn) : usd(amountOut) / (coins(amountIn) * price);
+  if (!(fair >= 1 - MAX_DEV)) throw new TradeError(GUARD_MSG);
+  if (isBuy) {
+    // a buy only when what it gets can be sold back near the market price (the relayer checks it too)
+    const r = await fetch(`${API}/${n.slug}/api/v1/routes?tokenIn=${coin}&tokenOut=${n.usdc}&amountIn=${amountOut}`, { headers: HEAD }).catch(() => null);
+    const j = r ? await r.json().catch(() => null) : null;
+    const out = j?.data?.routeSummary?.amountOut;
+    const back = out ? usd(BigInt(out)) / (coins(amountOut) * price) : 0;
+    if (!(back >= SELL_FLOOR)) throw new TradeError(NOSELL_MSG);
+  }
+}
+
 /** What the user gets: buy = coins for `usd` dollars (after 1%), sell = USDC for `coins` (after 1%). */
 export async function extQuote(chainId: number, coin: Address, side: "buy" | "sell", amount: bigint) {
   const n = extNet(chainId);
   if (!n) throw new TradeError("Quotes aren't available for this network yet.");
-  if (side === "buy") return (await route(n, n.usdc, coin, spendOf(up(n, amount)))).amountOut;
-  const out = down(n, (await route(n, coin, n.usdc, amount)).amountOut); // site units
+  if (side === "buy") {
+    const spend = spendOf(up(n, amount));
+    const r = await route(n, n.usdc, coin, spend);
+    await guard(n, coin, true, spend, r.amountOut);
+    return r.amountOut;
+  }
+  const r = await route(n, coin, n.usdc, amount);
+  await guard(n, coin, false, amount, r.amountOut);
+  const out = down(n, r.amountOut); // site units
   return out - (out * FEE_BPS) / 10_000n;
 }
 
@@ -144,6 +199,7 @@ async function extTradeOnce(chainId: number, coin: Address, side: "buy" | "sell"
   const amountIn = isBuy ? up(n, amount) : amount;
   const spend = isBuy ? spendOf(amountIn) : amountIn;
   const r = await route(n, isBuy ? n.usdc : coin, isBuy ? coin : n.usdc, spend);
+  await guard(n, coin, isBuy, spend, r.amountOut); // never trade far below the market price
   const build = await fetch(`${API}/${n.slug}/api/v1/route/build`, { method: "POST", headers: { ...HEAD, "content-type": "application/json" }, body: JSON.stringify({ routeSummary: r.summary, sender: n.swap, recipient: n.swap, slippageTolerance: [150, 300, 500][attempt] ?? 500, deadline: Math.floor(Date.now() / 1000) + 600 }) }).catch(() => null);
   const b = build ? await build.json().catch(() => null) : null;
   if (!build?.ok || !b?.data?.data) throw new TradeError("Couldn't prepare the trade. Please try again.");

@@ -10,7 +10,7 @@ import { refreshOrders } from "./orders";
 import { ProfitSheet } from "./profit";
 import { positionPnl } from "@/lib/pnl";
 import type { Pnl } from "@/lib/share";
-import { extBalance, extNet, extQuote, extTrade, extTradable } from "@/lib/ext";
+import { extBalance, extNet, extQuote, extTrade, extTradable, GUARD_MSG, NOSELL_MSG, UNLISTED_MSG } from "@/lib/ext";
 import { useLaunchFee } from "./v2";
 import { PriceAlertButton } from "./alerts";
 import { BuyWarning, useBuyWarning } from "./safety";
@@ -31,6 +31,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const [pct, setPct] = useState(100);
   const [held, setHeld] = useState<bigint>(0n);
   const [quote, setQuote] = useState<number | null>(null);
+  const [quoteNote, setQuoteNote] = useState(""); // why there is no quote (the fair-price guard)
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState("");
   const seq = useRef(0);
@@ -46,6 +47,8 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   const ext = (!coin.own || clanker) && !!extNet(coin.chainId); // coin from another DEX on a network we can quote
   const extLive = ext && extTradable(coin.chainId); // ...and trade (mainnet)
   const tradable = (ext ? extLive : coin.own && (phase === 0 ? !!coin.curve : phase === 2)) && !launchFee.sniper;
+  // coins from other DEXs that fail ArkhamPad's quality checks: no buying (holders can always sell)
+  const buyBlocked = ext && !coin.own && coin.extListed !== true;
   const [extDec, setExtDec] = useState(18);
   const [result, setResult] = useState<Pnl | null>(null);
   const curve = coin.curve as Address | undefined;
@@ -81,6 +84,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
       try {
         const token = coin.address as Address;
         if (ext) {
+          if (n === seq.current) setQuoteNote("");
           if (side === "buy") { const raw = usd <= 0 ? 0n : await extQuote(coin.chainId, token, "buy", toUsdc(usd)); if (n === seq.current) setQuote(Number(raw) / 10 ** extDec); }
           else { const raw = sellAmount <= 0n ? 0n : await extQuote(coin.chainId, token, "sell", sellAmount); if (n === seq.current) setQuote(Number(raw) / 1e6); }
           return;
@@ -92,7 +96,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           const raw = sellAmount <= 0n ? 0n : inPool ? await quotePool(coin.chainId, token, false, sellAmount) : await quoteSell(coin.chainId, curve as Address, sellAmount);
           if (n === seq.current) setQuote(Math.max(0, fromUsdc(raw) - fromUsdc(lastFee(coin.chainId, inPool ? "poolSell" : "sell"))));
         }
-      } catch { if (n === seq.current) setQuote(null); }
+      } catch (e) { if (n === seq.current) { setQuote(null); setQuoteNote(ext && e instanceof TradeError && (e.message === GUARD_MSG || e.message === NOSELL_MSG) ? e.message : ""); } }
     }, 200);
     return () => clearTimeout(t);
   }, [side, usd, sellAmount, tradable, ext, extDec, inPool, curve, coin.chainId, coin.address, coin.mcNum]);
@@ -113,6 +117,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
         setStep(side === "buy" ? "Buying…" : "Selling…");
         const me = w.address as Address, token = coin.address as Address;
         if (side === "buy") {
+          if (buyBlocked) throw new TradeError(UNLISTED_MSG);
           if (usd <= 0) throw new TradeError("Enter an amount.");
           const before = held;
           await extTrade(coin.chainId, token, "buy", toUsdc(usd), w.signer);
@@ -207,7 +212,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
   // automatic orders run on ArkhamPad's own pools only
   const modes = clanker ? ["Market"] : ["Market", "Limit", "Auto"];
   const soon = LIVE ? `${coin.chain} trading opens soon` : "Opens on mainnet";
-  const label = launchFee.sniper ? `Trading opens in ${launchFee.left}s` : ext && !extLive ? soon : !coin.own && !ext ? soon : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
+  const label = launchFee.sniper ? `Trading opens in ${launchFee.left}s` : side === "buy" && buyBlocked ? "Buying is off for this coin" : ext && !extLive ? soon : !coin.own && !ext ? soon : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
     : mode === "Limit" ? `Set limit ${side === "buy" ? "buy" : "sell"}` : mode === "Auto" ? "Set take profit / stop loss" : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
   return (
     <div className="card tp" style={{ borderRadius: 22, borderColor: "var(--line2)", gap: 14 }}>
@@ -248,6 +253,7 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           </div>
           <div style={{ display: "flex", gap: 6 }}>{[10, 25, 50, 100].map((v) => <button key={v} type="button" className={`seg mono${usd === v ? " on" : ""}`} style={{ height: 38, minWidth: 0 }} onClick={() => setAmt(String(v))}>${v}</button>)}</div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">You get</span><span className="mono">≈ {quote === null ? "—" : `${fmtCoins(quote)} ${coin.tick}`}</span></div>
+          {buyBlocked ? <div role="alert" style={{ fontSize: 12.5, color: "var(--down)" }}>{UNLISTED_MSG}</div> : quoteNote && <div role="alert" style={{ fontSize: 12.5, color: "var(--down)" }}>{quoteNote}</div>}
         </>
       ) : (
         <>
@@ -255,10 +261,11 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
           <div style={{ display: "flex", gap: 6 }}>{[25, 50, 75, 100].map((v) => <button key={v} type="button" className={`seg mono${pct === v ? " on" : ""}`} style={{ height: 44, minWidth: 0 }} onClick={() => setPct(v)}>{v === 100 ? "All" : `${v}%`}</button>)}</div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">Selling</span><span className="mono">{fmtCoins(fromCoin(sellAmount))} {coin.tick}</span></div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}><span className="dim">You get</span><span className="mono">≈ {quote === null ? "—" : `$${quote.toFixed(2)}`}</span></div>
+          {quoteNote && <div role="alert" style={{ fontSize: 12.5, color: "var(--down)" }}>{quoteNote}</div>}
         </>
       )}
       {coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable && <BuyWarning text={caution.text} onAck={caution.ack} />}
-      {!(coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable) && <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={go} disabled={busy || !tradable} aria-busy={busy} style={{ fontSize: 17, opacity: !tradable ? 0.55 : 1 }}>{label}</button>}
+      {!(coin.own && side === "buy" && mode !== "Auto" && caution.text && w.signedIn && tradable) && <button type="button" className={`btn lg ${side === "buy" ? "buy" : "sell"}`} onClick={go} disabled={busy || !tradable || (side === "buy" && buyBlocked)} aria-busy={busy} style={{ fontSize: 17, opacity: !tradable || (side === "buy" && buyBlocked) ? 0.55 : 1 }}>{label}</button>}
       {clanker && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>{launchFee.sniper ? "Clanker's sniper protection is on: bots pay up to 80% right now." : extLive ? "Trades in its Uniswap pool at the best price · 1% pool fee + 1% ArkhamPad fee" : `Trading ${coin.chain} coins here opens soon. It trades on DEXs and in trading bots now.`}</span>}
       {!coin.own && <span className="dim" style={{ fontSize: 12, textAlign: "center" }}>{extLive ? "Trades through other DEXs at the best price · 1% fee" : LIVE ? `Live price from other DEXs. Trading ${coin.chain} coins here opens soon.` : ext ? "Live price from other DEXs. Trading these coins here opens on mainnet." : "This coin trades on another DEX. Trading it here opens on mainnet."}</span>}
       {coin.own && !clanker && launchFee.live && launchFee.fee !== null && (

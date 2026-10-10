@@ -11,6 +11,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { moderate } from "./moderation.mjs";
 import { makeFees } from "./fees.mjs";
 import { makeLimits, LIMITS } from "./limits.mjs";
+import * as priceGuard from "./priceguard.mjs";
 import { deployTx, parseCreated, pickLocker, clankerOf, coinLink, CLANKER_CHAINS, mcAtTick } from "./clanker.mjs";
 
 // Arbitrum-based chains: gas units include the L1 data cost.
@@ -245,6 +246,34 @@ export function makeRelayer() {
       to = getAddress(n.c.extSwap);
       data = encodeFunctionData({ abi: EXT_ABI, functionName: "swap", args: [{ user: addr(w.user, "user"), isBuy: w.isBuy === true, coin: addr(w.coin, "coin"), amountIn: big(w.amountIn, "amountIn"), minOut: big(w.minOut, "minOut"), target: addr(w.target, "target"), data: hex(w.data, "data"), fee: feeOf(w, n), nonce: big(w.nonce, "nonce"), deadline: big(w.deadline, "deadline"), signature: hex(w.signature, "signature") }] });
       fixedGas = 1_500_000n;
+      const coinAddr = addr(w.coin, "coin");
+      // buys only of coins that pass the quality list (or ArkhamPad's own coins); selling is always open
+      if (w.isBuy === true && db) {
+        const ok = (await db.query(
+          `select exists(select 1 from coins where chain_id=$1 and address=$2) or exists(select 1 from ext_tokens where chain_id=$1 and address=$2 and listed) as ok`,
+          [n.c.chainId, coinAddr.toLowerCase()],
+        )).rows[0]?.ok;
+        if (!ok) { const e = new Error(priceGuard.UNLISTED_MSG); e.status = 400; e.code = "NotListed"; throw e; }
+      }
+      // never fill far below the coin's market price (a DEX route that sees only an empty pool)
+      const [price, coinDec] = await Promise.all([
+        priceGuard.refPrice(n.c.chainId, coinAddr),
+        n.pub.readContract({ address: coinAddr, abi: [{ type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] }], functionName: "decimals" }).then(Number).catch(() => 18),
+      ]);
+      const verdict = priceGuard.judge({ isBuy: w.isBuy === true, amountIn: big(w.amountIn, "amountIn"), minOut: big(w.minOut, "minOut"), fee: big(w.fee, "fee"), coinDec, usdcDec: DEC(n), price });
+      if (!verdict.ok) {
+        log(`${n.c.name} extSwap refused by price guard: ${w.isBuy === true ? "buy" : "sell"} ${coinAddr} market $${price ?? "none"} worst ${(verdict.dev * 100).toFixed(1)}% below`);
+        const e = new Error(priceGuard.GUARD_MSG); e.status = 400; e.code = "PriceGuard"; throw e;
+      }
+      // a buy only when what it gets can be sold back near the market price
+      if (w.isBuy === true) {
+        const coins = (big(w.minOut, "minOut") * 100n) / 98n; // the route's quote (the site signs 98% of it)
+        const sb = await priceGuard.sellBackOk({ chainId: n.c.chainId, coin: coinAddr, coins, coinDec, usdc: getAddress(n.c.usdc), usdcDec: DEC(n), price });
+        if (!sb.ok) {
+          log(`${n.c.name} extSwap buy refused, no fair sell route: ${coinAddr} sale would return ${(sb.back * 100).toFixed(1)}% of market value`);
+          const e = new Error(priceGuard.NOSELL_MSG); e.status = 400; e.code = "NoSellRoute"; throw e;
+        }
+      }
     } else if (kind === "permitExt") {
       // EIP-2612 approval for PadExtSwap (USDC or a coin that supports permit)
       if (!n.c.extSwap) { const e = new Error("Not available on this network."); e.status = 400; throw e; }

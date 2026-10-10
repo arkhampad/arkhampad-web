@@ -63,6 +63,8 @@ const sparkOf = (v: number[]) => (v.length >= 2 ? v : v.length === 1 ? [v[0], v[
 export type LiveCoin = Coin & {
   /** no circulating market cap known: `mc` is the fully diluted value */
   mcIsFdv?: boolean;
+  /** a coin from another DEX that passes ArkhamPad's quality checks (only these can be bought) */
+  extListed?: boolean;
   chainId: number; address: string; own: boolean; image: string | null;
   pool?: string | null; network?: string | null; dex?: string | null;
   priceNum: number | null; mcNum: number | null; volNum: number | null;
@@ -88,7 +90,7 @@ export function parseMeta(uri: string | null | undefined): LiveCoin["about"] {
   } catch { return undefined; }
 }
 
-type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null };
+type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null; listed?: boolean | null };
 type OwnRow = { venue?: string | null; supply?: number | string | null; dex_listed_at?: string | null; creator_fees_usd?: number | null; pool_usd?: number | null; image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
 
 /** Names with no Latin letters or digits, or placeholder "?" names, are spam in lists (search still finds them). */
@@ -108,6 +110,7 @@ export function fromExt(r: ExtRow): LiveCoin {
     spark: sparkOf((r.spark ?? []).map(Number)), progress: 100,
     chainId: r.chain_id, address: r.address, own: false, image: r.image, pool: r.pool, network: r.network, dex: r.dex,
     priceNum: r.price_usd, mcNum: mc, volNum: r.vol_24h, createdAt: r.pool_created, mcIsFdv: r.mcap_usd == null && r.fdv_usd != null,
+    extListed: r.listed === true,
   };
 }
 
