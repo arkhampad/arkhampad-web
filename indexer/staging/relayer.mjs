@@ -6,7 +6,7 @@
 // Env: RELAYER_KEY (the relayer wallet's private key), and the chain RPC env vars.
 import fs from "node:fs";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, decodeFunctionResult, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress, verifyTypedData } from "viem";
+import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, decodeFunctionResult, decodeFunctionData, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress, verifyTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { moderate } from "./moderation.mjs";
 import { makeFees } from "./fees.mjs";
@@ -19,6 +19,14 @@ const ARB_CHAINS = new Set([4663, 46630, 42161]);
 
 const CHAINS = JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./chains.json", import.meta.url), "utf8"));
 const log = (...a) => console.log(new Date().toISOString(), "relayer:", ...a);
+
+// PadClankerRoute: ArkhamPad's own route into Clanker pools (a PadExtSwap target)
+const CLANKER_KEY = { type: "tuple", components: [{ name: "currency0", type: "address" }, { name: "currency1", type: "address" }, { name: "fee", type: "uint24" }, { name: "tickSpacing", type: "int24" }, { name: "hooks", type: "address" }] };
+const CLANKER_ROUTE_ABI = [
+  { type: "function", name: "buy", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }, { name: "usdcIn", type: "uint256" }, { name: "coinKey", ...CLANKER_KEY }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "sell", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }, { name: "coinsIn", type: "uint256" }, { name: "coinKey", ...CLANKER_KEY }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "quoteRoundTrip", stateMutability: "nonpayable", inputs: [{ name: "coin", type: "address" }, { name: "usdcIn", type: "uint256" }, { name: "coinKey", ...CLANKER_KEY }], outputs: [{ type: "uint256" }, { type: "uint256" }] },
+];
 
 const ROUTER_ABI = [
   { type: "function", name: "permit", stateMutability: "nonpayable", inputs: [{ name: "token", type: "address" }, { name: "owner", type: "address" }, { name: "value", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" }], outputs: [] },
@@ -265,8 +273,26 @@ export function makeRelayer() {
         log(`${n.c.name} extSwap refused by price guard: ${w.isBuy === true ? "buy" : "sell"} ${coinAddr} market $${price ?? "none"} worst ${(verdict.dev * 100).toFixed(1)}% below`);
         const e = new Error(priceGuard.GUARD_MSG); e.status = 400; e.code = "PriceGuard"; throw e;
       }
+      // ArkhamPad's own route into Clanker pools: the signed call must be a buy/sell of this very coin
+      const viaRoute = !!n.c.clankerRoute && getAddress(addr(w.target, "target")) === getAddress(n.c.clankerRoute);
+      let routeCall = null;
+      if (viaRoute) {
+        try { routeCall = decodeFunctionData({ abi: CLANKER_ROUTE_ABI, data: hex(w.data, "data") }); } catch { routeCall = null; }
+        if (!routeCall || routeCall.functionName !== (w.isBuy === true ? "buy" : "sell") || getAddress(routeCall.args[0]) !== coinAddr) {
+          const e = new Error("This trade doesn't match its coin."); e.status = 400; e.code = "BadRoute"; throw e;
+        }
+      }
       // a buy only when what it gets can be sold back near the market price
-      if (w.isBuy === true) {
+      if (w.isBuy === true && viaRoute) {
+        // buy, then sell everything straight back, in one simulation on the real pools
+        const usdcIn = routeCall.args[1];
+        const sim = await n.pub.simulateContract({ address: getAddress(n.c.clankerRoute), abi: CLANKER_ROUTE_ABI, functionName: "quoteRoundTrip", args: [coinAddr, usdcIn, routeCall.args[2]] }).catch(() => null);
+        const back = sim ? sim.result[1] : 0n;
+        if (back * 100n < usdcIn * BigInt(Math.round(priceGuard.SELL_FLOOR * 100))) {
+          log(`${n.c.name} extSwap buy refused, route sell-back ${back} of ${usdcIn}: ${coinAddr}`);
+          const e = new Error(priceGuard.NOSELL_MSG); e.status = 400; e.code = "NoSellRoute"; throw e;
+        }
+      } else if (w.isBuy === true) {
         const coins = (big(w.minOut, "minOut") * 100n) / 98n; // the route's quote (the site signs 98% of it)
         const sb = await priceGuard.sellBackOk({ chainId: n.c.chainId, coin: coinAddr, coins, coinDec, usdc: getAddress(n.c.usdc), usdcDec: DEC(n), price });
         if (!sb.ok) {

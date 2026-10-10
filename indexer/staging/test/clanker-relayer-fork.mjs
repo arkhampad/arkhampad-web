@@ -215,6 +215,94 @@ async function extSwapCheck(relayer, which) {
   ok(`one-tap SELL back: received $${Number(formatUnits(back, DEC)).toFixed(2)} (site shows $${(Number(down(back)) / 1e6).toFixed(2)})`);
 }
 
+
+// ---- ArkhamPad's own route into Clanker pools (PadClankerRoute), through the real relayer and
+// PadExtSwap, exactly as the site builds it (pool key from the coin + chain settings, not from Clanker)
+const ROUTE_KEY = POOLKEY;
+const ROUTE_ABI = [
+  { type: "function", name: "quote", stateMutability: "nonpayable", inputs: [{ type: "bool" }, { type: "address" }, { type: "uint256" }, ROUTE_KEY], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "quoteRoundTrip", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }, ROUTE_KEY], outputs: [{ type: "uint256" }, { type: "uint256" }] },
+  { type: "function", name: "buy", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }, ROUTE_KEY], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "sell", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }, ROUTE_KEY], outputs: [{ type: "uint256" }] },
+];
+const EXT_ADMIN_ABI = [
+  { type: "function", name: "admin", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "allowedTarget", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "setTarget", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "bool" }], outputs: [] },
+];
+async function routeCheck(relayer) {
+  const SWAP = entry.extSwap ? getAddress(entry.extSwap) : null;
+  const ROUTE = entry.clankerRoute ? getAddress(entry.clankerRoute) : null;
+  if (!SWAP || !ROUTE || !LIVE_COIN) { console.log("  · no Clanker route on this chain yet: skipped"); return; }
+  if ((await pub.getCode({ address: ROUTE }))?.length > 2 !== true) throw new Error(`route ${ROUTE} has no code on this chain`);
+  const coin = getAddress(LIVE_COIN);
+  // the admin allowlists the route on PadExtSwap (on mainnet: one transaction from the admin wallet)
+  if (!(await pub.readContract({ address: SWAP, abi: EXT_ADMIN_ABI, functionName: "allowedTarget", args: [ROUTE] }))) {
+    const admin = await pub.readContract({ address: SWAP, abi: EXT_ADMIN_ABI, functionName: "admin" });
+    await test.impersonateAccount({ address: admin });
+    await test.setBalance({ address: admin, value: parseEther("1") });
+    const wa = createWalletClient({ chain, transport, account: admin });
+    await wa.writeContract({ address: SWAP, abi: EXT_ADMIN_ABI, functionName: "setTarget", args: [ROUTE, true] }).then(mined);
+    await test.stopImpersonatingAccount({ address: admin });
+    ok("admin allowlisted the route on PadExtSwap (on the copy)");
+  }
+  // the key exactly as the site builds it, checked against Clanker's own record of the pool
+  const [c0, c1] = BigInt(coin) < BigInt(k.paired) ? [coin, k.paired] : [k.paired, coin];
+  const key = { currency0: c0, currency1: c1, fee: 0x800000, tickSpacing: 200, hooks: k.hook };
+  let real = null;
+  for (const l of lockersOf(CHAIN_ID)) {
+    const info = await pub.readContract({ address: l, abi: LOCKER_ABI, functionName: "tokenRewards", args: [coin] }).catch(() => null);
+    if (info && getAddress(info.token) === coin) { real = info.poolKey; break; }
+  }
+  assert.ok(real, "live coin's pool not found");
+  assert.equal(keccak256(encodeAbiParameters([POOLKEY], [key])), keccak256(encodeAbiParameters([POOLKEY], [real])), "the site's pool key doesn't match Clanker's");
+  ok("the site's pool key matches Clanker's record");
+
+  const scale = 10n ** BigInt(DEC - 6), up = (v) => v * scale;
+  if (!approvedUsdc) { await wUser.writeContract({ address: USDC, abi: ERC20, functionName: "approve", args: [SWAP, maxUint256] }).then(mined); approvedUsdc = true; }
+  const FEE = BigInt((await relayer.feeQuote(CHAIN_ID, "extSwap")).fee);
+  const sign = async (m) => wUser.signTypedData({ domain: { name: "ArkhamPad Swap", version: "1", chainId: CHAIN_ID, verifyingContract: SWAP }, types: EXT_TYPES, primaryType: "ExtSwap", message: m });
+  const send = async (m, data) => relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...Object.fromEntries(Object.entries(m).map(([k2, v]) => [k2, typeof v === "bigint" ? String(v) : v])), data, signature: await sign(m) } });
+  const sim = async (fn, args) => (await pub.simulateContract({ address: ROUTE, abi: ROUTE_ABI, functionName: fn, args })).result;
+  const nonce0 = BigInt(Date.now()) * 100n, dl = BigInt(Math.floor(Date.now() / 1000) + 3600);
+
+  // BUY $10 through the route
+  const amountIn = up(10_000_000n), spend = amountIn - (amountIn * 100n) / 10_000n;
+  const q = await sim("quote", [true, coin, spend, key]);
+  const [rc, rb] = await sim("quoteRoundTrip", [coin, spend, key]);
+  console.log(`  · route quote: $10 -> ${Number(q) / 1e18} coins; buying and selling straight back returns ${(Number(rb) / Number(spend) * 100).toFixed(1)}%`);
+  assert.equal(rc, q);
+  const data = encodeFunctionData({ abi: ROUTE_ABI, functionName: "buy", args: [coin, spend, key] });
+  const mb = { user: userAcc.address, isBuy: true, coin, amountIn, minOut: (q * 98n) / 100n, target: ROUTE, dataHash: keccak256(data), fee: up(FEE), nonce: nonce0, deadline: dl };
+  // a route call for a different coin than the one signed is refused
+  const otherCoin = getAddress("0x" + "11".repeat(20));
+  const bad = encodeFunctionData({ abi: ROUTE_ABI, functionName: "buy", args: [otherCoin, spend, key] });
+  const eBad = await send({ ...mb, dataHash: keccak256(bad), nonce: nonce0 + 9n }, bad).then(() => null, (x) => x);
+  assert.equal(eBad?.code, "BadRoute", `a mismatched route call must be refused (${eBad?.message ?? "it went through"})`);
+  ok(`a route call for another coin is refused ("${eBad.message}")`);
+  const c0b = await bal(coin, userAcc.address), u0 = await bal(USDC, userAcc.address);
+  const res = await send(mb, data);
+  assert.equal(res.status, "success", "route buy failed");
+  const got = (await bal(coin, userAcc.address)) - c0b;
+  assert.ok(got >= mb.minOut, "got less than the signed minimum");
+  assert.equal(u0 - (await bal(USDC, userAcc.address)), amountIn + up(FEE), "user paid amount + fee");
+  ok(`route BUY through the relayer: $10 -> ${Number(got / 10n ** 18n)} coins (gas ${(await pub.getTransactionReceipt({ hash: res.hash })).gasUsed})`);
+
+  // SELL everything back through the route
+  await wUser.writeContract({ address: coin, abi: ERC20, functionName: "approve", args: [SWAP, maxUint256] }).then(mined);
+  const qs = await sim("quote", [false, coin, got, key]);
+  const quoted = qs - (qs * 100n) / 10_000n - up(FEE);
+  const data2 = encodeFunctionData({ abi: ROUTE_ABI, functionName: "sell", args: [coin, got, key] });
+  const ms = { user: userAcc.address, isBuy: false, coin, amountIn: got, minOut: (quoted * 98n) / 100n, target: ROUTE, dataHash: keccak256(data2), fee: up(FEE), nonce: nonce0 + 1n, deadline: dl };
+  const u1 = await bal(USDC, userAcc.address);
+  const res2 = await send(ms, data2);
+  assert.equal(res2.status, "success", "route sell failed");
+  const back = (await bal(USDC, userAcc.address)) - u1;
+  assert.ok(back >= ms.minOut, "sell paid less than the signed minimum");
+  assert.equal(await bal(coin, userAcc.address), c0b, "all bought coins sold");
+  ok(`route SELL through the relayer: received $${Number(formatUnits(back, DEC)).toFixed(2)} (the pool's sale before fees: $${Number(formatUnits(qs, DEC)).toFixed(2)})`);
+}
+
 async function main() {
   console.log(`Chain ${CHAIN_ID} fork at block ${await pub.getBlockNumber()} · relayer ${relayerAddr} · user ${userAcc.address}`);
   await test.setBalance({ address: relayerAddr, value: parseEther("5") });
@@ -348,6 +436,10 @@ async function main() {
     ok(`unlisted coins: buying refused ("${eb.message}"), selling open (refused here only by ${es?.code ?? "nothing"})`);
   }
   for (const c of [LIVE_COIN, ...(EXTRA_COINS[CHAIN_ID] ?? [])].filter(Boolean)) await extSwapCheck(relayer, c);
+
+  // ---- 7. ArkhamPad's own route into Clanker pools
+  console.log("\n  ArkhamPad's own Clanker route:");
+  await routeCheck(relayer);
 
   // ---- 7. the quality list's checks on real coins, with the live free APIs (read-only)
   console.log("\n  quality checks on real coins (GoPlus, DexScreener, KyberSwap):");
