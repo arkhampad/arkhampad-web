@@ -495,13 +495,14 @@ export function shareCoin(c: LiveCoin) {
 
 const isAddress = (v?: string) => !!v && /^0x[0-9a-fA-F]{40}$/.test(v.trim());
 
-/** True once the quality list exists (db/013 run and the indexer has listed coins).
- * Until then lists fall back to every coin, so the site never shows empty lists. */
+/** Lists show only coins that pass the quality checks (indexer/quality.mjs), always: a short list
+ * is better than showing unchecked coins. False only if the database can't be read. */
 let listedCache: { at: number; ok: boolean } | null = null;
 async function listedReady(): Promise<boolean> {
   if (listedCache && Date.now() - listedCache.at < 5 * 60_000) return listedCache.ok;
   const { count, error } = await db().from("ext_tokens").select("address", { count: "exact", head: true }).eq("listed", true);
-  const ok = !error && (count ?? 0) >= 100;
+  void count;
+  const ok = !error;
   listedCache = { at: Date.now(), ok };
   return ok;
 }

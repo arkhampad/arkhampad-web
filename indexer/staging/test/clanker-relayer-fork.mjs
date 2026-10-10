@@ -103,7 +103,9 @@ const LIVE_COIN = { 8453: "0xcfe1aeb9cc8b00795194e9878a4fade0cebb60a1", 56: "0x0
 // a real coin from another DEX a user reported (Base, Uniswap v4 with a hook): buy and sell must work
 // Samur•ai: its main pool is a new Uniswap v4 pool KyberSwap didn't see; a user sold for cents.
 // The fair-price guard must refuse such a trade, and pass it once the route is fair.
-const EXTRA_COINS = { 8453: ["0xb20000000000000000000040a5d1876ffd5820c6", "0x7bdd5673c9822463746a33026bac8249b8d3cba3"] };
+// BNB Chain: CAKE (deep PancakeSwap pools KyberSwap always routes) proves a full buy + sell with
+// BNB's 18-decimal USDC before trading BNB coins from other DEXs opens on the site
+const EXTRA_COINS = { 8453: ["0xb20000000000000000000040a5d1876ffd5820c6", "0x7bdd5673c9822463746a33026bac8249b8d3cba3"], 56: ["0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"] };
 let approvedUsdc = false;
 const KYBER = { 8453: "base", 56: "bsc", 4663: "robinhood" }[CHAIN_ID];
 const EXT_TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "address"], ["amountIn", "uint256"], ["minOut", "uint256"], ["target", "address"], ["dataHash", "bytes32"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]].map(([name, type]) => ({ name, type })) };
@@ -192,7 +194,7 @@ async function extSwapCheck(relayer, which) {
   // SELL them back
   await wUser.writeContract({ address: coin, abi: ERC20, functionName: "approve", args: [SWAP, maxUint256] }).then(mined);
   const rs = await kyber(coin, USDC, got, SWAP);
-  if (!rs && CHAIN_ID === 56) { console.log("  · KyberSwap has no BNB sell route for this coin: known, and why trading BNB coins from other DEXs stays off on the site (skipped)"); return; }
+  if (!rs && CHAIN_ID === 56 && coin.toLowerCase() === String(LIVE_COIN).toLowerCase()) { console.log("  · KyberSwap has no BNB sell route for this coin: known, and why trading BNB coins from other DEXs stays off on the site (skipped)"); return; }
   assert.ok(rs, "no sell route");
   const quoted = rs.amountOut - (rs.amountOut * 100n) / 10_000n - up(FEE);
   assert.ok(quoted > 0n);
