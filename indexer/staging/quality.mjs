@@ -242,10 +242,11 @@ async function socialsLoop(pool) {
 
 /** Market price in USD of one whole coin (DexScreener's deepest pair). */
 async function marketPrice(chainId, address) {
-  const pairs = await ds(`/tokens/v1/${SLUG[chainId]}/${address}`).catch(() => null);
+  const a = String(address).toLowerCase(); // checksummed or not
+  const pairs = await ds(`/tokens/v1/${SLUG[chainId]}/${a}`).catch(() => null);
   let best = null;
   for (const p of Array.isArray(pairs) ? pairs : []) {
-    if (String(p?.baseToken?.address ?? "").toLowerCase() !== address || !(num(p?.priceUsd) > 0)) continue;
+    if (String(p?.baseToken?.address ?? "").toLowerCase() !== a || !(num(p?.priceUsd) > 0)) continue;
     if (!best || (num(p?.liquidity?.usd) ?? 0) > (num(best?.liquidity?.usd) ?? 0)) best = p;
   }
   return best ? num(best.priceUsd) : null;
@@ -288,8 +289,9 @@ export async function clankerRouteCheck(net, pub, address, decimals, poolId, hoo
   const [c0, c1] = BigInt(c) < BigInt(weth) ? [c, weth] : [weth, c];
   const key = { currency0: c0, currency1: c1, fee: 0x800000, tickSpacing: 200, hooks: getAddress(hook) };
   const usdIn = BigInt(RULES.routeUsd) * 10n ** BigInt(net.usdcDec);
-  const sim = await pub.simulateContract({ address: getAddress(net.route), abi: ROUTE_ABI, functionName: "quoteRoundTrip", args: [c, usdIn, key] }).catch(() => null);
-  if (!sim) return { ok: false, price, fair: 0 };
+  let err = null;
+  const sim = await pub.simulateContract({ address: getAddress(net.route), abi: ROUTE_ABI, functionName: "quoteRoundTrip", args: [c, usdIn, key] }).catch((e) => { err = e.shortMessage ?? e.message; return null; });
+  if (!sim) return { ok: false, price, fair: 0, err };
   const [coins, back] = sim.result;
   const buy = ((Number(coins) / 10 ** decimals) * price) / RULES.routeUsd;
   const sell = Number(back) / Number(usdIn);

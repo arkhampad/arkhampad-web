@@ -289,7 +289,8 @@ async function routeCheck(relayer) {
 /** First outside Clanker coin (not ArkhamPad's) on this chain that the indexer would list through the route. */
 async function findOutsideClanker(skip) {
   const slug = { 8453: "base", 56: "bsc", 4663: "robinhood" }[CHAIN_ID];
-  const fixed = { 8453: ["0x9C5da28B2EaA7Acab2a6F6400DFe86cC9e907B07"] }[CHAIN_ID] ?? [];
+  // Clanker coins launched on other sites (seen by clanker-probe.mjs), then DexScreener's attention lists
+  const fixed = { 8453: ["0x9C5da28B2EaA7Acab2a6F6400DFe86cC9e907B07", "0xfDf561Ef9885Bb24788b88965B2E1e0Fbf9D0b07", "0x911A8A6cc25beb08a33B0DC7Fcdba75fBFD57b07", "0xf43BAE60F11B2F2AFc9fdA6b36eD1F9e69B3aB07", "0x3c565AbE198696d898173780F5c448EDc5A47B07", "0x5EFB8fDbc69A33127480F3382072E2E79d1f0B07"] }[CHAIN_ID] ?? [];
   const lists = await Promise.all(["/token-profiles/latest/v1", "/token-boosts/latest/v1", "/token-boosts/top/v1"].map((p) => quality.ds(p).catch(() => [])));
   const seen = new Set([skip.toLowerCase()]);
   const cands = [...fixed, ...lists.flat().filter((t) => t?.chainId === slug).map((t) => t.tokenAddress)]
@@ -305,7 +306,7 @@ async function findOutsideClanker(skip) {
       const coin = getAddress(a);
       const dec = Number(await pub.readContract({ address: coin, abi: [{ type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] }], functionName: "decimals" }));
       const r = await quality.clankerRouteCheck(net, pub, coin, dec, p.pairAddress, hook).catch((e) => ({ ok: false, fair: 0, err: e.message }));
-      console.log(`  · candidate ${p.baseToken?.symbol}: Clanker pool, liquidity $${Math.round(p.liquidity.usd)}, route check ${(r.fair * 100).toFixed(1)}% ${r.ok ? "ok" : "fails (would not be listed)"}`);
+      console.log(`  · candidate ${p.baseToken?.symbol}: Clanker pool (hook ${hook.slice(0, 8)}), liquidity $${Math.round(p.liquidity.usd)}, market price ${r.price ?? "none"}, route check ${(r.fair * 100).toFixed(1)}% ${r.ok ? "ok" : `fails (would not be listed)${r.err ? ": " + r.err : ""}`}`);
       if (r.ok) return { coin, symbol: p.baseToken?.symbol ?? "?", pool: p.pairAddress, hook, liq: p.liquidity.usd, fair: r.fair };
     }
   }
