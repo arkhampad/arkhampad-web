@@ -52,6 +52,21 @@ const BACKUP_RPCS: Record<number, string[]> = {
 };
 
 const clients = new Map<number, PublicClient>();
+
+/**
+ * Waits for a receipt by asking for it directly. viem's waiter also reads blocks, and a
+ * load-balanced public RPC (BNB) can answer from a node a block behind, which fails the wait
+ * even though the transaction went through. Here any error just means "not yet".
+ */
+export async function receipt(id: number, hash: Hex, timeout = 60_000, every = 300) {
+  const end = Date.now() + timeout;
+  for (;;) {
+    const rc = await client(id).getTransactionReceipt({ hash }).catch(() => null);
+    if (rc) return rc;
+    if (Date.now() > end) throw new Error("Timed out waiting for the transaction.");
+    await new Promise((ok) => setTimeout(ok, every));
+  }
+}
 export function client(id: number): PublicClient {
   let c = clients.get(id);
   if (!c) {
@@ -226,7 +241,7 @@ async function confirm(n: Net, res: Relayed): Promise<{ logs: Relayed["logs"]; t
   // the trade is already sent: wait longer rather than report a failure that didn't happen
   let rc;
   try {
-    rc = await client(n.id).waitForTransactionReceipt({ hash: res.hash, pollingInterval: 500, timeout: 120_000 });
+    rc = await receipt(n.id, res.hash, 120_000, 500);
   } catch {
     throw new TradeError("Your trade was sent and is still confirming. It will show up in your balance shortly.");
   }
@@ -283,7 +298,7 @@ async function ensureAllowance(n: Net, s: Signer, token: Address, need: bigint) 
       s.sendTx(n.id, { to: token, data: encodeFunctionData({ abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [n.router, MAX] }) }),
       new Promise<never>((_, no) => setTimeout(() => no(new TradeError("Your wallet didn't respond. Please try again.")), 60_000)),
     ]);
-    await c.waitForTransactionReceipt({ hash, pollingInterval: 250, timeout: 60_000 });
+    await receipt(n.id, hash, 60_000, 250);
     if (!(await allowanceReaches(n, token, s.address, need))) throw new TradeError("Approval didn't go through. Please try again.");
     permitted.add(key);
     return;
@@ -404,7 +419,7 @@ export async function ensureCash(chainId: number, need: bigint, s: Signer): Prom
           s.sendTx(cid, { to: d.to, data: d.data }),
           new Promise<never>((_, no) => setTimeout(() => no(new TradeError("Your wallet didn't respond. Please try again.")), 60_000)),
         ]);
-        const rc = await client(cid).waitForTransactionReceipt({ hash, pollingInterval: 300, timeout: 60_000 });
+        const rc = await receipt(cid, hash, 60_000, 300);
         if (rc.status !== "success") throw new TradeError("Moving your cash didn't go through. Your funds are safe; please try again.");
       }
     }

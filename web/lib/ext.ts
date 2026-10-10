@@ -93,7 +93,12 @@ async function approveWithGas(n: ExtNet, s: Signer, token: Address, need: bigint
   const owed = BigInt(String(r?.owed ?? "0"));
   const hash = await withTimeout(s.sendTx(n.id, { to: token, data: encodeFunctionData({ abi: parseAbi(["function approve(address,uint256) returns (bool)"]), functionName: "approve", args: [n.swap!, 2n ** 256n - 1n] }) }), 60_000);
   const c = pub(n);
-  await c.waitForTransactionReceipt({ hash, pollingInterval: 250, timeout: 60_000 });
+  // ask for the receipt directly: a load-balanced node a block behind must not fail the wait
+  for (let end = Date.now() + 60_000; ; ) {
+    if (await c.getTransactionReceipt({ hash }).catch(() => null)) break;
+    if (Date.now() > end) throw new TradeError("Approval is taking longer than usual. Please try again in a minute.");
+    await new Promise((ok) => setTimeout(ok, 300));
+  }
   for (let i = 0; i < 12; i++) {
     if ((await c.readContract({ address: token, abi: ERC, functionName: "allowance", args: [s.address, n.swap!] }).catch(() => 0n)) >= need) return owed;
     await new Promise((ok) => setTimeout(ok, 700));

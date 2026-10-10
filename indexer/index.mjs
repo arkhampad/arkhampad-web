@@ -92,7 +92,10 @@ async function lastBlock(c) {
 async function syncChain(c, client) {
   const usd = usdOf(c);
   const RANGE = RANGE_DEFAULT ?? BigInt(c.blockRange || 500);
-  const head = await client.getBlockNumber().catch((err) => { throw new Error(`getBlockNumber: ${err.shortMessage || err.message}${err.details ? " | " + err.details : ""}`); });
+  const tip = await client.getBlockNumber().catch((err) => { throw new Error(`getBlockNumber: ${err.shortMessage || err.message}${err.details ? " | " + err.details : ""}`); });
+  // Load-balanced public RPCs (BNB) answer from nodes a block or two apart: stay a few blocks
+  // behind the tip so getLogs never asks a lagging node for a block it doesn't have yet.
+  const head = tip - BigInt(c.headLag || 0);
   // the cursor is read once and then kept in memory, so a stale process can't move it
   if (c.cursor === undefined) c.cursor = await lastBlock(c);
   let from = c.cursor + 1n;

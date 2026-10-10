@@ -158,6 +158,21 @@ export function makeRelayer() {
   fees.warm([...nets.values()]);
   log(`relayer ${account.address} on ${[...nets.values()].map((n) => n.c.name).join(", ")}`);
 
+  /**
+   * Waits for a receipt by asking for it directly, again and again. viem's own waiter also reads
+   * blocks, and a load-balanced public RPC (BNB) can answer from a node a block behind, which
+   * fails the whole wait even though the transaction went through. Any error here = not yet.
+   */
+  async function waitRc(n, { hash, pollingInterval = 300, timeout = 60_000 }) {
+    const end = Date.now() + timeout;
+    for (;;) {
+      const rc = await n.pub.getTransactionReceipt({ hash }).catch(() => null);
+      if (rc) return rc;
+      if (Date.now() > end) throw new Error(`no receipt for ${hash} after ${Math.round(timeout / 1000)}s`);
+      await new Promise((ok) => setTimeout(ok, Math.max(pollingInterval, 250)));
+    }
+  }
+
   async function send(n, to, data, fixedGas) {
     // Simulate first: a request that would fail never costs gas, and the user gets a clear reason.
     try {
@@ -264,7 +279,7 @@ export function makeRelayer() {
       dripLog.set(user, [...seen, Date.now()]);
       const t0 = Date.now();
       const hash = await n.wallet.sendTransaction({ to: user, value: need - native, ...(ARB_CHAINS.has(n.c.chainId) ? {} : { gas: 21_000n }) });
-      const rc = await n.pub.waitForTransactionReceipt({ hash, pollingInterval: 150, timeout: 60_000 });
+      const rc = await waitRc(n, { hash, pollingInterval: 150, timeout: 60_000 });
       // The user repays this (top-up + the transfer's own gas) in USDC with their next trade
       // from other DEXs: ArkhamPad never pays anyone's gas.
       const spentWei = (need - native) + rc.gasUsed * rc.effectiveGasPrice + (typeof rc.l1Fee === "bigint" ? rc.l1Fee : 0n);
@@ -328,7 +343,7 @@ export function makeRelayer() {
     const t0 = Date.now();
     const hash = await send(n, to, data, fixedGas);
     const t1 = Date.now();
-    const rc = await n.pub.waitForTransactionReceipt({ hash, pollingInterval: 150, timeout: 60_000 });
+    const rc = await waitRc(n, { hash, pollingInterval: 150, timeout: 60_000 });
     const t2 = Date.now();
     fees.record(n, kind, rc);
     if (kind === "extSwap" && buyUsd > 0 && rc.status === "success") limits.add(n, String(body.swap.user), buyUsd);
@@ -358,7 +373,7 @@ export function makeRelayer() {
     graduating.add(key);
     try {
       const hash = await send(n, getAddress(curve), encodeFunctionData({ abi: GRAD_ABI, functionName: "graduate" }));
-      await n.pub.waitForTransactionReceipt({ hash });
+      await waitRc(n, { hash });
       log(`${n.c.name} graduated ${curve} ${hash}`);
       return hash;
     } catch (e) {
@@ -677,7 +692,7 @@ export function makeRelayer() {
           const hash = vault
             ? await send(n, vault, encodeFunctionData({ abi: VAULT_ABI, functionName: "payReferral", args: [getAddress(user), amount, `0x${BigInt(ins.rows[0].id).toString(16).padStart(64, "0")}`] }))
             : await send(n, usdc, encodeFunctionData({ abi: [{ type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] }], functionName: "transfer", args: [getAddress(user), amount] }), 120_000n);
-          await n.pub.waitForTransactionReceipt({ hash, timeout: 60_000 });
+          await waitRc(n, { hash, timeout: 60_000 });
           await db.query("update ref_payouts set tx_hash=$2 where id=$1", [ins.rows[0].id, hash]);
           log(`${n.c.name} referral payout ${user} $${(Number(amount) / 10 ** DEC(n)).toFixed(2)} ${hash}`);
           return { paid: Number(amount) / 10 ** DEC(n), hash };
@@ -807,7 +822,7 @@ export function makeRelayer() {
     refills.set(n.c.chainId, [...done, Date.now()]);
     // 1) fees from the vault to the relayer (shows on-chain as a payout with ref "gas-refill")
     const h1 = await send(n, vault, encodeFunctionData({ abi: VAULT_ABI, functionName: "payReferral", args: [account.address, amount, GAS_REF] }));
-    await n.pub.waitForTransactionReceipt({ hash: h1, timeout: 60_000 });
+    await waitRc(n, { hash: h1, timeout: 60_000 });
     // Arc: USDC is the gas token itself, nothing to swap
     if (n.c.chainId === 5042) { log(`${n.c.name}: gas refilled with $${REFILL_USD} of collected fees`); return null; }
     // 2) swap them for the gas token through KyberSwap
@@ -820,10 +835,10 @@ export function makeRelayer() {
     const allow = await n.pub.readContract({ address: usdc, abi: ERC20_MIN, functionName: "allowance", args: [account.address, getAddress(router)] });
     if (allow < amount) {
       const ha = await send(n, usdc, encodeFunctionData({ abi: ERC20_MIN, functionName: "approve", args: [getAddress(router), 2n ** 256n - 1n] }));
-      await n.pub.waitForTransactionReceipt({ hash: ha, timeout: 60_000 });
+      await waitRc(n, { hash: ha, timeout: 60_000 });
     }
     const h2 = await send(n, getAddress(router), b.data.data);
-    const rc = await n.pub.waitForTransactionReceipt({ hash: h2, timeout: 60_000 });
+    const rc = await waitRc(n, { hash: h2, timeout: 60_000 });
     if (rc.status !== "success") return "swap failed on-chain";
     log(`${n.c.name}: gas refilled with $${REFILL_USD} of collected fees (${h2})`);
     return null;
@@ -925,7 +940,7 @@ export function makeRelayer() {
       try {
         const id = ins.rows[0].id;
         const hash = await send(n, vault, encodeFunctionData({ abi: VAULT_ABI, functionName: "payReferral", args: [getAddress(ref), amount, `0x${BigInt(id).toString(16).padStart(64, "0")}`] }));
-        await n.pub.waitForTransactionReceipt({ hash, timeout: 60_000 });
+        await waitRc(n, { hash, timeout: 60_000 });
         await db.query("update ref_payouts set tx_hash=$2 where id=$1", [id, hash]);
         left -= amount;
         log(`${n.c.name} referral paid ${ref} $${(Number(amount) / 10 ** DEC(n)).toFixed(2)} ${hash}`);
