@@ -30,6 +30,7 @@ fs.writeFileSync(file, JSON.stringify([forkEntry]));
 const relayerKey = generatePrivateKey();
 Object.assign(process.env, { CHAINS_FILE: file, FORK_RPC: RPC, RELAYER_KEY: relayerKey, PUBLIC_URL, CLANKER_FLOAT_USD: "0", FEE_MAX_USD: "100000", LIMITS_ON: "off" });
 const { makeRelayer } = await import("../relayer.mjs");
+const priceGuard = await import("../priceguard.mjs");
 const { clankerOf, lockersOf, TOKEN_CREATED } = await import("../clanker.mjs");
 const { clankerTrade } = await import("../poolmath.mjs");
 
@@ -98,6 +99,11 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 const META = `data:application/json;base64,${Buffer.from(JSON.stringify({ description: "Relayer fork test coin.", x: "arkhampad", website: "example.com" })).toString("base64")}`;
 
 const LIVE_COIN = { 8453: "0xcfe1aeb9cc8b00795194e9878a4fade0cebb60a1", 56: "0x09456868a05eb1fe084603e41a241dc0da626305", 4663: "0x1a087dc194727c474292a84cd68d93b7c11d94f2" }[CHAIN_ID];
+// a real coin from another DEX a user reported (Base, Uniswap v4 with a hook): buy and sell must work
+// Samur•ai: its main pool is a new Uniswap v4 pool KyberSwap didn't see; a user sold for cents.
+// The fair-price guard must refuse such a trade, and pass it once the route is fair.
+const EXTRA_COINS = { 8453: ["0xb20000000000000000000040a5d1876ffd5820c6", "0x7bdd5673c9822463746a33026bac8249b8d3cba3"] };
+let approvedUsdc = false;
 const KYBER = { 8453: "base", 56: "bsc", 4663: "robinhood" }[CHAIN_ID];
 const EXT_TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "address"], ["amountIn", "uint256"], ["minOut", "uint256"], ["target", "address"], ["dataHash", "bytes32"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]].map(([name, type]) => ({ name, type })) };
 async function kyber(tokenIn, tokenOut, amountIn, sender) {
@@ -115,16 +121,17 @@ async function kyber(tokenIn, tokenOut, amountIn, sender) {
   if (!b?.data?.data) return null;
   return { amountOut: BigInt(sum.amountOut), target: getAddress(b.data.routerAddress), data: b.data.data };
 }
-async function extSwapCheck(relayer) {
+async function extSwapCheck(relayer, which) {
   const SWAP = entry.extSwap ? getAddress(entry.extSwap) : null;
-  if (!SWAP || !LIVE_COIN) { console.log("  · no PadExtSwap on this chain: skipped"); return; }
-  const coin = getAddress(LIVE_COIN);
+  if (!SWAP || !which) { console.log("  · no PadExtSwap on this chain: skipped"); return; }
+  const coin = getAddress(which);
+  console.log(`  · one-tap trading check for ${coin}`);
   if ((await pub.getCode({ address: coin }))?.length > 2 !== true) { console.log("  · live coin not on this fork yet: skipped"); return; }
   const scale = 10n ** BigInt(DEC - 6);
   const up = (v) => v * scale, down = (v) => v / scale;
   const spendOf = (a) => a - (a * 100n) / 10_000n;
   // the user approves PadExtSwap once (the site does it by permit, or with a small gas top-up on BNB)
-  await wUser.writeContract({ address: USDC, abi: ERC20, functionName: "approve", args: [SWAP, maxUint256] }).then(mined);
+  if (!approvedUsdc) { await wUser.writeContract({ address: USDC, abi: ERC20, functionName: "approve", args: [SWAP, maxUint256] }).then(mined); approvedUsdc = true; }
   const fq = await relayer.feeQuote(CHAIN_ID, "extSwap");
   const FEE = BigInt(fq.fee); // site units
   // BUY $10
@@ -132,10 +139,29 @@ async function extSwapCheck(relayer) {
   const rb = await kyber(USDC, coin, spendOf(amountIn), SWAP);
   if (!rb) { console.log(`  · KyberSwap has no route for our coin on chain ${CHAIN_ID}: one-tap trading of it needs another route (skipped)`); return; }
   const sign = async (m) => wUser.signTypedData({ domain: { name: "ArkhamPad Swap", version: "1", chainId: CHAIN_ID, verifyingContract: SWAP }, types: EXT_TYPES, primaryType: "ExtSwap", message: m });
-  const nonce1 = BigInt(Date.now()), dl = BigInt(Math.floor(Date.now() / 1000) + 3600);
-  const mb = { user: userAcc.address, isBuy: true, coin, amountIn, minOut: (rb.amountOut * 90n) / 100n, target: rb.target, dataHash: keccak256(rb.data), fee: up(FEE), nonce: nonce1, deadline: dl };
+  const nonce1 = BigInt(Date.now()) * 10n, dl = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const send = async (m, data) => relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...Object.fromEntries(Object.entries(m).map(([k2, v]) => [k2, typeof v === "bigint" ? String(v) : v])), data, signature: await sign(m) } });
+  const refused = async (m, data, what) => {
+    const before = [await bal(USDC, userAcc.address), await bal(coin, userAcc.address)];
+    const e = await send(m, data).then(() => null, (x) => x);
+    assert.ok(e && e.code === "PriceGuard", `${what}: the price guard should have refused it (${e?.message ?? "it went through"})`);
+    assert.deepEqual([await bal(USDC, userAcc.address), await bal(coin, userAcc.address)], before, `${what}: nothing may move`);
+    ok(`price guard refused ${what}: "${e.message}"`);
+  };
+  const price = await priceGuard.refPrice(CHAIN_ID, coin);
+  const coinDec = Number(await pub.readContract({ address: coin, abi: [{ type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] }], functionName: "decimals" }));
+  console.log(`  · market price (DexScreener/GeckoTerminal) $${price} · KyberSwap buy route gives ${Number(rb.amountOut) / 10 ** coinDec} coins for $${Number(spendOf(amountIn)) / 10 ** DEC} (= $${price ? ((Number(rb.amountOut) / 10 ** coinDec) * price).toFixed(2) : "?"} at market)`);
+  // the site signs 98% of the route's quote
+  const mb = { user: userAcc.address, isBuy: true, coin, amountIn, minOut: (rb.amountOut * 98n) / 100n, target: rb.target, dataHash: keccak256(rb.data), fee: up(FEE), nonce: nonce1, deadline: dl };
+  // a buy that would accept almost nothing is always refused
+  await refused({ ...mb, minOut: 1n, nonce: nonce1 + 5n }, rb.data, "a buy with no real minimum");
+  if (!priceGuard.judge({ isBuy: true, amountIn, minOut: mb.minOut, fee: mb.fee, coinDec, usdcDec: DEC, price }).ok) {
+    // KyberSwap's route is far off the market price (or there is no market price): it must be refused
+    await refused(mb, rb.data, "a buy on an unfair route");
+    return;
+  }
   const u0 = await bal(USDC, userAcc.address), c0 = await bal(coin, userAcc.address);
-  const res = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...Object.fromEntries(Object.entries(mb).map(([k2, v]) => [k2, typeof v === "bigint" ? String(v) : v])), data: rb.data, signature: await sign(mb) } });
+  const res = await send(mb, rb.data);
   assert.equal(res.status, "success", "one-tap buy failed");
   console.log(`  · buy gas used ${(await pub.getTransactionReceipt({ hash: res.hash })).gasUsed}`);
   const got = (await bal(coin, userAcc.address)) - c0;
@@ -148,9 +174,15 @@ async function extSwapCheck(relayer) {
   assert.ok(rs, "no sell route");
   const quoted = rs.amountOut - (rs.amountOut * 100n) / 10_000n - up(FEE);
   assert.ok(quoted > 0n);
-  const ms = { user: userAcc.address, isBuy: false, coin, amountIn: got, minOut: (quoted * 90n) / 100n, target: rs.target, dataHash: keccak256(rs.data), fee: up(FEE), nonce: nonce1 + 1n, deadline: dl };
+  const ms = { user: userAcc.address, isBuy: false, coin, amountIn: got, minOut: (quoted * 98n) / 100n, target: rs.target, dataHash: keccak256(rs.data), fee: up(FEE), nonce: nonce1 + 1n, deadline: dl };
+  // a sale for almost nothing (what happened to the user) is always refused
+  await refused({ ...ms, minOut: 1n, nonce: nonce1 + 6n }, rs.data, "a sale for almost nothing");
+  if (!priceGuard.judge({ isBuy: false, amountIn: got, minOut: ms.minOut, fee: ms.fee, coinDec, usdcDec: DEC, price }).ok) {
+    await refused(ms, rs.data, "a sale on an unfair route");
+    return;
+  }
   const u1 = await bal(USDC, userAcc.address);
-  const res2 = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...Object.fromEntries(Object.entries(ms).map(([k2, v]) => [k2, typeof v === "bigint" ? String(v) : v])), data: rs.data, signature: await sign(ms) } });
+  const res2 = await send(ms, rs.data);
   if (res2.status !== "success") { const rc = await pub.getTransactionReceipt({ hash: res2.hash }); console.log(`  · sell gas used ${rc.gasUsed} of ${(await pub.getTransaction({ hash: res2.hash })).gas}`); }
   assert.equal(res2.status, "success", "one-tap sell failed");
   const back = (await bal(USDC, userAcc.address)) - u1;
@@ -277,7 +309,7 @@ async function main() {
 
   // ---- 6. one-tap trading on ArkhamPad (PadExtSwap + KyberSwap) of our real live coin on this chain,
   // with exactly the site's math (web/lib/ext.ts): dollars in the network's USDC units, 1% fee, network fee
-  await extSwapCheck(relayer);
+  for (const c of [LIVE_COIN, ...(EXTRA_COINS[CHAIN_ID] ?? [])].filter(Boolean)) await extSwapCheck(relayer, c);
 
   console.log(`\nALL RELAYER CHECKS PASSED on chain ${CHAIN_ID}`);
   process.exit(0);
