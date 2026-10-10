@@ -8,6 +8,7 @@ on:
     paths:
       - "indexer/clanker.mjs"
       - "indexer/test/clanker-fork.mjs"
+      - "indexer/staging/**"
 
 jobs:
   fork:
@@ -54,6 +55,12 @@ jobs:
         env:
           CHAIN_ID: ${{ matrix.id }}
         run: node test/clanker-fork.mjs
+
+      - name: The real relayer launches, refunds and claims (on the copy)
+        if: always()
+        env:
+          CHAIN_ID: ${{ matrix.id }}
+        run: node staging/test/clanker-relayer-fork.mjs
 
       - name: Real Clanker coins - screeners and trading routes (read-only)
         if: always()
