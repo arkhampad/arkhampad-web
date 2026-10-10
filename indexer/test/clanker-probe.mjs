@@ -25,7 +25,23 @@ async function blockAt(secondsAgo) {
   return { tip: tip.number, at: tip.number - BigInt(Math.round(secondsAgo / per)), per };
 }
 
+// ArkhamPad's own live Clanker coins: can the site's one-tap trading (KyberSwap) buy AND sell them?
+const OURS = { 8453: ["0xcfe1aeb9cc8b00795194e9878a4fade0cebb60a1"], 56: ["0x09456868a05eb1fe084603e41a241dc0da626305"], 4663: ["0x1a087dc194727c474292a84cd68d93b7c11d94f2"] }[CHAIN_ID] ?? [];
+async function ours() {
+  for (const coin of OURS) {
+    const amt = 5n * 10n ** BigInt(USDC_DEC); // $5
+    const buy = await getJson(`https://aggregator-api.kyberswap.com/${SLUG.kyber}/api/v1/routes?tokenIn=${USDC}&tokenOut=${coin}&amountIn=${amt}`, { "x-client-id": "arkhampad" });
+    const b = buy.j?.data?.routeSummary;
+    const out = b ? BigInt(b.amountOut || "0") : 0n;
+    const sell = out > 0n ? await getJson(`https://aggregator-api.kyberswap.com/${SLUG.kyber}/api/v1/routes?tokenIn=${coin}&tokenOut=${USDC}&amountIn=${out / 2n}`, { "x-client-id": "arkhampad" }) : null;
+    const sr = sell?.j?.data?.routeSummary;
+    const ex = (r) => (r ? [...new Set((r.route ?? []).flat().map((h) => h.exchange))].join("+") : "");
+    console.log(`OUR COIN ${coin}: Kyber buy ${b ? `yes (${ex(b)}, $5 -> ${Number(out) / 1e18} coins)` : `no (${buy.status} ${buy.j?.message ?? ""})`} | sell ${sr ? `yes (${ex(sr)}, half -> $${(Number(sr.amountOut) / 10 ** USDC_DEC).toFixed(2)})` : `no (${sell?.status ?? "-"} ${sell?.j?.message ?? ""})`}`);
+  }
+}
+
 async function main() {
+  await ours();
   console.log(`Chain ${CHAIN_ID} · Clanker factory ${k.factory}`);
   // pick the first node that answers a log search
   for (const u of RPCS) {
