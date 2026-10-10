@@ -107,7 +107,7 @@ const EXTRA_COINS = { 8453: ["0xb20000000000000000000040a5d1876ffd5820c6", "0x7b
 let approvedUsdc = false;
 const KYBER = { 8453: "base", 56: "bsc", 4663: "robinhood" }[CHAIN_ID];
 const EXT_TYPES = { ExtSwap: [["user", "address"], ["isBuy", "bool"], ["coin", "address"], ["amountIn", "uint256"], ["minOut", "uint256"], ["target", "address"], ["dataHash", "bytes32"], ["fee", "uint256"], ["nonce", "uint256"], ["deadline", "uint256"]].map(([name, type]) => ({ name, type })) };
-async function kyber(tokenIn, tokenOut, amountIn, sender) {
+async function kyber(tokenIn, tokenOut, amountIn, sender, slippage = 300) {
   const head = { "x-client-id": "arkhampad", "content-type": "application/json" };
   let r = null;
   for (let i = 0; i < 4 && !r?.data?.routeSummary; i++) {
@@ -118,7 +118,7 @@ async function kyber(tokenIn, tokenOut, amountIn, sender) {
   }
   const sum = r?.data?.routeSummary;
   if (!sum) return null;
-  const b = await (await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/route/build`, { method: "POST", headers: head, body: JSON.stringify({ routeSummary: sum, sender, recipient: sender, slippageTolerance: 300, deadline: Math.floor(Date.now() / 1000) + 3600 }) })).json().catch(() => null);
+  const b = await (await fetch(`https://aggregator-api.kyberswap.com/${KYBER}/api/v1/route/build`, { method: "POST", headers: head, body: JSON.stringify({ routeSummary: sum, sender, recipient: sender, slippageTolerance: slippage, deadline: Math.floor(Date.now() / 1000) + 3600 }) })).json().catch(() => null);
   if (!b?.data?.data) return null;
   return { amountOut: BigInt(sum.amountOut), target: getAddress(b.data.routerAddress), data: b.data.data };
 }
@@ -162,7 +162,20 @@ async function extSwapCheck(relayer, which) {
     return;
   }
   const u0 = await bal(USDC, userAcc.address), c0 = await bal(coin, userAcc.address);
-  const res = await send(mb, rb.data);
+  // like the site: when the DEX route can't fill (the pool moved), quote again with a little more room
+  const fill = async (m, r, isBuy, amt) => {
+    for (let attempt = 0; ; attempt++) {
+      try { return await send(m, r.data); } catch (e) {
+        if (e.code !== "SwapFailed" || attempt >= 2) throw e;
+        console.log(`  · the DEX route couldn't fill (try ${attempt + 1}): quoting again`);
+        r = await kyber(isBuy ? USDC : coin, isBuy ? coin : USDC, amt, SWAP, [500, 500][attempt]);
+        assert.ok(r, "no route on retry");
+        const q = isBuy ? r.amountOut : r.amountOut - (r.amountOut * 100n) / 10_000n - up(FEE);
+        m = { ...m, minOut: (q * 98n) / 100n, target: r.target, dataHash: keccak256(r.data), nonce: m.nonce + 10n * BigInt(attempt + 1) };
+      }
+    }
+  };
+  const res = await fill(mb, rb, true, spendOf(amountIn));
   assert.equal(res.status, "success", "one-tap buy failed");
   console.log(`  · buy gas used ${(await pub.getTransactionReceipt({ hash: res.hash })).gasUsed}`);
   const got = (await bal(coin, userAcc.address)) - c0;
@@ -172,6 +185,7 @@ async function extSwapCheck(relayer, which) {
   // SELL them back
   await wUser.writeContract({ address: coin, abi: ERC20, functionName: "approve", args: [SWAP, maxUint256] }).then(mined);
   const rs = await kyber(coin, USDC, got, SWAP);
+  if (!rs && CHAIN_ID === 56) { console.log("  · KyberSwap has no BNB sell route for this coin: known, and why trading BNB coins from other DEXs stays off on the site (skipped)"); return; }
   assert.ok(rs, "no sell route");
   const quoted = rs.amountOut - (rs.amountOut * 100n) / 10_000n - up(FEE);
   assert.ok(quoted > 0n);
@@ -183,7 +197,7 @@ async function extSwapCheck(relayer, which) {
     return;
   }
   const u1 = await bal(USDC, userAcc.address);
-  const res2 = await send(ms, rs.data);
+  const res2 = await fill(ms, rs, false, got);
   if (res2.status !== "success") { const rc = await pub.getTransactionReceipt({ hash: res2.hash }); console.log(`  · sell gas used ${rc.gasUsed} of ${(await pub.getTransaction({ hash: res2.hash })).gas}`); }
   assert.equal(res2.status, "success", "one-tap sell failed");
   const back = (await bal(USDC, userAcc.address)) - u1;
