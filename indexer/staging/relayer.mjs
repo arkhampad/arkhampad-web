@@ -265,6 +265,15 @@ export function makeRelayer() {
         log(`${n.c.name} extSwap refused by price guard: ${w.isBuy === true ? "buy" : "sell"} ${coinAddr} market $${price ?? "none"} worst ${(verdict.dev * 100).toFixed(1)}% below`);
         const e = new Error(priceGuard.GUARD_MSG); e.status = 400; e.code = "PriceGuard"; throw e;
       }
+      // a buy only when what it gets can be sold back near the market price
+      if (w.isBuy === true) {
+        const coins = (big(w.minOut, "minOut") * 100n) / 98n; // the route's quote (the site signs 98% of it)
+        const sb = await priceGuard.sellBackOk({ chainId: n.c.chainId, coin: coinAddr, coins, coinDec, usdc: getAddress(n.c.usdc), usdcDec: DEC(n), price });
+        if (!sb.ok) {
+          log(`${n.c.name} extSwap buy refused, no fair sell route: ${coinAddr} sale would return ${(sb.back * 100).toFixed(1)}% of market value`);
+          const e = new Error(priceGuard.NOSELL_MSG); e.status = 400; e.code = "NoSellRoute"; throw e;
+        }
+      }
     } else if (kind === "permitExt") {
       // EIP-2612 approval for PadExtSwap (USDC or a coin that supports permit)
       if (!n.c.extSwap) { const e = new Error("Not available on this network."); e.status = 400; throw e; }

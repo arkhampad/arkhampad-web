@@ -142,10 +142,10 @@ async function extSwapCheck(relayer, which) {
   const sign = async (m) => wUser.signTypedData({ domain: { name: "ArkhamPad Swap", version: "1", chainId: CHAIN_ID, verifyingContract: SWAP }, types: EXT_TYPES, primaryType: "ExtSwap", message: m });
   const nonce1 = BigInt(Date.now()) * 10n, dl = BigInt(Math.floor(Date.now() / 1000) + 3600);
   const send = async (m, data) => relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...Object.fromEntries(Object.entries(m).map(([k2, v]) => [k2, typeof v === "bigint" ? String(v) : v])), data, signature: await sign(m) } });
-  const refused = async (m, data, what) => {
+  const refused = async (m, data, what, code = "PriceGuard") => {
     const before = [await bal(USDC, userAcc.address), await bal(coin, userAcc.address)];
     const e = await send(m, data).then(() => null, (x) => x);
-    assert.ok(e && e.code === "PriceGuard", `${what}: the price guard should have refused it (${e?.message ?? "it went through"})`);
+    assert.ok(e && e.code === code, `${what}: should have been refused with ${code} (${e?.code ?? ""} ${e?.message ?? "it went through"})`);
     assert.deepEqual([await bal(USDC, userAcc.address), await bal(coin, userAcc.address)], before, `${what}: nothing may move`);
     ok(`price guard refused ${what}: "${e.message}"`);
   };
@@ -159,6 +159,13 @@ async function extSwapCheck(relayer, which) {
   if (!priceGuard.judge({ isBuy: true, amountIn, minOut: mb.minOut, fee: mb.fee, coinDec, usdcDec: DEC, price }).ok) {
     // KyberSwap's route is far off the market price (or there is no market price): it must be refused
     await refused(mb, rb.data, "a buy on an unfair route");
+    return;
+  }
+  // a buy only when what it gets can be sold back near the market price
+  const sb = await priceGuard.sellBackOk({ chainId: CHAIN_ID, coin, coins: (mb.minOut * 100n) / 98n, coinDec, usdc: USDC, usdcDec: DEC, price });
+  console.log(`  · selling those coins back through KyberSwap would return ${(sb.back * 100).toFixed(1)}% of their market value`);
+  if (!sb.ok) {
+    await refused(mb, rb.data, "a buy of a coin that can't be sold back", "NoSellRoute");
     return;
   }
   const u0 = await bal(USDC, userAcc.address), c0 = await bal(coin, userAcc.address);

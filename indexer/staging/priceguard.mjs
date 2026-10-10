@@ -38,6 +38,28 @@ export async function refPrice(chainId, coin, fetchFn = fetch) {
   return p;
 }
 
+export const NOSELL_MSG = "This coin can't be sold through ArkhamPad right now, so buying it is turned off to protect you. Please try again later.";
+export const SELL_FLOOR = 0.85; // selling back what a buy gets must return at least 85% of its market value
+
+/**
+ * Before any buy: can the coins it gets be sold back, near the market price? (KyberSwap quote only.)
+ * A coin you can buy but not sell is how a user got stuck; such a buy is refused.
+ * Returns { ok, back } where back is the share of market value a sale would return.
+ */
+export async function sellBackOk({ chainId, coin, coins, coinDec, usdc, usdcDec, price }, fetchFn = fetch) {
+  const s = SLUG[chainId];
+  if (!s || !(price > 0) || coins <= 0n) return { ok: false, back: 0 };
+  try {
+    const r = await fetchFn(`https://aggregator-api.kyberswap.com/${s.dex}/api/v1/routes?tokenIn=${coin}&tokenOut=${usdc}&amountIn=${coins}`, { headers: { "x-client-id": "arkhampad" }, signal: AbortSignal.timeout(8000) });
+    const j = await r.json().catch(() => null);
+    const out = j?.data?.routeSummary?.amountOut;
+    if (!out) return { ok: false, back: 0 };
+    const value = (Number(coins) / 10 ** coinDec) * price;
+    const back = Number(out) / 10 ** usdcDec / value;
+    return { ok: back >= SELL_FLOOR, back };
+  } catch { return { ok: false, back: 0 }; }
+}
+
 /**
  * Checks a signed PadExtSwap trade. Amounts are on-chain units (bigint).
  * buy:  amountIn = USDC paid (ArkhamPad keeps 1%), minOut = least coins received
