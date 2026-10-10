@@ -213,8 +213,9 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
     }
   };
 
-  // automatic orders run on ArkhamPad's own pools only
-  const modes = clanker ? ["Market"] : ["Market", "Limit", "Auto"];
+  // limit and automatic (take profit / stop loss) orders are off everywhere for now: they only
+  // worked on the old pre-Clanker pools, so the site shows plain Market trading only
+  const modes = ["Market"];
   const soon = LIVE ? `${coin.chain} trading opens soon` : "Opens on mainnet";
   const label = launchFee.sniper ? `Trading opens in ${launchFee.left}s` : side === "buy" && buyBlocked ? "Buying is off for this coin" : ext && !extLive ? soon : !coin.own && !ext ? soon : phase === 1 ? "Graduating…" : !w.signedIn ? "Log in to trade" : busy ? step
     : mode === "Limit" ? `Set limit ${side === "buy" ? "buy" : "sell"}` : mode === "Auto" ? "Set take profit / stop loss" : `${side === "buy" ? "Buy" : "Sell"} ${coin.tick}`;
@@ -224,9 +225,9 @@ export function TradePanel({ coin, withLimit = false, onShare, initialSide = "bu
         <button type="button" onClick={() => { setSide("buy"); if (mode === "Auto") setMode("Market"); }} style={{ height: 42, borderRadius: 11, border: 0, fontWeight: 800, fontSize: 15, background: side === "buy" ? "var(--up)" : "transparent", color: side === "buy" ? "#04130C" : "var(--muted)" }}>Buy</button>
         <button type="button" onClick={() => setSide("sell")} style={{ height: 42, borderRadius: 11, border: 0, fontWeight: 800, fontSize: 15, background: side === "sell" ? "var(--down)" : "transparent", color: side === "sell" ? "#1A0505" : "var(--muted)" }}>Sell</button>
       </div>
-      <div style={{ display: "flex", gap: 16, fontSize: 13, fontWeight: 600 }}>
+      {modes.length > 1 && <div style={{ display: "flex", gap: 16, fontSize: 13, fontWeight: 600 }}>
         {modes.map((m) => <button key={m} type="button" onClick={() => { setMode(m); if (m === "Auto") setSide("sell"); if (m === "Limit" && !trig && coin.mcNum) setTrig(String(Math.round(coin.mcNum * (side === "buy" ? 0.8 : 1.5)))); }} style={{ background: "none", border: 0, padding: "0 0 6px", color: mode === m ? "var(--text)" : "var(--dim)", borderBottom: mode === m ? "2px solid var(--volt)" : "2px solid transparent" }}>{m}</button>)}
-      </div>
+      </div>}
       {mode === "Limit" && (
         <div className="field">
           <label htmlFor={`trig-${coin.id}`}>{side === "buy" ? "Buy when market cap drops to" : "Sell when market cap reaches"} <span className="dim">(now {coin.mc})</span></label>

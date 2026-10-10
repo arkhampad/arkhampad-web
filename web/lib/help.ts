@@ -50,8 +50,6 @@ export const help: HelpTopic[] = [
       ["How do I buy a coin?", "Open the coin, type an amount in USDC and tap Buy. Your coins appear on your Profile."],
       ["How do I sell?", "Open the coin, switch to Sell, pick a share or type an amount and confirm. The USDC goes back to your cash balance."],
       ["My trade failed. Did I lose money?", "No. If the price moves too far before your trade confirms, it's cancelled and your USDC stays in your balance. Try again."],
-      ["What are Limit and Auto orders?", "Limit buys or sells when a coin reaches the market cap you set. Auto sets a take profit and a stop loss on a coin you hold. Both run even when the site is closed."],
-      ["Where are my orders?", "On your Profile under Orders, and on the Alerts page. You can cancel them there."],
       ["How does copy trading work?", "Follow a trader. When they buy, you get an alert with a Copy button that buys the same coin with your preset amount. Nothing is bought until you tap Copy."],
       ["Why is a coin's price different from the chart?", "Prices move every second on busy coins. The trade panel always shows the latest estimate before you confirm."],
     ],

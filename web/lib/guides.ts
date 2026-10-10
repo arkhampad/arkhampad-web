@@ -16,7 +16,7 @@ const raw: Raw[] = [
     slug: "what-is-arkhampad", cat: "getting-started", title: "What is ArkhamPad?", desc: "The AI launchpad for creating and trading coins with USDC.",
     short: "ArkhamPad is a launchpad where anyone can create a coin by describing it in one sentence, and trade thousands of coins on Robinhood Chain and Base using only USDC.",
     sections: [
-      ["What you can do", "Create a coin with AI in about a minute, buy and sell coins with one tap, follow top traders and copy their buys, set alerts and automatic take profit or stop loss orders."],
+      ["What you can do", "Create a coin with AI in about a minute, buy and sell coins with one tap, follow top traders and copy their buys, and set price alerts."],
       ["Why USDC only", "You always see your balance in dollars. You deposit USDC, trade in USDC and withdraw USDC. There is no gas token to buy and no bridge to use."],
       ["Who it is for", "New creators who want a coin without code, and traders who want a fast, simple place to find new coins and coins from other DEXs in one list."],
     ],
@@ -98,7 +98,7 @@ const raw: Raw[] = [
     sections: [
       ["What is the same", "Fair launch with no presale, and a price that rises as people buy. The difference: the coin trades in a public, locked pool from the first second."],
       ["What is different", "You only use USDC, so your balance and every price are in dollars. AI turns one sentence into a ready coin. You can log in with Google, email or X instead of installing a wallet."],
-      ["More than a launchpad", "Discover also lists thousands of coins from other DEXs, and you get take profit, stop loss, alerts and copy trading in the same place."],
+      ["More than a launchpad", "Discover also lists thousands of coins from other DEXs, and you get alerts and copy trading in the same place."],
     ],
     faq: [["Do I need Solana?", "No. ArkhamPad runs on Robinhood Chain and Base."], ["Is launching free?", "Yes. Creating a coin is free."]],
   },
@@ -259,7 +259,7 @@ const raw: Raw[] = [
     sections: [
       ["Selling into the pool", "You sell into the coin's locked Uniswap pool, so there's always someone to sell to."],
       ["The first minutes", "Right after launch the pool fee is higher (falling to 2%). Selling in that window costs more."],
-      ["Take profit in steps", "Many traders sell part of their coins after a big rise and keep the rest. You can also set an automatic take profit."],
+      ["Take profit in steps", "Many traders sell part of their coins after a big rise and keep the rest. A price alert tells you when it is time to decide."],
     ],
     faq: [["Can I always sell?", "Yes. The pool's liquidity is locked forever. The price you get depends on how much others are buying and selling."], ["Why can't the creator sell?", "If the creator chose a creator lock, they can't sell their own coins until the lock ends."]],
   },
@@ -298,7 +298,7 @@ const raw: Raw[] = [
     short: "Market cap is the price of one coin times the total supply. It shows how big a coin is. Two coins with the same price can have very different market caps, so compare market caps, not prices.",
     sections: [
       ["Why not just look at price?", "A coin priced at $0.0001 isn't cheap if a billion coins exist. Market cap puts every coin on the same scale."],
-      ["Market cap on ArkhamPad", "New coins open at a $4.5K market cap in their Uniswap pool. Limit orders and alerts on ArkhamPad are set by market cap for the same reason."],
+      ["Market cap on ArkhamPad", "New coins open at a $4.5K market cap in their Uniswap pool. Price alerts on ArkhamPad are set by market cap for the same reason."],
       ["Market cap vs liquidity", "Liquidity is how much money is actually there to trade against. A big market cap with little liquidity means prices move a lot on small trades."],
     ],
     faq: [["What is FDV?", "Fully diluted value: the price times every coin that can ever exist. For ArkhamPad coins the supply is fixed, so the two are the same."]],
@@ -312,25 +312,6 @@ const raw: Raw[] = [
       ["How to reduce it", "Split big trades into smaller ones, and avoid trading at the busiest moments on a very small coin."],
     ],
     faq: [["My trade failed because the price moved. Did I lose money?", "No. A failed trade doesn't spend your USDC. Try again."]],
-  },
-  {
-    slug: "take-profit-and-stop-loss", cat: "trading", title: "Take profit and stop loss for meme coins", desc: "Let the site sell for you at the level you choose.",
-    short: "Take profit sells when the price rises by the amount you choose. Stop loss sells when it falls by the amount you choose. Both run automatically, even when you are offline.",
-    sections: [
-      ["How to set them", "Open a coin you hold, choose Auto, pick a take profit like +100% and a stop loss like -25%, then confirm."],
-      ["What you need", "You need to hold the coin first. Your orders show on your profile, where you can cancel them at any time."],
-    ],
-    faq: [["Is the sell price guaranteed?", "No. In fast markets the fill can be a little different from your level."], ["Do I need to keep the site open?", "No. Orders run even when you close the site."]],
-  },
-  {
-    slug: "limit-orders", cat: "trading", title: "Limit orders: buy the dip, sell the top", desc: "Set a market cap and let the order fill on its own.",
-    short: "A limit buy waits until a coin falls to the market cap you choose, then buys. A limit sell waits until it rises to your market cap, then sells. You set it once and it runs without you.",
-    sections: [
-      ["Setting a limit buy", "Open the coin, choose Limit, pick Buy, set a market cap below today's and the amount in USDC, then confirm."],
-      ["Setting a limit sell", "Choose Limit and Sell, set a market cap above today's and how much to sell."],
-      ["Managing orders", "Open orders show on your profile. Cancel any of them with one tap."],
-    ],
-    faq: [["Why market cap and not price?", "Meme coin prices have many zeros. Market cap is easier to read and compare."], ["Is my USDC locked while a limit buy waits?", "The order uses your balance when it fills, so keep enough USDC to cover it."]],
   },
   {
     slug: "read-a-coin-chart", cat: "trading", title: "How to read a coin chart", desc: "Candles, volume and time frames in plain words.",
@@ -347,7 +328,6 @@ const raw: Raw[] = [
     short: "The Terminal puts a coin's chart, the trade panel and the live trade feed on one screen, so you can switch coins and trade without leaving the page.",
     sections: [
       ["Switching coins", "Search or pick from the list and the whole screen changes to that coin."],
-      ["Order types", "Market buys or sells right away. Limit waits for your market cap. Auto sets take profit and stop loss."],
       ["Live trades", "See every buy and sell as it happens, with the wallet and the amount."],
     ],
     faq: [["Does the Terminal work on phones?", "Yes. The layout stacks on small screens so the chart and trade panel stay easy to use."]],
@@ -406,7 +386,7 @@ const raw: Raw[] = [
     short: "Only put into meme coins money you can lose completely. Spread it over several small trades instead of one big one, and decide in advance when you'll take profit.",
     sections: [
       ["Start small", "Your first trades are for learning. Use small amounts until you know how fast these coins move."],
-      ["Plan your exit", "Decide before you buy at what point you'll sell. Take profit and stop loss can do it for you."],
+      ["Plan your exit", "Decide before you buy at what point you'll sell. A price alert can remind you when it gets there."],
       ["Don't chase", "Buying because a coin already went up a lot is how many people lose money."],
     ],
     faq: [["Is this financial advice?", "No. It's general information to help you think about risk."]],
