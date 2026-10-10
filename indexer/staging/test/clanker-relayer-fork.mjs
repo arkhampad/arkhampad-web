@@ -28,7 +28,7 @@ const forkEntry = { ...entry, rpcEnv: "FORK_RPC", relayRpcEnv: "FORK_RPC", recei
 const file = path.join(os.tmpdir(), `chains-fork-${CHAIN_ID}.json`);
 fs.writeFileSync(file, JSON.stringify([forkEntry]));
 const relayerKey = generatePrivateKey();
-Object.assign(process.env, { CHAINS_FILE: file, FORK_RPC: RPC, RELAYER_KEY: relayerKey, PUBLIC_URL, CLANKER_FLOAT_USD: "0", FEE_MAX_USD: "5", LIMITS_ON: "off" });
+Object.assign(process.env, { CHAINS_FILE: file, FORK_RPC: RPC, RELAYER_KEY: relayerKey, PUBLIC_URL, CLANKER_FLOAT_USD: "0", FEE_MAX_USD: "100000", LIMITS_ON: "off" });
 const { makeRelayer } = await import("../relayer.mjs");
 const { clankerOf, TOKEN_CREATED } = await import("../clanker.mjs");
 const { clankerTrade } = await import("../poolmath.mjs");
@@ -103,9 +103,11 @@ async function main() {
   await test.setBalance({ address: userAcc.address, value: parseEther("0.01") }); // only for the one-time USDC approval
   await test.setBalance({ address: trader.address, value: parseEther("10") });
   const one = 10n ** BigInt(DEC);
-  const slot = await deal(USDC, userAcc.address, 100n * one);
+  // gas on a local copy is far dearer than on the real chain (anvil adds a 1 gwei tip), so network
+  // fees here are many dollars: the "network busy" ceiling is lifted and the user gets more test dollars
+  const slot = await deal(USDC, userAcc.address, 2000n * one);
   if (slot < 0) { console.log(`SKIPPED: couldn't give the test user ${entry.name} dollars on the fork (the Clanker launch itself is checked by clanker-fork.mjs)`); process.exit(0); }
-  ok(`user has $100 test dollars (balance slot ${slot})`);
+  ok(`user has $2000 test dollars (balance slot ${slot})`);
   await wUser.writeContract({ address: USDC, abi: ERC20, functionName: "approve", args: [ROUTER, maxUint256] }).then(mined);
 
   const relayer = makeRelayer();
