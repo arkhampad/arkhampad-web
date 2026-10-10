@@ -6,9 +6,12 @@
 // contract addresses and the encoding are exactly what Clanker itself uses.
 // Our choices: 1% trading fee, rewards 50% creator / 50% ArkhamPad paid in WETH/WBNB,
 // first market cap about $4.8K, the creator's first buy goes to the creator.
-import { decodeEventLog, encodeFunctionData, getAddress } from "viem";
+import { decodeEventLog, encodeFunctionData, getAddress, parseAbiItem } from "viem";
 import { Clanker } from "clanker-sdk/v4";
 import { clankerConfigFor, WETH_ADDRESSES } from "clanker-sdk";
+
+/** Clanker v4 factory event for every new coin (same on every chain). */
+export const TOKEN_CREATED = parseAbiItem("event TokenCreated(address msgSender, address indexed tokenAddress, address indexed tokenAdmin, string tokenImage, string tokenName, string tokenSymbol, string tokenMetadata, string tokenContext, int24 startingTick, address poolHook, bytes32 poolId, address pairedToken, address locker, address mevModule, uint256 extensionsSupply, address[] extensions)");
 
 export const CLANKER_CHAINS = [8453, 56, 4663];
 export const START_MC_USD = 4800;
