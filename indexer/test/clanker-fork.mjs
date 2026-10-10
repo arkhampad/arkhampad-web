@@ -96,6 +96,8 @@ async function main() {
   const locker = await pickLocker(pub, CHAIN_ID);
   console.log(`locker ${locker}${locker === k.locker ? " (SDK default)" : " (fallback)"}`);
   const tx = await deployTx({ locker, chainId: CHAIN_ID, name: "Fork Test Coin", symbol: "FORK", image: "https://api.arkhampad.com/img/h-test", description: "A coin made by the ArkhamPad fork test.", coinUrl: `https://arkhampad.com/coin/${CHAIN_ID}/0x0`, user, devBuyWei, nativeUsd: usd });
+  // the real treasury may already hold unclaimed rewards from live coins: count only this coin's
+  const ft0 = await pub.readContract({ address: k.feeLocker, abi: FEELOCKER_ABI, functionName: "availableFees", args: [ARKHAMPAD_TREASURY, k.paired] });
   const before = await pub.getBalance({ address: relayer.address });
   const gas = await pub.estimateGas({ account: relayer.address, to: tx.to, data: tx.data, value: tx.value });
   console.log(`deploy gas estimate ${gas}`);
@@ -177,7 +179,7 @@ async function main() {
   // ---- 5. rewards: collect, check the 50/50 split in WETH/WBNB, claim
   await wTrader.writeContract({ address: locker, abi: LOCKER_ABI, functionName: "collectRewards", args: [coin], gas: 3_000_000n }).then(mined);
   const fu = await pub.readContract({ address: k.feeLocker, abi: FEELOCKER_ABI, functionName: "availableFees", args: [user, k.paired] });
-  const ft = await pub.readContract({ address: k.feeLocker, abi: FEELOCKER_ABI, functionName: "availableFees", args: [ARKHAMPAD_TREASURY, k.paired] });
+  const ft = (await pub.readContract({ address: k.feeLocker, abi: FEELOCKER_ABI, functionName: "availableFees", args: [ARKHAMPAD_TREASURY, k.paired] })) - ft0;
   const fuCoin = await pub.readContract({ address: k.feeLocker, abi: FEELOCKER_ABI, functionName: "availableFees", args: [user, coin] });
   const volUsd = 20 * 2 * 4;
   console.log(`  · rewards: creator ${formatEther(fu)} / ArkhamPad ${formatEther(ft)} ${NATIVE} ($${(Number(formatEther(fu)) * usd).toFixed(3)} each on $${volUsd} volume); creator in coin: ${formatEther(fuCoin)}`);

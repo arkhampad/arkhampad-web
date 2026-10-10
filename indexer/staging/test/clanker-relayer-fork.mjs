@@ -313,7 +313,9 @@ async function main() {
   // coins that fail the quality list can't be bought (the relayer asks the database); selling stays open
   if (entry.extSwap && LIVE_COIN) {
     relayer.setDb({ query: async () => ({ rows: [{ ok: false }] }) }); // "not listed, not ours"
-    const base = { user: userAcc.address, coin: getAddress(LIVE_COIN), amountIn: "1000000", minOut: "1", target: getAddress(LIVE_COIN), data: "0x", fee: "0", nonce: "1", deadline: String(Math.floor(Date.now() / 1000) + 600), signature: "0x" + "11".repeat(65) };
+    const fq0 = await relayer.feeQuote(CHAIN_ID, "extSwap");
+    const fee0 = String(BigInt(fq0.fee) * 10n ** BigInt(DEC - 6) * 2n); // a real network fee, so only the listing check can refuse it
+    const base = { user: userAcc.address, coin: getAddress(LIVE_COIN), amountIn: String(10n ** BigInt(DEC)), minOut: "1", target: getAddress(LIVE_COIN), data: "0x", fee: fee0, nonce: "1", deadline: String(Math.floor(Date.now() / 1000) + 600), signature: "0x" + "11".repeat(65) };
     const eb = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...base, isBuy: true } }).then(() => null, (x) => x);
     assert.equal(eb?.code, "NotListed", `an unlisted coin's buy must be refused (${eb?.message ?? "it went through"})`);
     const es = await relayer.handle({ chainId: CHAIN_ID, kind: "extSwap", swap: { ...base, isBuy: false } }).then(() => null, (x) => x);
