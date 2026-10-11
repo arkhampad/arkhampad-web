@@ -126,7 +126,7 @@ with ok as (
     and coalesce(vol_24h, 0) >= $3
     and updated_at > now() - make_interval(hours => $4::int)
     and coalesce(pool_created, first_seen) < now() - make_interval(hours => $6::int)
-    and route_ok is true and route_checked_at > now() - interval '12 hours'
+    and route_ok is true and route_checked_at > now() - interval '24 hours'
     and (
       (chain_id = any($5::int[])
         and gp_checked_at is not null
@@ -308,39 +308,41 @@ export async function clankerRouteCheck(net, pub, address, decimals, poolId, hoo
   return { ok: fair >= RULES.routeFloor, price, fair };
 }
 
-/** KyberSwap must buy and sell $50 of the coin within 10% of its market price. Every 3 h. */
+/** KyberSwap (or ArkhamPad's own route for Clanker pools) must buy and sell $50 of the coin within
+ *  10% of its market price. Rechecked every 6 h; the three chains are checked side by side. */
 async function routeLoop(pool, nets) {
+  await Promise.all(nets.filter((net) => SLUG[net.chainId] && net.rpc).map((net) => routeChain(pool, net)));
+}
+
+async function routeChain(pool, net) {
   const ERC = parseAbi(["function decimals() view returns (uint8)"]);
+  const pub = createPublicClient({ transport: http(net.rpc.split(",")[0].trim(), { timeout: 15_000, retryCount: 1 }) });
   for (;;) {
     let did = 0;
     const c = config();
-    for (const net of nets) {
-      if (!SLUG[net.chainId] || !net.rpc) continue;
-      const pub = createPublicClient({ transport: http(net.rpc.split(",")[0].trim(), { timeout: 15_000, retryCount: 1 }) });
-      // only coins that already pass the cheaper checks
-      const { rows } = await pool.query(
-        `select address, decimals, pool from ext_tokens
-         where chain_id = $1 and ${CANDIDATES}
-           and (route_checked_at is null or route_checked_at < now() - interval '3 hours')
-         order by route_checked_at asc nulls first, vol_24h desc nulls last limit 10`,
-        [net.chainId, c.minLiq, c.minVol],
-      ).catch((e) => { log(`route ${net.chainId}: ${e.message}`); return { rows: [] }; });
-      for (const r of rows) {
-        try {
-          const dec = r.decimals ?? Number(await pub.readContract({ address: r.address, abi: ERC, functionName: "decimals" }));
-          // a Clanker coin (launched anywhere) trades through ArkhamPad's own route; others through KyberSwap
-          const hook = net.route ? clankerHookOf(net.chainId, r.address, r.pool) : null;
-          const { ok } = hook ? await clankerRouteCheck(net, pub, r.address, dec, r.pool, hook) : await routeCheck(net, r.address, dec);
-          // the pool id is saved with its hook: the site trades the pool that was checked, even if the
-          // coin's main pool on DexScreener changes later
-          await pool.query("update ext_tokens set decimals = $3, route_ok = $4, route_checked_at = now(), clanker_hook = $5, clanker_pool = $6 where chain_id = $1 and address = $2", [net.chainId, r.address, dec, ok, hook ? hook.toLowerCase() : null, hook ? String(r.pool).toLowerCase() : null]);
-          did++;
-        } catch (e) {
-          log(`route ${net.chainId} ${r.address}: ${e.shortMessage ?? e.message}`);
-          if (e.wait) await sleep(60_000);
-        }
-        await sleep(1_200); // gentle on the free APIs
+    // only coins that already pass the cheaper checks
+    const { rows } = await pool.query(
+      `select address, decimals, pool from ext_tokens
+       where chain_id = $1 and ${CANDIDATES}
+         and (route_checked_at is null or route_checked_at < now() - interval '6 hours')
+       order by route_checked_at asc nulls first, vol_24h desc nulls last limit 20`,
+      [net.chainId, c.minLiq, c.minVol],
+    ).catch((e) => { log(`route ${net.chainId}: ${e.message}`); return { rows: [] }; });
+    for (const r of rows) {
+      try {
+        const dec = r.decimals ?? Number(await pub.readContract({ address: r.address, abi: ERC, functionName: "decimals" }));
+        // a Clanker coin (launched anywhere) trades through ArkhamPad's own route; others through KyberSwap
+        const hook = net.route ? clankerHookOf(net.chainId, r.address, r.pool) : null;
+        const { ok } = hook ? await clankerRouteCheck(net, pub, r.address, dec, r.pool, hook) : await routeCheck(net, r.address, dec);
+        // the pool id is saved with its hook: the site trades the pool that was checked, even if the
+        // coin's main pool on DexScreener changes later
+        await pool.query("update ext_tokens set decimals = $3, route_ok = $4, route_checked_at = now(), clanker_hook = $5, clanker_pool = $6 where chain_id = $1 and address = $2", [net.chainId, r.address, dec, ok, hook ? hook.toLowerCase() : null, hook ? String(r.pool).toLowerCase() : null]);
+        did++;
+      } catch (e) {
+        log(`route ${net.chainId} ${r.address}: ${e.shortMessage ?? e.message}`);
+        if (e.wait) await sleep(60_000); // a rate limit: this chain waits, the others go on
       }
+      await sleep(800); // gentle on the free APIs
     }
     if (!did) await sleep(60_000);
   }
