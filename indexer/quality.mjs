@@ -36,12 +36,16 @@ const SLUG = Object.fromEntries(Object.entries(DS_CHAINS).map(([k, v]) => [v, k]
 
 export const config = () => ({
   max: Number(process.env.QUALITY_MAX ?? 5000),
-  minLiq: Number(process.env.QUALITY_MIN_LIQ ?? 10000),
+  minLiq: Number(process.env.QUALITY_MIN_LIQ ?? 5000),
   minVol: Number(process.env.QUALITY_MIN_VOL ?? 5000),
   activeHours: Number(process.env.QUALITY_ACTIVE_HOURS ?? 24),
-  minAgeHours: Number(process.env.QUALITY_MIN_AGE_HOURS ?? 24),
+  // no minimum age: new coins are listed as soon as they pass the safety and sell checks
+  minAgeHours: Number(process.env.QUALITY_MIN_AGE_HOURS ?? 0),
 });
-export const RULES = { maxTax: 0.05, maxTop10: 0.5, maxCreator: 0.1, routeFloor: 0.9, routeUsd: 50 };
+// what keeps a buyer's money safe stays strict: no honeypot, can be sold, taxes under 5%, no owner powers
+// (mint, pause, blacklist...), and a real sale back near the market price. Holder spread and socials
+// are no longer required (new coins rarely pass them yet).
+export const RULES = { maxTax: 0.05, routeFloor: 0.9, routeUsd: 50 };
 
 const flag = (v) => (v === "1" || v === 1 ? true : v === "0" || v === 0 ? false : null);
 const tax = (v) => (v === "" || v === undefined || v === null ? null : num(v));
@@ -114,8 +118,7 @@ export function clankerHookOf(chainId, coin, poolId) {
 }
 
 /** The listing rule as one SQL statement (exported for tests).
- *  $1 max, $2 minLiq, $3 minVol, $4 activeHours, $5 goplus chain ids, $6 minAgeHours,
- *  $7 maxTax, $8 maxTop10, $9 maxCreator */
+ *  $1 max, $2 minLiq, $3 minVol, $4 activeHours, $5 goplus chain ids, $6 minAgeHours, $7 maxTax */
 export const LIST_SQL = `
 with ok as (
   select chain_id, address from ext_tokens
@@ -123,7 +126,6 @@ with ok as (
     and coalesce(vol_24h, 0) >= $3
     and updated_at > now() - make_interval(hours => $4::int)
     and coalesce(pool_created, first_seen) < now() - make_interval(hours => $6::int)
-    and has_socials is true
     and route_ok is true and route_checked_at > now() - interval '12 hours'
     and (
       (chain_id = any($5::int[])
@@ -132,9 +134,7 @@ with ok as (
         and coalesce(cannot_sell, false) = false
         and sell_tax is not null and sell_tax < $7
         and buy_tax is not null and buy_tax < $7
-        and owner_risk is false
-        and top10_pct is not null and top10_pct < $8
-        and coalesce(creator_pct, 0) < $9)
+        and owner_risk is false)
       or (not (chain_id = any($5::int[])) and has_profile)
     )
   order by has_profile desc, vol_24h desc nulls last
@@ -146,7 +146,8 @@ off as (
   returning 1
 ),
 onn as (
-  update ext_tokens t set listed = true
+  update ext_tokens t set listed = true, listed_at = coalesce(t.listed_at, now()),
+    first_mc = coalesce(t.first_mc, t.mcap_usd, t.fdv_usd)
   from ok where ok.chain_id = t.chain_id and ok.address = t.address and not t.listed
   returning 1
 )
@@ -319,7 +320,7 @@ async function routeLoop(pool, nets) {
       // only coins that already pass the cheaper checks
       const { rows } = await pool.query(
         `select address, decimals, pool from ext_tokens
-         where chain_id = $1 and ${CANDIDATES} and has_socials is true
+         where chain_id = $1 and ${CANDIDATES}
            and (route_checked_at is null or route_checked_at < now() - interval '3 hours')
          order by route_checked_at asc nulls first, vol_24h desc nulls last limit 10`,
         [net.chainId, c.minLiq, c.minVol],
@@ -418,17 +419,89 @@ async function attentionLoop(pool) {
   }
 }
 
+/** Trending order for listed coins: healthy momentum first, not coins that already pumped.
+ *  More buys than sells, volume speeding up, busy right now, rising but not parabolic, young,
+ *  deep enough to trade. Unlisted coins get no score. Percent columns are in percent (12.5 = +12.5%). */
+export const SCORE_SQL = `
+with s as (
+  update ext_tokens set score = round((
+      4 * (coalesce(buys_24h, 0)::numeric / greatest(coalesce(buys_24h, 0) + coalesce(sells_24h, 0), 1) - 0.5)
+    + least(coalesce(vol_1h, 0)::numeric * 24 / greatest(coalesce(vol_24h, 0)::numeric, 1), 3)
+    + least(coalesce(txns_5m, 0), 50)::numeric / 25
+    + case when change_1h between 2 and 60 then 1.5 when change_1h > 150 then -2 when change_1h < -20 then -1.5 else 0 end
+    + case when change_24h > 400 then -2 when change_24h > 200 then -1 else 0 end
+    + case when pool_created > now() - interval '3 days' then 1 else 0 end
+    + least(greatest(log(greatest(coalesce(liq_usd, 1), 1)::numeric) - 4, 0), 2) * 0.5
+  )::numeric, 3)
+  where listed
+  returning 1
+),
+c as (update ext_tokens set score = null where not listed and score is not null returning 1)
+select (select count(*) from s)::int as scored`;
+
+/** ArkhamPad Picks: at most 10 open picks (picked in the last 24 h), only coins with the strongest
+ *  healthy momentum. A coin is picked again only a day after its last pick. Strict on purpose:
+ *  when nothing qualifies, nothing is picked. */
+export const PICK_RULES = { maxOpen: 10, perRound: 2, minScore: 5, minLiq: 20000, minVol: 30000, minBuyShare: 0.55, minTxns5m: 5 };
+export const PICKS_SQL = `
+with open as (select count(*)::int n from ext_picks where picked_at > now() - interval '24 hours'),
+cand as (
+  select t.chain_id, t.address, t.name, t.symbol, t.image, coalesce(t.mcap_usd, t.fdv_usd) as mc, t.score
+  from ext_tokens t
+  where t.listed and t.score >= $1
+    and coalesce(t.liq_usd, 0) >= $2 and coalesce(t.vol_24h, 0) >= $3
+    and coalesce(t.buys_24h, 0)::numeric / greatest(coalesce(t.buys_24h, 0) + coalesce(t.sells_24h, 0), 1) >= $4
+    and coalesce(t.txns_5m, 0) >= $5
+    and t.change_1h between 2 and 60 and coalesce(t.change_24h, 0) <= 200
+    and coalesce(t.mcap_usd, t.fdv_usd) > 0
+    and t.updated_at > now() - interval '15 minutes'
+    and not exists (select 1 from ext_picks p where p.chain_id = t.chain_id and p.address = t.address and p.picked_at > now() - interval '24 hours')
+  order by t.score desc
+  limit greatest(least($6::int, $7::int - (select n from open)), 0)
+)
+insert into ext_picks (chain_id, address, name, symbol, image, pick_mc, score)
+select chain_id, address, name, symbol, image, mc, score from cand
+returning id`;
+/** Each pick's real market cap 1 hour and 24 hours later (from the same refreshed market data). */
+export const RESOLVE_SQL = `
+update ext_picks p set
+  -- the 1-hour result only while it is still about an hour later (a missed one stays empty, never late)
+  mc_1h = case when p.mc_1h is null and p.picked_at <= now() - interval '1 hour' and p.picked_at > now() - interval '2 hours'
+               then coalesce(t.mcap_usd, t.fdv_usd) else p.mc_1h end,
+  mc_24h = case when p.mc_24h is null and p.picked_at <= now() - interval '24 hours'
+                then coalesce(t.mcap_usd, t.fdv_usd) else p.mc_24h end
+from ext_tokens t
+where t.chain_id = p.chain_id and t.address = p.address
+  and ((p.mc_1h is null and p.picked_at <= now() - interval '1 hour' and p.picked_at > now() - interval '2 hours')
+    or (p.mc_24h is null and p.picked_at <= now() - interval '24 hours'))
+returning p.id`;
+
+async function picksLoop(pool) {
+  for (;;) {
+    try {
+      const r = PICK_RULES;
+      const made = await pool.query(PICKS_SQL, [r.minScore, r.minLiq, r.minVol, r.minBuyShare, r.minTxns5m, r.perRound, r.maxOpen]);
+      const done = await pool.query(RESOLVE_SQL);
+      if (made.rowCount || done.rowCount) log(`picks: +${made.rowCount} picked, ${done.rowCount} results saved`);
+    } catch (e) {
+      log(`picks: ${e.message}`);
+    }
+    await sleep(5 * 60_000);
+  }
+}
+
 async function listLoop(pool) {
   for (;;) {
     try {
       const c = config();
-      const { rows } = await pool.query(LIST_SQL, [c.max, c.minLiq, c.minVol, c.activeHours, GOPLUS_CHAINS, c.minAgeHours, RULES.maxTax, RULES.maxTop10, RULES.maxCreator]);
+      const { rows } = await pool.query(LIST_SQL, [c.max, c.minLiq, c.minVol, c.activeHours, GOPLUS_CHAINS, c.minAgeHours, RULES.maxTax]);
       const r = rows[0];
       log(`${r.listed} coins listed (+${r.added} / -${r.removed})`);
+      await pool.query(SCORE_SQL).catch((e) => log(`score: ${e.message}`));
     } catch (e) {
       log(`list: ${e.message}`);
     }
-    await sleep(5 * 60_000);
+    await sleep(60_000); // every minute, so new coins show up soon after their checks
   }
 }
 
@@ -440,4 +513,5 @@ export function startQuality(pool, nets = []) {
   routeLoop(pool, nets);
   attentionLoop(pool);
   listLoop(pool);
+  picksLoop(pool);
 }

@@ -77,16 +77,17 @@ test("new coin row comes from its deepest pair", () => {
   assert.equal(rowFromPairs(8453, "base", a, []), null);
 });
 
-test("listing rule keeps every check", () => {
-  for (const part of ["honeypot is false", "cannot_sell", "sell_tax is not null", "buy_tax is not null", "owner_risk is false", "top10_pct", "creator_pct", "has_socials is true", "route_ok is true", "pool_created", "liq_usd", "vol_24h", "updated_at", "gp_checked_at is not null", "has_profile", "limit $1"]) {
+test("listing rule keeps every money-safety check", () => {
+  for (const part of ["honeypot is false", "cannot_sell", "sell_tax is not null", "buy_tax is not null", "owner_risk is false", "route_ok is true", "pool_created", "liq_usd", "vol_24h", "updated_at", "gp_checked_at is not null", "has_profile", "limit $1", "first_mc = coalesce(t.first_mc"]) {
     assert.ok(LIST_SQL.includes(part), part);
   }
+  for (const gone of ["has_socials", "top10_pct", "creator_pct", "$8", "$9"]) assert.ok(!LIST_SQL.includes(gone), gone);
   const c = config();
   assert.equal(c.max, 5000);
-  assert.equal(c.minLiq, 10000);
+  assert.equal(c.minLiq, 5000);
   assert.equal(c.minVol, 5000);
-  assert.equal(c.minAgeHours, 24);
-  assert.deepEqual([RULES.maxTax, RULES.maxTop10, RULES.maxCreator], [0.05, 0.5, 0.1]);
+  assert.equal(c.minAgeHours, 0);
+  assert.equal(RULES.maxTax, 0.05);
 });
 
 test("GeckoTerminal socials: a website or an X account counts, a Telegram alone doesn't", () => {
@@ -107,4 +108,18 @@ test("Clanker pool id maps to Clanker's own hook, anything else to none", () => 
   assert.equal(clankerHookOf(8453, fpeng, fake), null);
   assert.equal(clankerHookOf(8453, fpeng, "0x1234"), null); // a V3 pair address
   assert.equal(clankerHookOf(8453, fpeng, null), null);
+});
+
+test("trending score favours healthy, not-yet-pumped momentum", async () => {
+  const { SCORE_SQL } = await import("../quality.mjs");
+  for (const part of ["buys_24h", "vol_1h", "txns_5m", "change_1h > 150 then -2", "change_24h > 400 then -2", "interval '3 days'", "where listed", "score = null where not listed"]) {
+    assert.ok(SCORE_SQL.includes(part), part);
+  }
+});
+
+test("picks: strict, at most 10 open, results measured on time", async () => {
+  const { PICKS_SQL, RESOLVE_SQL, PICK_RULES } = await import("../quality.mjs");
+  assert.equal(PICK_RULES.maxOpen, 10);
+  for (const part of ["t.listed", "t.score >= $1", "change_1h between 2 and 60", "interval '24 hours'", "not exists (select 1 from ext_picks"]) assert.ok(PICKS_SQL.includes(part), part);
+  for (const part of ["interval '1 hour'", "interval '2 hours'", "interval '24 hours'"]) assert.ok(RESOLVE_SQL.includes(part), part);
 });

@@ -108,6 +108,7 @@ function CoinView() {
             {short(c.address)}
             <button type="button" aria-label="Copy contract address" onClick={async () => { try { await navigator.clipboard.writeText(c.address); toast("Contract address copied"); } catch { /* blocked */ } }} style={{ width: 28, height: 28, borderRadius: 7, border: 0, background: "var(--raise)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><ICopy size={13} color="var(--muted)" /></button>
             {c.own && c.creator ? <>· by {short(c.creator)}</> : null} · {c.age} old
+            {!c.own && c.firstMc && c.mcNum ? <> · listed at {usd(c.firstMc)} ({(c.mcNum / c.firstMc).toFixed(c.mcNum / c.firstMc >= 10 ? 0 : 1)}x)</> : null}
           </div>
         </div>
         <span className="coin-acts"><PriceAlertButton c={c} className="btn ghost sm" label="Price alert" /><button type="button" className="btn ghost sm" aria-label="Share on X" onClick={() => shareCoin(c)}><IShare size={15} />Share</button><PromoteButton c={c} /></span>

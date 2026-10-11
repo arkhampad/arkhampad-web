@@ -67,6 +67,8 @@ export type LiveCoin = Coin & {
   extListed?: boolean;
   /** a Clanker coin from elsewhere: its checked Clanker pool and hook, so it trades through ArkhamPad's route */
   extRoute?: { id: string; hook: string } | null;
+  /** market cap when ArkhamPad first listed the coin (other-DEX coins) */
+  firstMc?: number | null;
   chainId: number; address: string; own: boolean; image: string | null;
   pool?: string | null; network?: string | null; dex?: string | null;
   priceNum: number | null; mcNum: number | null; volNum: number | null;
@@ -92,7 +94,7 @@ export function parseMeta(uri: string | null | undefined): LiveCoin["about"] {
   } catch { return undefined; }
 }
 
-type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null; listed?: boolean | null; clanker_hook?: string | null; clanker_pool?: string | null };
+type ExtRow = { change_5m?: number | null; chain_id: number; address: string; network: string; pool: string | null; dex: string | null; name: string; symbol: string; image: string | null; price_usd: number | null; mcap_usd: number | null; fdv_usd: number | null; liq_usd: number | null; vol_24h: number | null; change_24h: number | null; buys_24h: number | null; sells_24h: number | null; pool_created: string | null; spark: number[] | null; listed?: boolean | null; clanker_hook?: string | null; clanker_pool?: string | null; first_mc?: number | null };
 type OwnRow = { venue?: string | null; supply?: number | string | null; dex_listed_at?: string | null; creator_fees_usd?: number | null; pool_usd?: number | null; image_url?: string | null; fee_mode?: number; lock_seconds?: number; chain_id: number; address: string; curve: string; creator: string; name: string; symbol: string; phase: number; price_usd: number; mc_usd: number; start_mc_usd: number; usdc_reserve: number; trades_count: number; created_at: string; volume_24h: number; change_24h_pct: number | null; buyers: number; metadata_uri: string };
 
 /** Names with no Latin letters or digits, or placeholder "?" names, are spam in lists (search still finds them). */
@@ -113,6 +115,7 @@ export function fromExt(r: ExtRow): LiveCoin {
     chainId: r.chain_id, address: r.address, own: false, image: r.image, pool: r.pool, network: r.network, dex: r.dex,
     priceNum: r.price_usd, mcNum: mc, volNum: r.vol_24h, createdAt: r.pool_created, mcIsFdv: r.mcap_usd == null && r.fdv_usd != null,
     extListed: r.listed === true, extRoute: r.clanker_hook && r.clanker_pool ? { id: r.clanker_pool, hook: r.clanker_hook } : null,
+    firstMc: Number(r.first_mc) > 0 ? Number(r.first_mc) : null,
   };
 }
 
@@ -149,7 +152,7 @@ export async function getCoinByKey(k: string): Promise<LiveCoin | null> {
 }
 
 // ---------------------------------------------------------------- queries
-export type Tab = "Trending" | "New" | "Gainers" | "Losers" | "Top volume" | "Launched here" | "Bonding" | "Graduated";
+export type Tab = "Trending" | "Picks" | "New" | "Gainers" | "Losers" | "Top volume" | "Launched here" | "Bonding" | "Graduated";
 const CAT_WORDS: Record<string, string[]> = {
   AI: ["ai", "gpt", "bot", "agent", "neural", "robot", "intelligence"],
   Animals: ["dog", "cat", "frog", "pepe", "inu", "doge", "shib", "bear", "bull", "ape", "monkey", "fox", "wolf", "lion", "whale", "bird", "fish", "duck", "toad", "hamster", "penguin"],
@@ -160,6 +163,7 @@ const CAT_WORDS: Record<string, string[]> = {
 export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: string | null; limit?: number; offset?: number; q?: string } = {}): Promise<LiveCoin[]> {
   if (opts.q) opts = { ...opts, q: opts.q.replace(/[^A-Za-z0-9 ._$-]/g, "").trim().slice(0, 42).replace(/^\$/, "") };
   const limit = opts.limit ?? 50, from = opts.offset ?? 0;
+  if (tab === "Picks") return from === 0 ? listPicks(opts.chain ?? null) : [];
   const ownTab = tab === "Launched here" || tab === "Bonding" || tab === "Graduated";
   const ownIds = opts.chain ? OWN_CHAINS.filter((c) => chainName(c) === opts.chain) : OWN_CHAINS;
   // Arc coins are hidden until they can be traded here (no swap route on Arc yet)
@@ -178,14 +182,14 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
     return (data as OwnRow[]).map(fromOwn);
   }
 
-  let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,spark").in("chain_id", extIds);
+  let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,first_mc,spark").in("chain_id", extIds);
   // Lists show only checked, active coins (see indexer/quality.mjs); a pasted address still finds any coin.
   if (!isAddress(opts.q) && (await listedReady())) q = q.eq("listed", true);
   if (opts.q) q = q.or(`name.ilike.*${opts.q}*,symbol.ilike.*${opts.q}*,address.eq.${opts.q.toLowerCase()}`);
   const w = like("name"); if (w) q = q.or(w);
-  // Trending = what is moving right now: most trades in the last 5 minutes, then last hour's volume
-  // (changes every few minutes, like fomo), not a slow daily ranking.
-  if (tab === "Trending") q = q.gte("vol_1h", 2000).gte("liq_usd", 5000).not("txns_5m", "is", null).order("txns_5m", { ascending: false }).order("vol_1h", { ascending: false });
+  // Trending = healthy momentum (indexer/quality.mjs SCORE_SQL, refreshed every minute): more buys
+  // than sells, volume speeding up, rising but not already pumped, young coins first.
+  if (tab === "Trending") q = q.gte("liq_usd", 5000).not("score", "is", null).order("score", { ascending: false }).order("vol_1h", { ascending: false, nullsFirst: false });
   else if (tab === "New") q = q.not("pool_created", "is", null).order("pool_created", { ascending: false });
   // gainers/losers: real trading only (volume, liquidity), no absurd jumps or dead coins
   else if (tab === "Gainers") q = q.gte("vol_24h", 10000).gte("liq_usd", 5000).not("change_24h", "is", null).lte("change_24h", 5000).order("change_24h", { ascending: false });
@@ -197,6 +201,32 @@ export async function listCoins(tab: Tab, opts: { chain?: Chain | null; cat?: st
   // When nothing is trending yet, fall back to volume.
   if (tab === "Trending" && rows.length === 0 && from === 0) return listCoins("Top volume", opts);
   return rows;
+}
+
+// ---------------------------------------------------------------- ArkhamPad Picks
+export type CoinPick = { id: string; chain_id: number; address: string; name: string | null; symbol: string | null; image: string | null; picked_at: string; pick_mc: number; mc_1h: number | null; mc_24h: number | null };
+/** Open picks (picked in the last 24 hours) as coins, each with the market cap it was picked at. */
+export async function listPicks(chain: Chain | null = null): Promise<LiveCoin[]> {
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  let q = db().from("ext_picks").select("chain_id,address,pick_mc,picked_at").gte("picked_at", since).order("picked_at", { ascending: false }).limit(20);
+  if (chain) q = q.eq("chain_id", chain === "Base" ? 8453 : chain === "BNB" ? 56 : 4663);
+  const { data, error } = await q;
+  if (error) throw error;
+  const picks = (data ?? []) as { chain_id: number; address: string; pick_mc: number; picked_at: string }[];
+  if (!picks.length) return [];
+  const { data: rows, error: e2 } = await db().from("ext_tokens").select("*").in("address", picks.map((p) => p.address));
+  if (e2) throw e2;
+  const byKey = new Map(((rows ?? []) as ExtRow[]).map((r) => [`${r.chain_id}:${r.address}`, r]));
+  return picks.flatMap((p) => {
+    const r = byKey.get(`${p.chain_id}:${p.address}`);
+    return r ? [{ ...fromExt(r), firstMc: Number(p.pick_mc) || null }] : [];
+  });
+}
+/** Every pick with its result (newest first), for the public results page. */
+export async function pickResults(limit = 200): Promise<CoinPick[]> {
+  const { data, error } = await db().from("ext_picks").select("id,chain_id,address,name,symbol,image,picked_at,pick_mc,mc_1h,mc_24h").order("picked_at", { ascending: false }).limit(limit);
+  if (error) throw error;
+  return ((data ?? []) as CoinPick[]).map((p) => ({ ...p, id: String(p.id), pick_mc: Number(p.pick_mc), mc_1h: p.mc_1h === null ? null : Number(p.mc_1h), mc_24h: p.mc_24h === null ? null : Number(p.mc_24h) }));
 }
 
 /** Ask-AI search on Discover: applies Finder filters to coins launched here and coins from other DEXs. */
@@ -235,7 +265,7 @@ export async function findCoins(f: import("./finder").Finder, limit = 60): Promi
   if (wantExt) {
     const ids = f.chain === "Base" ? [8453] : f.chain === "Robinhood" ? [4663] : f.chain === "BNB" ? [56] : f.chain === "Arc" ? [-1] : [8453, 4663, 56];
     jobs.push((async () => {
-      let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,spark,trending_rank").in("chain_id", ids);
+      let q = db().from("ext_tokens").select("chain_id,address,network,pool,dex,name,symbol,image,price_usd,mcap_usd,fdv_usd,liq_usd,vol_24h,change_24h,change_5m,buys_24h,sells_24h,pool_created,first_mc,spark,trending_rank").in("chain_id", ids);
       if (await listedReady()) q = q.eq("listed", true);
       const young = sinceIso(f.maxAgeMin), old = sinceIso(f.minAgeMin);
       if (young) q = q.gte("pool_created", young);

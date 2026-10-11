@@ -130,6 +130,7 @@ export function CoinTickets({ list }: { list: LiveCoin[] }) {
             <span className="tk-name"><b>{c.name}</b>{c.own && <FeeChip c={c} />}</span>
             <span className="tk-meta mono">
               <span>{c.tick}</span><span>·</span><span>{c.age}</span>
+              {!c.own && c.firstMc && c.mcNum ? <><span>·</span><span title="Market cap when ArkhamPad listed it">from {usd(c.firstMc)}</span></> : null}
               {c.own ? <span className="tk-here">Launched here</span> : <ChainTag chain={c.chain} />}
             </span>
             <span className="tk-spark"><Spark vals={c.spark} up={c.chg >= 0} w={160} h={22} height={22} fill={false} stroke={1.6} empty={<span className="tk-flat" />} /></span>

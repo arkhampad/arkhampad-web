@@ -13,7 +13,7 @@ import { useApp } from "@/components/shell";
 import { FinderBar, FinderResults, useFinder } from "@/components/finder";
 import { LIVE, NET_NAMES } from "@/lib/chain";
 
-const TABS: Tab[] = ["Trending", "New", "Launched here", "Gainers", "Top volume", "Losers"];
+const TABS: Tab[] = ["Trending", "Picks", "New", "Launched here", "Gainers", "Top volume", "Losers"];
 // Arc is hidden until coins there can be traded here (no swap route on Arc yet)
 const CATS = ["All", "AI", "Animals", "Gaming", "Culture", "Base", "Robinhood", "BNB"];
 const PAGE = 50;
@@ -156,13 +156,19 @@ export default function Discover() {
           {fx.active ? <FinderResults fx={fx} /> : <>
           <div className="ttabs"><ScrollTabs gap={0}>{TABS.map((t) => <button key={t} type="button" className={`ttab${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</ScrollTabs></div>
           <ScrollTabs gap={6}>{CATS.map((t) => <button key={t} type="button" className={`chip sm${cat === t ? " on" : ""}`} onClick={() => setCat(t)}>{t}</button>)}</ScrollTabs>
+          {tab === "Picks" && (
+            <div className="dim" style={{ fontSize: 13, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <span>Up to 10 coins with the strongest healthy momentum right now: more buyers than sellers, volume speeding up, not already pumped. Not financial advice.</span>
+              <Link href="/picks/" style={{ color: "var(--volt)", fontWeight: 600 }}>Every pick&apos;s result →</Link>
+            </div>
+          )}
           {tab === "Launched here" && (
             <div className="dim" style={{ fontSize: 13 }}>Coins launched on ArkhamPad. Each one trades in its own locked Uniswap pool from the first second.{LIVE ? "" : " We are on testnet now: these are test coins with test money."}</div>
           )}
           {list === null ? <Skeleton /> : list.length === 0 ? (
             <div className="card" style={{ alignItems: "center", textAlign: "center", padding: 28 }}>
-              <span style={{ fontWeight: 700 }}>{err ? "Couldn't load coins right now" : chain ? `${chain} coins are loading` : "No coins here yet"}</span>
-              <span className="dim" style={{ fontSize: 13 }}>{err ? "Please try again in a moment." : chain ? `New ${chain} coins show up here as soon as they trade.` : "Check another tab, or launch the first one."}</span>
+              <span style={{ fontWeight: 700 }}>{err ? "Couldn't load coins right now" : tab === "Picks" ? "No picks right now" : chain ? `${chain} coins are loading` : "No coins here yet"}</span>
+              <span className="dim" style={{ fontSize: 13 }}>{err ? "Please try again in a moment." : tab === "Picks" ? "We only pick a coin when its signals are strong. Check back soon." : chain ? `New ${chain} coins show up here as soon as they trade.` : "Check another tab, or launch the first one."}</span>
             </div>
           ) : (
             <CoinTickets list={list} />
