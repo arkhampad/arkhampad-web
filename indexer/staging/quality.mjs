@@ -174,27 +174,35 @@ async function safetyLoop(pool) {
           `select address from ext_tokens
            where chain_id = $1 and ${CANDIDATES}
              and (gp_checked_at is null or gp_checked_at < now() - interval '24 hours')
-           order by gp_checked_at asc nulls first, vol_24h desc nulls last limit 20`,
+           order by gp_checked_at asc nulls first, vol_24h desc nulls last limit 10`,
           [chainId, c.minLiq, c.minVol],
         );
-        if (!rows.length) continue;
-        const addrs = rows.map((r) => r.address);
-        const res = await goplus(chainId, addrs);
-        for (const a of addrs) {
-          const s = safetyOf(res[a] ?? res[a.toLowerCase()]);
-          await pool.query(
-            `update ext_tokens set gp_checked_at = now(), honeypot = $3, cannot_sell = $4, buy_tax = $5, sell_tax = $6,
-               owner_risk = $7, top10_pct = $8, creator_pct = $9
-             where chain_id = $1 and address = $2`,
-            [chainId, a, s.honeypot, s.cannot_sell, s.buy_tax, s.sell_tax, s.owner_risk, s.top10_pct, s.creator_pct],
-          );
+        for (const { address: a } of rows) {
+          // one coin per call: GoPlus's free tier answers only the first coin of a batch
+          const res = await goplus(chainId, [a]);
+          const g = res[a] ?? res[a.toLowerCase()];
+          if (!g || typeof g !== "object" || !Object.keys(g).length) {
+            // no answer (yet): ask again in about an hour, the coin stays unlisted meanwhile
+            await pool.query(
+              `update ext_tokens set gp_checked_at = now() - interval '23 hours' where chain_id = $1 and address = $2`,
+              [chainId, a],
+            );
+          } else {
+            const s = safetyOf(g);
+            await pool.query(
+              `update ext_tokens set gp_checked_at = now(), honeypot = $3, cannot_sell = $4, buy_tax = $5, sell_tax = $6,
+                 owner_risk = $7, top10_pct = $8, creator_pct = $9
+               where chain_id = $1 and address = $2`,
+              [chainId, a, s.honeypot, s.cannot_sell, s.buy_tax, s.sell_tax, s.owner_risk, s.top10_pct, s.creator_pct],
+            );
+          }
+          did++;
+          await sleep(2_500); // GoPlus free tier: about 30 calls a minute
         }
-        did += addrs.length;
       } catch (e) {
         log(`safety ${chainId}: ${e.message}`);
         if (e.wait) await sleep(60_000);
       }
-      await sleep(2_500); // GoPlus free tier: about 30 calls a minute
     }
     if (!did) await sleep(60_000);
   }
