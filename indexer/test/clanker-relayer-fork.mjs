@@ -512,6 +512,27 @@ async function main() {
   console.log("\n  ArkhamPad's own Clanker route:");
   await routeCheck(relayer);
 
+  // ---- 7a. GoPlus: one coin per call (the free tier answered only the first coin of a batch)
+  if (quality.GOPLUS_CHAINS.includes(CHAIN_ID)) {
+    console.log("\n  GoPlus, batch vs one coin per call (well-known coins):");
+    const known = { 8453: ["0x4ed4e862860bed51a9570b96d89af5e1b0efefed", "0x940181a94a35a4569e4529a3cdfb74e38fd98631", "0x532f27101965dd16442e59d40670faf5ebb142e4"],
+      56: ["0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82", "0xba2ae424d960c26247dd6c32edc70b295c744c43", "0x2170ed0880ac9a755fd29b2688956bd959f933f8"] }[CHAIN_ID];
+    const full = (g) => !!g && typeof g === "object" && Object.keys(g).length > 0;
+    const batch = await quality.goplus(CHAIN_ID, known).catch((e) => { console.log(`    batch call: ${e.message}`); return {}; });
+    console.log(`    one call for ${known.length} coins: answers for ${known.filter((x) => full(batch[x])).length}`);
+    await new Promise((ok) => setTimeout(ok, 2500));
+    let singles = 0;
+    for (const x of known) {
+      const r = await quality.goplus(CHAIN_ID, [x]).catch((e) => { console.log(`    ${x}: ${e.message}`); return {}; });
+      const s = quality.safetyOf(r[x]);
+      if (full(r[x])) singles++;
+      console.log(`    ${x.slice(0, 10)}: ${full(r[x]) ? `answer (honeypot ${s.honeypot}, taxes ${s.buy_tax}/${s.sell_tax}, top 10 ${s.top10_pct === null ? "?" : (s.top10_pct * 100).toFixed(1) + "%"})` : "no answer"}`);
+      await new Promise((ok) => setTimeout(ok, 2500));
+    }
+    assert.ok(singles >= 2, `GoPlus answered only ${singles} of ${known.length} single-coin calls`);
+    ok(`GoPlus one coin per call: ${singles}/${known.length} answered`);
+  }
+
   // ---- 7. the quality list's checks on real coins, with the live free APIs (read-only)
   console.log("\n  quality checks on real coins (GoPlus, DexScreener, KyberSwap):");
   const net = { chainId: CHAIN_ID, usdc: USDC, usdcDec: DEC };
