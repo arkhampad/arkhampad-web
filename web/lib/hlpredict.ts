@@ -14,6 +14,7 @@ export const PREDICT_MAX_PX = 0.999;
 /** How far a market order may fill from the price (in odds points, absolute). */
 export const PREDICT_SLIP = 0.03;
 
+/** `name`: what the button says ("Above" / "Below" on a price market, else Hyperliquid's own "Yes" / "No"). */
 export type PredictSide = { name: string; side: 0 | 1; enc: number; coin: string; asset: number; mid: number | null };
 export type PredictMarket = {
   outcome: number;
@@ -27,6 +28,15 @@ export type PredictMarket = {
   /** When it settles (ms), when known. */
   expiry: number | null;
   period: string | null;
+  /** How long one round runs (ms) and its label ("15 min", "Hourly", "Daily"), when known. */
+  periodMs: number | null;
+  periodLabel: string | null;
+  /** When this round started (expiry − period), when known. */
+  start: number | null;
+  /** The underlying's live price on Hyperliquid (what it settles against). */
+  now: number | null;
+  /** A price market: "Above" / "Below" the target. */
+  priceMarket: boolean;
   question: { id: number; name: string } | null;
   yes: PredictSide;
   no: PredictSide;
@@ -52,14 +62,27 @@ export function parseExpiry(v: string | undefined): number | null {
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] ?? 23), Number(m[5] ?? 59));
 }
 
+/** "3m" / "15m" / "1h" / "4h" / "1d" / "1w" → ms and a label. */
+export function parsePeriod(p: string | undefined): { ms: number; label: string } | null {
+  const m = /^(\d+)\s*(m|h|d|w)$/i.exec((p ?? "").trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  const unit = m[2].toLowerCase();
+  const ms = n * { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[unit as "m" | "h" | "d" | "w"];
+  const label = unit === "m" ? `${n} min` : unit === "h" ? (n === 1 ? "Hourly" : `${n} hours`) : unit === "d" ? (n === 1 ? "Daily" : `${n} days`) : n === 1 ? "Weekly" : `${n} weeks`;
+  return { ms, label };
+}
+
 export const encOf = (outcome: number, side: 0 | 1) => outcome * 10 + side;
 export const assetOf = (enc: number) => 100_000_000 + enc;
 
 const usdText = (v: number) => (v >= 1000 ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : `$${Number(v.toPrecision(5))}`);
 
+const isPriceMarket = (f: Record<string, string>) => /binary/i.test(f.class ?? "") && !!f.underlying && Number(f.targetPrice) > 0;
+
 function titleOf(o: RawOutcome, f: Record<string, string>): string {
   const target = Number(f.targetPrice);
-  if (/binary/i.test(f.class ?? "") && f.underlying && Number.isFinite(target) && target > 0) return `${f.underlying} above ${usdText(target)}`;
+  if (isPriceMarket(f)) return `${f.underlying} above ${usdText(target)}`;
   return o.name || `Market ${o.outcome}`;
 }
 
@@ -82,16 +105,21 @@ export async function fetchPredictMarkets(): Promise<PredictMarket[]> {
     const v = Number(mids[`#${enc}`]);
     return Number.isFinite(v) && v > 0 ? v : null;
   };
-  const side = (o: RawOutcome, s: 0 | 1): PredictSide => {
+  const side = (o: RawOutcome, s: 0 | 1, price: boolean): PredictSide => {
     const enc = encOf(o.outcome, s);
-    return { name: o.sideSpecs?.[s]?.name || (s === 0 ? "Yes" : "No"), side: s, enc, coin: `#${enc}`, asset: assetOf(enc), mid: mid(enc) };
+    const name = price ? (s === 0 ? "Above" : "Below") : o.sideSpecs?.[s]?.name || (s === 0 ? "Yes" : "No");
+    return { name, side: s, enc, coin: `#${enc}`, asset: assetOf(enc), mid: mid(enc) };
   };
   return meta.outcomes
     .filter((o) => (o.sideSpecs?.length ?? 0) >= 2)
     .map((o): PredictMarket => {
       const f = parseDescription(o.description);
-      const yes = side(o, 0);
-      const no = side(o, 1);
+      const price = isPriceMarket(f);
+      const yes = side(o, 0, price);
+      const no = side(o, 1, price);
+      const per = parsePeriod(f.period);
+      const expiry = parseExpiry(f.expiry);
+      const under = f.underlying ? Number(mids[f.underlying]) : NaN;
       // one side quoted: the other is its complement
       if (yes.mid === null && no.mid !== null) yes.mid = 1 - no.mid;
       if (no.mid === null && yes.mid !== null) no.mid = 1 - yes.mid;
@@ -103,8 +131,13 @@ export async function fetchPredictMarkets(): Promise<PredictMarket[]> {
         description: o.description,
         underlying: f.underlying || null,
         target: Number.isFinite(target) && target > 0 ? target : null,
-        expiry: parseExpiry(f.expiry),
+        expiry,
         period: f.period || null,
+        periodMs: per?.ms ?? null,
+        periodLabel: per?.label ?? null,
+        start: per && expiry !== null ? expiry - per.ms : null,
+        now: Number.isFinite(under) && under > 0 ? under : null,
+        priceMarket: price,
         question: qOf.get(o.outcome) ?? null,
         yes,
         no,
@@ -180,4 +213,28 @@ export function timeLeft(expiry: number | null, now = Date.now()): string {
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m ${s % 60}s`;
+}
+
+export type PredictResult = { outcome: number; name: string; fraction: number; description: string };
+const results = new Map<number, PredictResult>();
+/** A settled market's result (null while it hasn't settled). Settled results never change: kept once known. */
+export async function fetchPredictResult(outcome: number): Promise<PredictResult | null> {
+  const known = results.get(outcome);
+  if (known) return known;
+  const r = await info<{ spec: { outcome: number; name: string; description: string }; settleFraction: string } | null>({ type: "settledOutcome", outcome }).catch(() => null);
+  if (!r || !r.spec) return null;
+  const out = { outcome, name: r.spec.name, fraction: Number(r.settleFraction), description: r.spec.description };
+  if (Number.isFinite(out.fraction)) results.set(outcome, out);
+  return out;
+}
+
+/** "12:40", "1:05:09": time left on a clock. */
+export function clock(expiry: number | null, now = Date.now()): string {
+  if (expiry === null) return "";
+  const s = Math.max(0, Math.floor((expiry - now) / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, "0");
+  if (h >= 48) return `${Math.floor(h / 24)}d ${h % 24}h`;
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
 }

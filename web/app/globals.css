@@ -750,3 +750,21 @@ body { font-size: 14px; letter-spacing: -0.1px; }
 .pm-side.yes.on { background: var(--up); border-color: var(--up); color: #04130C; }
 .pm-side.no.on { background: var(--down); border-color: var(--down); color: #1A0505; }
 @media (max-width: 420px) { .mkt-tabs { gap: 4px; } .mkt-tabs a { font-size: 12px; padding: 0 2px; height: 36px; border-radius: 9px; } }
+.pm-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pm-stats > span { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line2); background: var(--card); min-width: 0; }
+.pm-stats i { font-style: normal; font-size: 11px; color: var(--dim); }
+.pm-stats b { font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-stats em { font-style: normal; font-size: 11px; color: var(--dim); }
+.pm-stats em.up { color: var(--up); } .pm-stats em.down { color: var(--down); }
+.pm-clock { font-size: 22px !important; color: var(--volt); }
+@media (max-width: 520px) { .pm-stats { gap: 6px; } .pm-stats > span { padding: 8px; } .pm-stats b { font-size: 15px; } .pm-clock { font-size: 18px !important; } }
+.pm-time { height: 4px; border-radius: 99px; background: var(--line2); overflow: hidden; }
+.pm-time span { display: block; height: 100%; background: var(--volt); transition: width 1s linear; }
+.pm-result { display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 12px; border: 1px solid var(--up); background: color-mix(in srgb, var(--up) 10%, transparent); }
+.pm-result.wait { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.pm-result b { font-size: 18px; } .pm-result span { font-size: 13px; color: var(--dim); }
+.pm-side small { font-size: 11px; font-weight: 600; opacity: .75; }
+.pm-side { height: 64px; }
+.pm-payout { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; border: 1px solid var(--line2); background: color-mix(in srgb, var(--up) 6%, transparent); font-size: 12px; }
+.pm-payout > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.pm-payout b { font-size: 20px; }

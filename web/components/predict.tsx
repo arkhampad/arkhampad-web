@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Predict: Yes / No markets on Hyperliquid (HIP-4). Pick a market, buy Yes or No shares from the
- * trading balance; a winning share pays $1, a losing one $0. Shares can be sold any time before
- * the end. Trading is in lib/hltrade.ts (predictBuy / predictSell), data in lib/hlpredict.ts.
+ * Predict: price rounds on Hyperliquid (HIP-4). "Will BTC be above $105,000 at 19:45?": buy Above
+ * or Below from the trading balance; a winning share pays $1, a losing one $0, paid automatically.
+ * Shares can be sold any time before the round ends. Trading is in lib/hltrade.ts, data in
+ * lib/hlpredict.ts.
  */
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,24 +15,26 @@ import { IDown, IX, IAlert } from "./icons";
 import { useIsMobile } from "./bits";
 import { Balance, Book, FundsSheet } from "./futures";
 import { MarketTabs } from "./markettabs";
-import { INTERVALS, fetchBook, fetchPerpAccount, fetchPerpCandles, futuresAllowedHere, type BookLevel, type Interval, type PerpAccount } from "@/lib/hl";
+import { INTERVALS, SPOT_BUILDER_FEE, fetchBook, fetchPerpAccount, fetchPerpCandles, futuresAllowedHere, px as pxText, type BookLevel, type Interval, type PerpAccount } from "@/lib/hl";
 import { combineCash, fetchAccountMode, fetchSpotBalances, type SpotBalance } from "@/lib/hlspot";
 import { fetchStockCash } from "@/lib/hlstocks";
 import { makeFuturesTrade } from "@/lib/hltrade";
 import {
   PREDICT_MIN_NOTIONAL,
   cents,
-  sharesFor,
   chance,
+  clock,
   fetchPredictFills,
   fetchPredictHoldings,
   fetchPredictMarkets,
   fetchPredictOrders,
-  timeLeft,
+  fetchPredictResult,
+  sharesFor,
   type PredictFill,
   type PredictHolding,
   type PredictMarket,
   type PredictOrder,
+  type PredictResult,
   type PredictSide,
 } from "@/lib/hlpredict";
 
@@ -40,10 +43,19 @@ const TvChart = dynamic(() => import("./tvchart"), { ssr: false, loading: () => 
 const usd = (v: number, d = 2) => `$${v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
 const signedUsd = (v: number) => `${v >= 0 ? "+" : "−"}${usd(Math.abs(v))}`;
 const tone = (v: number | null) => (v === null || v === 0 ? "dim" : v > 0 ? "up" : "down");
+const hhmm = (ms: number | null) => (ms === null ? "" : new Date(ms).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }));
 const whenText = (ms: number | null) => (ms === null ? "" : new Date(ms).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }));
-const BLURB = "Buy Yes or No on where crypto prices end up. A right call pays $1 a share. Runs on Hyperliquid.";
+const BLURB = "Call where crypto prices go in the next minutes, hours or day. A right call pays $1 a share. Runs on Hyperliquid.";
+/** Ended rounds stay listed this long (with their result). */
+const KEEP_ENDED_MS = 30 * 60_000;
 
 type Trade = ReturnType<typeof makeFuturesTrade>;
+
+/** "Above won" / "Yes won", from how the market settled. */
+const winnerOf = (m: PredictMarket | null, r: PredictResult) => {
+  const yesWon = r.fraction >= 0.5;
+  return m ? (yesWon ? m.yes.name : m.no.name) : yesWon ? "Yes" : "No";
+};
 
 export function PredictScreen() {
   const w = useWallet();
@@ -58,7 +70,7 @@ export function PredictScreen() {
   const [picker, setPicker] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [chartSide, setChartSide] = useState<0 | 1>(0);
-  const [iv, setIv] = useState<Interval>("15m");
+  const [iv, setIv] = useState<Interval>("1m");
   const [candles, setCandles] = useState<{ t: number; o: number; h: number; l: number; c: number; v: number }[] | null>(null);
   const [book, setBook] = useState<{ bids: BookLevel[]; asks: BookLevel[] } | null>(null);
   const [perp, setPerp] = useState<PerpAccount | null>(null);
@@ -69,6 +81,7 @@ export function PredictScreen() {
   const [orders, setOrders] = useState<PredictOrder[]>([]);
   const [fills, setFills] = useState<PredictFill[]>([]);
   const [funds, setFunds] = useState<"add" | "withdraw" | null>(null);
+  const [results, setResults] = useState<Map<number, PredictResult>>(() => new Map());
   const user = w.address ?? null;
 
   useEffect(() => {
@@ -81,22 +94,60 @@ export function PredictScreen() {
     };
   }, []);
 
+  // rounds settle and vanish from Hyperliquid's list: ones seen here stay a while with their result
+  const seen = useRef(new Map<number, PredictMarket>());
   useEffect(() => {
     let alive = true;
-    const load = () => fetchPredictMarkets().then((m) => alive && (setMarkets(m), setError(false))).catch(() => alive && setError(true));
+    const load = () =>
+      fetchPredictMarkets()
+        .then((list) => {
+          if (!alive) return;
+          const t = Date.now();
+          const ids = new Set(list.map((m) => m.outcome));
+          for (const m of list) seen.current.set(m.outcome, m);
+          for (const [id, m] of seen.current) if (!ids.has(id) && (m.expiry === null || m.expiry < t - KEEP_ENDED_MS)) seen.current.delete(id);
+          const gone = [...seen.current.values()].filter((m) => !ids.has(m.outcome));
+          setMarkets([...list, ...gone].sort((a, b) => (a.expiry ?? Infinity) - (b.expiry ?? Infinity) || a.outcome - b.outcome));
+          setError(false);
+        })
+        .catch(() => alive && setError(true));
     void load();
-    const t = setInterval(() => document.visibilityState === "visible" && void load(), 4_000);
+    const t = setInterval(() => document.visibilityState === "visible" && void load(), 3_000);
     return () => {
       alive = false;
       clearInterval(t);
     };
   }, []);
 
-  // open (not ended) markets first; one ended a moment ago stays while it settles
-  const live = useMemo(() => (markets ?? []).filter((m) => m.expiry === null || m.expiry > now - 30 * 60_000), [markets, now]);
+  const live = useMemo(() => (markets ?? []).filter((m) => m.expiry === null || m.expiry > now - KEEP_ENDED_MS), [markets, now]);
   const market = useMemo(() => live.find((m) => m.outcome === want) ?? live.find((m) => m.expiry === null || m.expiry > now) ?? live[0] ?? null, [live, want, now]);
-  const kinds = useMemo(() => [...new Set(live.map((m) => m.underlying ?? "Other"))], [live]);
+  const periods = useMemo(() => {
+    const seenP = new Map<string, number>();
+    for (const m of live) if (m.periodLabel) seenP.set(m.periodLabel, m.periodMs ?? 0);
+    return [...seenP.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k);
+  }, [live]);
   const side = market ? (chartSide === 0 ? market.yes : market.no) : null;
+
+  // results of ended rounds (the open one and any in the list), asked until known
+  const endedIds = live.filter((m) => m.expiry !== null && m.expiry <= now && !results.has(m.outcome)).map((m) => m.outcome);
+  const heldSettled = holdings.filter((h) => h.settled && !results.has(h.outcome)).map((h) => h.outcome);
+  const askKey = [...new Set([...endedIds, ...heldSettled])].slice(0, 12).join(",");
+  useEffect(() => {
+    if (!askKey) return;
+    let alive = true;
+    const ask = () =>
+      Promise.all(askKey.split(",").map((id) => fetchPredictResult(Number(id)))).then((rs) => {
+        if (!alive) return;
+        const got = rs.filter((r): r is PredictResult => !!r);
+        if (got.length) setResults((prev) => new Map([...prev, ...got.map((r) => [r.outcome, r] as const)]));
+      });
+    void ask();
+    const t = setInterval(() => void ask(), 5_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [askKey]);
 
   useEffect(() => {
     if (!side) return;
@@ -181,12 +232,18 @@ export function PredictScreen() {
     };
   }, [picker]);
 
-  const shown = live.filter((m) => filter === "All" || (m.underlying ?? "Other") === filter);
+  const shown = live.filter((m) => filter === "All" || m.periodLabel === filter);
+  const status = (m: PredictMarket) => {
+    if (m.expiry === null) return m.periodLabel ?? "";
+    if (m.expiry > now) return `${m.periodLabel ? `${m.periodLabel} · ` : ""}${clock(m.expiry, now)} left`;
+    const r = results.get(m.outcome);
+    return r ? `${winnerOf(m, r)} won` : "Ended · settling";
+  };
   const list = (
     <>
-      {kinds.length > 1 && (
-        <div className="cat-chips" role="group" aria-label="Filter">
-          {["All", ...kinds].map((k) => (
+      {periods.length > 1 && (
+        <div className="cat-chips" role="group" aria-label="Round length">
+          {["All", ...periods].map((k) => (
             <button key={k} type="button" className={`tab${filter === k ? " on" : ""}`} onClick={() => setFilter(k)}>{k}</button>
           ))}
         </div>
@@ -195,22 +252,23 @@ export function PredictScreen() {
         {!markets ? (
           Array.from({ length: 8 }, (_, i) => <div key={i} className="skel" style={{ height: 64, borderRadius: 10, marginBottom: 6 }} />)
         ) : shown.length === 0 ? (
-          <span className="dim" style={{ fontSize: 13, padding: 8 }}>No open markets right now. New ones open every day.</span>
+          <span className="dim" style={{ fontSize: 13, padding: 8 }}>No open rounds right now. New ones open all the time.</span>
         ) : (
           shown.map((m) => {
             const ended = m.expiry !== null && m.expiry <= now;
+            const r = results.get(m.outcome);
             return (
               <button key={m.outcome} type="button" onClick={() => pick(m)} className={`tl-row pm-row${m.outcome === market?.outcome ? " on" : ""}`} style={{ width: "100%" }}>
                 <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2, textAlign: "left" }}>
-                  <span style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.3 }}>{m.title}</span>
-                  <span className="mono" style={{ fontSize: 11, color: ended ? "var(--warn)" : "var(--faint)" }}>
-                    {ended ? "Settling…" : m.expiry ? `Ends in ${timeLeft(m.expiry, now)}` : m.question?.name ?? ""}
+                  <span style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.3 }}>{m.title}{m.expiry ? ` at ${hhmm(m.expiry)}` : ""}</span>
+                  <span className="mono" style={{ fontSize: 11, color: ended ? (r ? "var(--text2)" : "var(--warn)") : "var(--faint)" }}>{status(m)}</span>
+                </span>
+                {!ended && (
+                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                    <b className="mono up" style={{ fontSize: 14 }}>{chance(m.yes.mid)}</b>
+                    <span className="mono dim" style={{ fontSize: 10 }}>{m.yes.name}</span>
                   </span>
-                </span>
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                  <b className="mono up" style={{ fontSize: 14 }}>{chance(m.yes.mid)}</b>
-                  <span className="mono dim" style={{ fontSize: 10 }}>{m.yes.name}</span>
-                </span>
+                )}
               </button>
             );
           })
@@ -220,11 +278,12 @@ export function PredictScreen() {
   );
 
   const ended = !!market && market.expiry !== null && market.expiry <= now;
-  const rules = market ? rulesOf(market) : "";
+  const result = market ? results.get(market.outcome) ?? null : null;
+  const next = market && ended ? live.find((m) => m.outcome !== market.outcome && m.underlying === market.underlying && m.periodLabel === market.periodLabel && (m.expiry ?? 0) > now) ?? null : null;
   const blocked = allowed === false && (
     <div className="card" style={{ gap: 6, padding: 14 }}>
       <span style={{ fontWeight: 700, fontSize: 14 }}>Predictions aren&apos;t available where you are</span>
-      <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>Markets and odds stay open to everyone.</span>
+      <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>Rounds and odds stay open to everyone.</span>
     </div>
   );
   const panel = market && allowed !== false && <PredictPanel market={market} ended={ended} cash={cash?.available ?? 0} loaded={!!cash} holdings={holdings} trade={trade} allowed={allowed} onFunds={setFunds} onSide={setChartSide} />;
@@ -241,7 +300,7 @@ export function PredictScreen() {
               <b style={{ fontSize: 15 }}>{market?.title ?? "…"}</b> <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>· switch</span>
             </span>
             <IDown size={14} color="var(--faint)" />
-            {market && <span className="chg u">{chance(market.yes.mid)}</span>}
+            {market && !ended && <span className="chg u">{clock(market.expiry, now)}</span>}
           </button>
 
           {error && !markets && (
@@ -251,38 +310,21 @@ export function PredictScreen() {
             </div>
           )}
 
-          {market && (
-            <div className="panel" style={{ padding: 14, gap: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <span style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                  <b style={{ fontSize: 18 }} className="hide-m">{market.title}</b>
-                  <span className="dim" style={{ fontSize: 12 }}>
-                    {ended ? "Ended · settling" : market.expiry ? `Ends ${whenText(market.expiry)} · in ${timeLeft(market.expiry, now)}` : ""}
-                    {market.question ? ` · ${market.question.name}` : ""}
-                  </span>
-                </span>
-                <span style={{ display: "flex", gap: 8 }}>
-                  <span className="pm-odds up"><i>{market.yes.name}</i><b className="mono">{chance(market.yes.mid)}</b></span>
-                  <span className="pm-odds down"><i>{market.no.name}</i><b className="mono">{chance(market.no.mid)}</b></span>
-                </span>
-              </div>
-              <div className="pm-bar" aria-hidden="true"><span style={{ width: `${Math.round((market.yes.mid ?? 0.5) * 100)}%` }} /></div>
-            </div>
-          )}
+          {market && <RoundCard market={market} now={now} ended={ended} result={result} next={next} onNext={pick} />}
 
           <div className="panel" style={{ padding: mobile ? 8 : 12, gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <div style={{ display: "flex", gap: 4 }}>
                 {market && ([0, 1] as const).map((s) => (
                   <button key={s} type="button" className={`tab${chartSide === s ? " on" : ""}`} onClick={() => setChartSide(s)}>
-                    {s === 0 ? market.yes.name : market.no.name} price
+                    {s === 0 ? market.yes.name : market.no.name} odds
                   </button>
                 ))}
               </div>
               <Intervals value={iv} onChange={(v) => (INTERVALS as readonly string[]).includes(v) && setIv(v as Interval)} />
             </div>
-            <TvChart candles={candles} supply={null} empty={candles && !candles.length ? "No trades yet in this market." : "Loading the chart…"} height={mobile ? 240 : 340} seriesKey={`${side?.coin}|${iv}`} />
-            <span className="dim" style={{ fontSize: 11 }}>Price = the market&apos;s odds. Powered by Hyperliquid</span>
+            <TvChart candles={candles} supply={null} empty={candles && !candles.length ? "No trades yet in this round." : "Loading the chart…"} height={mobile ? 220 : 300} seriesKey={`${side?.coin}|${iv}`} />
+            <span className="dim" style={{ fontSize: 11 }}>Price of a share = the market&apos;s odds (0.47 = 47%). Powered by Hyperliquid</span>
           </div>
 
           {mobile && <Balance account={account} signedIn={!!user} allowed={allowed} onFunds={setFunds} onLogin={w.login} blurb={BLURB} />}
@@ -291,12 +333,12 @@ export function PredictScreen() {
 
           {market && (
             <div className="panel" style={{ padding: 14, gap: 6 }}>
-              <b style={{ fontSize: 14 }}>How it settles</b>
-              <span className="dim" style={{ fontSize: 13, lineHeight: 1.6 }}>{rules}</span>
+              <b style={{ fontSize: 14 }}>How it works</b>
+              <span className="dim" style={{ fontSize: 13, lineHeight: 1.6 }}>{rulesOf(market)}</span>
             </div>
           )}
 
-          <MyPredictions markets={markets} holdings={holdings} orders={orders} fills={fills} trade={trade} signedIn={!!user} onPick={pick} />
+          <MyPredictions markets={markets} holdings={holdings} orders={orders} fills={fills} results={results} trade={trade} signedIn={!!user} onPick={pick} />
         </section>
 
         <aside className="term-trade">
@@ -307,9 +349,9 @@ export function PredictScreen() {
         </aside>
 
         {picker && (
-          <div className="term-picker" role="dialog" aria-modal="true" aria-label="Switch market">
+          <div className="term-picker" role="dialog" aria-modal="true" aria-label="Switch round">
             <div className="term-picker-top">
-              <b>Switch market</b>
+              <b>Switch round</b>
               <button type="button" className="icon-btn" aria-label="Close" onClick={() => setPicker(false)}>
                 <IX size={15} />
               </button>
@@ -323,10 +365,86 @@ export function PredictScreen() {
   );
 }
 
+// ------------------------------------------------------------------ the round: question, target vs now, clock
+
+function RoundCard({ market: m, now, ended, result, next, onNext }: { market: PredictMarket; now: number; ended: boolean; result: PredictResult | null; next: PredictMarket | null; onNext: (m: PredictMarket) => void }) {
+  const gap = m.priceMarket && m.now !== null && m.target !== null ? m.now - m.target : null;
+  const progress = m.start !== null && m.expiry !== null ? Math.min(1, Math.max(0, (now - m.start) / (m.expiry - m.start))) : null;
+  const question = m.priceMarket && m.underlying && m.target ? `Will ${m.underlying} be above ${usd(m.target, m.target >= 100 ? 0 : 2)}${m.expiry ? ` at ${hhmm(m.expiry)}` : ""}?` : m.name;
+  return (
+    <div className="panel" style={{ padding: 14, gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span className="mono dim" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6 }}>
+          {[m.periodLabel ? `${m.periodLabel} round` : null, m.underlying].filter(Boolean).join(" · ")}
+        </span>
+        <b style={{ fontSize: 19, lineHeight: 1.3 }}>{question}</b>
+      </div>
+
+      {ended ? (
+        <div className={`pm-result${result ? "" : " wait"}`} role="status">
+          {result ? (
+            <>
+              <b>{winnerOf(m, result)} won</b>
+              <span>Winning shares paid $1 each, automatically.</span>
+            </>
+          ) : (
+            <>
+              <b>Round ended</b>
+              <span>Hyperliquid is settling it. The result shows here in a moment.</span>
+            </>
+          )}
+          {next && (
+            <button type="button" className="btn sm volt" onClick={() => onNext(next)} style={{ marginTop: 6, alignSelf: "flex-start" }}>
+              Next round: ends {hhmm(next.expiry)} →
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="pm-stats">
+          {m.priceMarket && m.target !== null && (
+            <span>
+              <i>Price to beat</i>
+              <b className="mono">${pxText(m.target)}</b>
+            </span>
+          )}
+          {m.priceMarket && (
+            <span>
+              <i>{m.underlying} now</i>
+              <b className={`mono ${gap === null ? "" : gap >= 0 ? "up" : "down"}`}>${pxText(m.now)}</b>
+              {gap !== null && <em className={gap >= 0 ? "up" : "down"}>{gap >= 0 ? "▲" : "▼"} ${pxText(Math.abs(gap))} {gap >= 0 ? "above" : "below"}</em>}
+            </span>
+          )}
+          <span>
+            <i>Time left</i>
+            <b className="mono pm-clock">{clock(m.expiry, now)}</b>
+            {m.expiry && <em>ends {hhmm(m.expiry)}</em>}
+          </span>
+        </div>
+      )}
+
+      {!ended && progress !== null && (
+        <div className="pm-time" aria-label={`${Math.round(progress * 100)}% of the round gone`}>
+          <span style={{ width: `${progress * 100}%` }} />
+        </div>
+      )}
+
+      {!ended && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700 }}>
+            <span className="up">{m.yes.name} {chance(m.yes.mid)}</span>
+            <span className="down">{chance(m.no.mid)} {m.no.name}</span>
+          </div>
+          <div className="pm-bar" aria-hidden="true"><span style={{ width: `${Math.round((m.yes.mid ?? 0.5) * 100)}%` }} /></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The rule in plain words, from the market's own fields. */
 function rulesOf(m: PredictMarket): string {
-  if (m.underlying && m.target && m.expiry)
-    return `${m.yes.name} wins if ${m.underlying}'s price on Hyperliquid is above $${m.target.toLocaleString("en-US")} at ${whenText(m.expiry)} (your time). Each winning share pays $1, each losing share $0. Paid automatically.`;
+  if (m.priceMarket && m.underlying && m.target && m.expiry)
+    return `Pick ${m.yes.name} if you think ${m.underlying} will be above $${m.target.toLocaleString("en-US")} at ${whenText(m.expiry)} (your time), ${m.no.name} if not. It settles on Hyperliquid's own ${m.underlying} price. Each winning share pays $1 and each losing share $0, paid automatically. You can sell your shares any time before the end.`;
   return `${m.name}. ${m.description}`.trim();
 }
 
@@ -360,11 +478,11 @@ function PredictPanel({ market, ended, cash, loaded, holdings, trade, allowed, o
   const limitPx = kind === "limit" && Number(limit) > 0 ? Number(limit) / 100 : null;
   const px = limitPx ?? s.mid;
   const usdIn = Number(amount);
-  const shares = act === "buy" && px ? sharesFor(usdIn, px) : Math.floor(held * part);
-  const cost = shares * (px ?? 0);
   const buy = act === "buy";
+  const shares = buy && px ? sharesFor(usdIn, px) : Math.floor(held * part);
+  const cost = shares * (px ?? 0);
   const why = ended
-    ? "This market has ended."
+    ? "This round has ended."
     : !px
       ? "No price yet: use a limit order."
       : limitPx !== null && (limitPx < 0.001 || limitPx > 0.999)
@@ -378,7 +496,7 @@ function PredictPanel({ market, ended, cash, loaded, holdings, trade, allowed, o
                 ? "Not enough in your trading balance. Add money first."
                 : null
           : !(held > 0)
-            ? `You don't have ${s.name} shares here.`
+            ? `You don't have ${s.name} shares in this round.`
             : cost < PREDICT_MIN_NOTIONAL
               ? `The smallest order is $${PREDICT_MIN_NOTIONAL}.`
               : null;
@@ -391,7 +509,7 @@ function PredictPanel({ market, ended, cash, loaded, holdings, trade, allowed, o
     try {
       if (buy) {
         const r = await trade.predictBuy(s, usdIn, limitPx, setStep);
-        setMsg({ ok: true, text: r.resting ? `Order placed: ${r.shares} ${s.name} at ${cents(limitPx)}.` : `Bought ${r.shares} ${s.name} shares${r.avgPx ? ` at ${cents(r.avgPx)}` : ""}.` });
+        setMsg({ ok: true, text: r.resting ? `Order placed: ${r.shares} ${s.name} at ${cents(limitPx)}.` : `You're in: ${r.shares} ${s.name} shares${r.avgPx ? ` at ${cents(r.avgPx)}` : ""}.` });
         setAmount("");
       } else {
         const r = await trade.predictSell(s, part, limitPx, setStep);
@@ -418,8 +536,9 @@ function PredictPanel({ market, ended, cash, loaded, holdings, trade, allowed, o
           const on = pickSide === v;
           return (
             <button key={v} type="button" className={`pm-side ${v === 0 ? "yes" : "no"}${on ? " on" : ""}`} onClick={() => choose(v)} aria-pressed={on}>
-              <span>{sd.name}</span>
+              <span>{v === 0 ? "▲ " : "▼ "}{sd.name}</span>
               <b className="mono">{cents(sd.mid)}</b>
+              <small>{chance(sd.mid)} chance</small>
             </button>
           );
         })}
@@ -462,48 +581,39 @@ function PredictPanel({ market, ended, cash, loaded, holdings, trade, allowed, o
         </div>
       )}
       {shares > 0 && px && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span className="dim">Shares</span>
-            <span className="mono">{shares.toLocaleString("en-US")} {s.name} at {cents(px)}</span>
+        buy ? (
+          <div className="pm-payout">
+            <div><span>If {s.name} wins you get</span><b className="mono up">{usd(shares)}</b></div>
+            <div className="dim"><span>{shares.toLocaleString("en-US")} shares × $1 · you pay {usd(cost)}</span><span className="mono up">{signedUsd(shares - cost)}</span></div>
           </div>
-          {buy ? (
-            <>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span className="dim">Cost</span>
-                <span className="mono">{usd(cost)}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span className="dim">If {s.name} wins you get</span>
-                <span className="mono up">{usd(shares)} ({signedUsd(shares - cost)})</span>
-              </div>
-            </>
-          ) : (
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span className="dim">You get about</span>
-              <span className="mono">{usd(cost)}</span>
-            </div>
-          )}
-        </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}><span className="dim">You sell</span><span className="mono">{shares.toLocaleString("en-US")} {s.name} at {cents(px)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}><span className="dim">You get about</span><span className="mono">{usd(cost * (1 - SPOT_BUILDER_FEE))}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}><span className="dim">ArkhamPad fee</span><span className="mono">{usd(cost * SPOT_BUILDER_FEE)} ({(SPOT_BUILDER_FEE * 100).toFixed(1)}%)</span></div>
+          </div>
+        )
       )}
-      {!w.signer ? (
+      {ended ? (
+        <button type="button" className="btn lg" disabled>Round ended</button>
+      ) : !w.signer ? (
         <button type="button" className="btn volt lg" onClick={w.login}>Sign in to predict</button>
       ) : loaded && buy && cash < 1 && !busy ? (
         <button type="button" className="btn volt lg" onClick={() => onFunds("add")}>Add money to start</button>
       ) : (
         <button type="button" className={`btn lg ${pickSide === 0 ? "buy" : "sell"}`} disabled={busy || ended || allowed === null} onClick={go}>
-          {busy ? step ?? "Working…" : `${buy ? "Buy" : "Sell"} ${s.name}`}
+          {busy ? step ?? "Working…" : ended ? "Round ended" : `${buy ? "Buy" : "Sell"} ${s.name}`}
         </button>
       )}
       {msg && <div role="status" style={{ fontSize: 13, fontWeight: 600, color: msg.ok ? "var(--up)" : "var(--down)", textAlign: "center" }}>{msg.text}</div>}
-      <span className="dim" style={{ fontSize: 11, textAlign: "center", lineHeight: 1.5 }}>Fully paid, no leverage: the most you can lose is what you put in.</span>
+      <span className="dim" style={{ fontSize: 11, textAlign: "center", lineHeight: 1.5 }}>No leverage: the most you can lose is what you put in. No fee to buy.</span>
     </div>
   );
 }
 
 // ------------------------------------------------------------------ the user's shares, orders, history
 
-function MyPredictions({ markets, holdings, orders, fills, trade, signedIn, onPick }: { markets: PredictMarket[] | null; holdings: PredictHolding[]; orders: PredictOrder[]; fills: PredictFill[]; trade: Trade; signedIn: boolean; onPick: (m: PredictMarket) => void }) {
+function MyPredictions({ markets, holdings, orders, fills, results, trade, signedIn, onPick }: { markets: PredictMarket[] | null; holdings: PredictHolding[]; orders: PredictOrder[]; fills: PredictFill[]; results: Map<number, PredictResult>; trade: Trade; signedIn: boolean; onPick: (m: PredictMarket) => void }) {
   const [tab, setTab] = useState<"shares" | "orders" | "history">("shares");
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -517,7 +627,7 @@ function MyPredictions({ markets, holdings, orders, fills, trade, signedIn, onPi
     const { m, sd } = h.settled ? { m: byOutcome.get(h.outcome) ?? null, sd: null } : sideOf(h.enc);
     const value = sd?.mid != null ? h.shares * sd.mid : null;
     const pnl = value !== null && h.cost > 0 ? value - h.cost : null;
-    return { h, m, sd, value, pnl };
+    return { h, m, sd, value, pnl, result: h.settled ? results.get(h.outcome) ?? null : null };
   });
   const run = async (key: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(key);
@@ -546,12 +656,12 @@ function MyPredictions({ markets, holdings, orders, fills, trade, signedIn, onPi
         ) : (
           <div className="data-scroll">
             <table className="data-table">
-              <thead><tr><th>Market</th><th>Side</th><th>Shares</th><th>Value</th><th>Profit</th><th /></tr></thead>
+              <thead><tr><th>Round</th><th>Side</th><th>Shares</th><th>Value</th><th>Profit</th><th /></tr></thead>
               <tbody>
-                {rows.map(({ h, m, sd, value, pnl }) => (
+                {rows.map(({ h, m, sd, value, pnl, result }) => (
                   <tr key={h.coin} className={m ? "click" : ""} onClick={() => m && onPick(m)}>
-                    <td><b>{m?.title ?? `Market ${h.outcome}`}</b></td>
-                    <td className={h.settled ? "dim" : h.side === 0 ? "up" : "down"}>{h.settled ? "Settled" : sd?.name ?? (h.side === 0 ? "Yes" : "No")}</td>
+                    <td><b>{m ? `${m.title}${m.expiry ? ` at ${hhmm(m.expiry)}` : ""}` : result?.name ?? `Round ${h.outcome}`}</b></td>
+                    <td className={h.settled ? "dim" : h.side === 0 ? "up" : "down"}>{h.settled ? (result ? `Settled · ${winnerOf(m, result)} won` : "Settled") : sd?.name ?? (h.side === 0 ? "Yes" : "No")}</td>
                     <td className="mono">{h.shares.toLocaleString("en-US")}</td>
                     <td className="mono">{value === null ? "—" : usd(value)}</td>
                     <td className={`mono ${tone(pnl)}`}>{pnl === null ? "—" : signedUsd(pnl)}</td>
@@ -574,7 +684,7 @@ function MyPredictions({ markets, holdings, orders, fills, trade, signedIn, onPi
         ) : (
           <div className="data-scroll">
             <table className="data-table">
-              <thead><tr><th>Market</th><th>Order</th><th>Price</th><th>Shares</th><th /></tr></thead>
+              <thead><tr><th>Round</th><th>Order</th><th>Price</th><th>Shares</th><th /></tr></thead>
               <tbody>
                 {orders.map((o) => {
                   const { m, sd } = sideOf(o.enc);
@@ -597,7 +707,7 @@ function MyPredictions({ markets, holdings, orders, fills, trade, signedIn, onPi
       ) : (
         <div className="data-scroll">
           <table className="data-table">
-            <thead><tr><th>Market</th><th>Trade</th><th>Price</th><th>Shares</th><th>When</th></tr></thead>
+            <thead><tr><th>Round</th><th>Trade</th><th>Price</th><th>Shares</th><th>When</th></tr></thead>
             <tbody>
               {fills.map((f) => {
                 const { m, sd } = sideOf(f.enc);

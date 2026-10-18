@@ -4,7 +4,7 @@
  * Futures trading on Hyperliquid (orders, money in and out). Read-only data is in lib/hl.ts.
  *
  * Signing: the user's own key (the ArkhamPad wallet) signs three things, once each: approving
- * ArkhamPad's 0.07% builder fee, approving a trading key, and moving money out. The trading key
+ * ArkhamPad's builder fee (0.1% futures, 0.2% spot), approving a trading key, and moving money out. The trading key
  * (an "agent", kept in this browser) signs the orders themselves, so trading needs no pop-ups and
  * works with any wallet. An agent can trade but can never move money out.
  *
@@ -15,7 +15,7 @@
 import { ExchangeClient, HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { HOME_CHAIN, ensureCash, moveApi, netOf, runMove, toUsdc, type Signer } from "./chain";
-import { BUILDER_FEE_TENTHS_BP, HL_API, HL_BUILDER, MIN_NOTIONAL, fetchPerpAccount, fetchPerpOrders, info, priceString, sizeString, type PerpMarket, type PerpOrder, type PerpPosition } from "./hl";
+import { BUILDER_FEE_TENTHS_BP, BUILDER_MAX_TENTHS_BP, SPOT_FEE_TENTHS_BP, HL_API, HL_BUILDER, MIN_NOTIONAL, fetchPerpAccount, fetchPerpOrders, info, priceString, sizeString, type PerpMarket, type PerpOrder, type PerpPosition } from "./hl";
 import { fetchStockDexes } from "./hlstocks";
 import { PREDICT_MIN_NOTIONAL, PREDICT_SLIP, fetchPredictHoldings, predictPriceString, sharesFor, type PredictSide } from "./hlpredict";
 import { SPOT_MIN_NOTIONAL, SPOT_SLIP, fetchAccountMode, fetchSpotBalances, holdingOf, spotPriceString, usdcOf, type SpotMarket } from "./hlspot";
@@ -129,10 +129,10 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
   async function ready(onStep: (m: string | null) => void): Promise<ExchangeClient> {
     if (!user) throw new Error("Sign in first.");
     const max = await infoClient.maxBuilderFee({ user, builder: HL_BUILDER }).catch(() => 0);
-    if (Number(max) < BUILDER_FEE_TENTHS_BP) {
-      onStep("Setting up futures (one time)…");
+    if (Number(max) < BUILDER_MAX_TENTHS_BP) {
+      onStep("Setting up trading (one time)…");
       try {
-        await mainClient().approveBuilderFee({ maxFeeRate: `${BUILDER_FEE_TENTHS_BP / 1000}%`, builder: HL_BUILDER });
+        await mainClient().approveBuilderFee({ maxFeeRate: `${BUILDER_MAX_TENTHS_BP / 1000}%`, builder: HL_BUILDER });
       } catch (e) {
         throw hlError(e);
       }
@@ -158,6 +158,7 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
   }
 
   const builder = { b: HL_BUILDER, f: BUILDER_FEE_TENTHS_BP };
+  const spotBuilder = { b: HL_BUILDER, f: SPOT_FEE_TENTHS_BP };
 
   return {
     async deposit(amount, onStep) {
@@ -358,7 +359,7 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
         const res = await ex.order({
           orders: [{ a: m.asset, b: true, p: spotPriceString(at, m.szDecimals), s: coins, r: false, t: { limit: { tif: limitPx ? "Gtc" : "Ioc" } } }],
           grouping: "na",
-          builder,
+          builder: spotBuilder,
         });
         const first = res.response.data.statuses[0];
         onStep(null);
@@ -386,7 +387,7 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
         const res = await ex.order({
           orders: [{ a: m.asset, b: false, p: spotPriceString(at, m.szDecimals), s: coins, r: false, t: { limit: { tif: limitPx ? "Gtc" : "Ioc" } } }],
           grouping: "na",
-          builder,
+          builder: spotBuilder,
         });
         const first = res.response.data.statuses[0];
         onStep(null);
@@ -444,7 +445,7 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
         const res = await ex.order({
           orders: [{ a: side.asset, b: false, p: String(at), s: String(shares), r: false, t: { limit: { tif: limitPx ? "Gtc" : "Ioc" } } }],
           grouping: "na",
-          builder,
+          builder: spotBuilder,
         });
         const first = res.response.data.statuses[0];
         onStep(null);

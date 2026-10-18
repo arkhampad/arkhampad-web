@@ -15,7 +15,7 @@ import { useIsMobile } from "./bits";
 import { Balance, Book, FundsSheet } from "./futures";
 import { MarketTabs } from "./markettabs";
 import { INTERVALS, fetchBook, fetchPerpAccount, fetchPerpCandles, info, px, sizeString, type BookLevel, type Interval, type PerpAccount } from "@/lib/hl";
-import { BUILDER_FEE } from "@/lib/hl";
+import { SPOT_BUILDER_FEE } from "@/lib/hl";
 import {
   SPOT_MIN_NOTIONAL,
   combineCash,
@@ -314,7 +314,7 @@ function SpotOrderPanel({ market, cash, held, loaded, trade, onFunds }: { market
   const coinsOut = buy && at > 0 && usdIn > 0 && market ? Number(sizeString(usdIn / at, market.szDecimals)) : 0;
   const sellCoins = !buy && market ? Number(sizeString(held * part, market.szDecimals)) : 0;
   const sellUsd = sellCoins * at;
-  const fee = (buy ? usdIn : sellUsd) * (HL_SPOT_FEE + BUILDER_FEE);
+  const fee = (buy ? usdIn : sellUsd) * (HL_SPOT_FEE + SPOT_BUILDER_FEE);
 
   const why = !market
     ? "Loading…"
@@ -417,7 +417,7 @@ function SpotOrderPanel({ market, cash, held, loaded, trade, onFunds }: { market
           )}
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span className="dim">Fee</span>
-            <span className="mono">{usd(fee)} ({((HL_SPOT_FEE + BUILDER_FEE) * 100).toFixed(2)}%)</span>
+            <span className="mono">{usd(fee)} ({((HL_SPOT_FEE + SPOT_BUILDER_FEE) * 100).toFixed(2)}%)</span>
           </div>
         </div>
       )}

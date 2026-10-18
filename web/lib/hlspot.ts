@@ -1,7 +1,7 @@
 /**
  * Spot on Hyperliquid: coins bought and held outright (no leverage), against USDC. Read-only
  * data here; buying and selling is in lib/hltrade.ts (makeSpotTrade). Same account, same builder
- * code (0.07%) as futures.
+ * code as futures (0.2% on spot).
  *
  * Hyperliquid keeps spot and futures dollars apart unless the account is "unified": then one USDC
  * balance pays for both. ArkhamPad reads which it is (accountMode) and, for a standard account,

@@ -1,23 +1,28 @@
 /**
  * Futures on Hyperliquid: ArkhamPad's own screen, Hyperliquid's exchange. Markets, prices, charts
  * and the user's account come from Hyperliquid's free public API; every order carries ArkhamPad's
- * builder code (0.07%). The money stays in the user's own Hyperliquid account (their ArkhamPad
+ * builder code (0.1%). The money stays in the user's own Hyperliquid account (their ArkhamPad
  * address). Trading itself (orders, money in and out) is in lib/hltrade.ts.
  */
 import { perpsBlocked } from "./hlgeo.js";
 
 export const HL_API = "https://api.hyperliquid.xyz";
 /**
- * ArkhamPad's Hyperliquid builder address (the treasury): it receives the 0.07% fee. Hyperliquid
+ * ArkhamPad's Hyperliquid builder address (the treasury): it receives the builder fee. Hyperliquid
  * requires it to hold at least 100 USDC in its own perps account.
  */
 export const HL_BUILDER = ((process.env.NEXT_PUBLIC_HL_BUILDER || "0xd9D46EB26c9D753135683b7736FC2be097e7B099").toLowerCase()) as `0x${string}`;
 /** Highest leverage offered (a market's own limit can be lower). */
 export const MAX_LEV = 20;
 export const DEFAULT_LEV = 5;
-/** ArkhamPad's fee on every futures trade (builder fee, tenths of a basis point: 70 = 0.07%). */
-export const BUILDER_FEE_TENTHS_BP = 70;
-export const BUILDER_FEE = 0.0007;
+/** ArkhamPad's fee on every futures and stock trade (builder fee, tenths of a basis point: 100 = 0.1%, Hyperliquid's cap for perps). */
+export const BUILDER_FEE_TENTHS_BP = 100;
+export const BUILDER_FEE = 0.001;
+/** ArkhamPad's fee on spot trades and on prediction sells (200 = 0.2%). */
+export const SPOT_FEE_TENTHS_BP = 200;
+export const SPOT_BUILDER_FEE = 0.002;
+/** What the user approves once: the highest of the fees above. */
+export const BUILDER_MAX_TENTHS_BP = 200;
 /** Hyperliquid's own taker fee at the base tier (about; it falls with volume). */
 export const HL_TAKER_FEE = 0.00045;
 /** Hyperliquid's smallest order, in dollars of position. */
