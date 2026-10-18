@@ -389,9 +389,51 @@ export async function cashByChain(who: Address): Promise<Record<number, bigint>>
   return out;
 }
 
+/** A move smaller than this isn't worth Relay's fee (site units: $0.50). */
+const MIN_MOVE = 500_000n;
+type MoveQuote = Awaited<ReturnType<typeof moveApi>>;
+type MoveSrc = { id: number; b: bigint };
+
 /**
- * Makes sure `need` (site units) is on `chainId`, moving cash in from the user's other chains
- * when it's short there. Returns at once when the cash is already there.
+ * Which of the user's other networks to bring cash from, and how much from each, so `short`
+ * (site units) arrives where it's needed. Biggest balance first; a balance that can't pay for all
+ * that's still missing (Relay's fee comes out of it) is asked for what it can pay. `quote(id, want)`
+ * gives what moving `want` from network `id` costs there (site units, null if unknown).
+ */
+export async function planMoves(
+  short: bigint,
+  srcs: MoveSrc[],
+  quote: (id: number, want: bigint) => Promise<{ q: MoveQuote; cost: bigint | null }>
+): Promise<{ moves: { id: number; want: bigint; q: MoveQuote }[]; left: bigint; error: string | null }> {
+  const moves: { id: number; want: bigint; q: MoveQuote }[] = [];
+  let left = short;
+  let error: string | null = null;
+  for (const src of [...srcs].sort((a, b) => (b.b > a.b ? 1 : b.b < a.b ? -1 : 0))) {
+    if (left <= 0n) break;
+    if (src.b < MIN_MOVE) continue;
+    try {
+      let want = left;
+      let { q, cost } = await quote(src.id, want);
+      if (cost !== null && cost > src.b) {
+        // this network can't pay for all of it: ask for what it can (Relay's fee scales with it)
+        want = (want * src.b * 995n) / (cost * 1000n);
+        if (want < MIN_MOVE) continue;
+        ({ q, cost } = await quote(src.id, want));
+        if (cost !== null && cost > src.b) continue;
+      }
+      moves.push({ id: src.id, want, q });
+      left -= want;
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
+  return { moves, left, error };
+}
+
+/**
+ * Makes sure `need` (site units) is on `chainId`, bringing cash in from all the user's other
+ * networks when it's short there (the user sees one balance and never picks a network). Returns
+ * at once when the cash is already there.
  */
 export async function ensureCash(chainId: number, need: bigint, s: Signer): Promise<void> {
   const n = netOf(chainId);
@@ -401,17 +443,46 @@ export async function ensureCash(chainId: number, need: bigint, s: Signer): Prom
   const short = need - have + 10_000n; // +$0.01 of room for rounding
   const others = NETS.filter((x) => x.id !== chainId && canMove(x.id));
   const bals = await Promise.all(others.map(async (x) => ({ x, b: await usdcBalance(x.id, s.address).catch(() => 0n) })));
-  bals.sort((a, b) => (b.b > a.b ? 1 : b.b < a.b ? -1 : 0));
-  const src = bals[0];
-  if (!src || src.b < short) {
-    // say exactly how much is needed and how much is there
-    const total = have + bals.reduce((a, x) => a + x.b, 0n);
-    const $ = (v: bigint) => `$${fromUsdc(v).toFixed(2)}`;
-    if (total < need + 10_000n) throw new TradeError(`You need ${$(need)} for this (network fee included) and your cash is ${$(total)}. Add ${$(need + 10_000n - total)} or more to continue.`);
-    throw new TradeError(`You need ${$(need)} on one network for this, but your ${$(total)} is spread over several networks. Add ${$(short - (src?.b ?? 0n))} or more to continue.`);
+  const total = have + bals.reduce((a, x) => a + x.b, 0n);
+  const $ = (v: bigint) => `$${fromUsdc(v).toFixed(2)}`;
+  if (total < need + 10_000n) throw new TradeError(`You need ${$(need)} for this (network fee included) and your cash is ${$(total)}. Add ${$(need + 10_000n - total)} or more to continue.`);
+  const netById = new Map(others.map((x) => [x.id, x]));
+  const plan = await planMoves(
+    short,
+    bals.map((x) => ({ id: x.x.id, b: x.b })),
+    async (id, want) => {
+      const q = await moveApi({ action: "quote", from: id, to: chainId, user: s.address, amount: S(up(n, want)) });
+      return { q, cost: q.amountIn ? down(netById.get(id)!, BigInt(q.amountIn)) : null };
+    }
+  );
+  if (plan.left > 0n) {
+    // moving costs a little: the most this can be is what all the cash can still bring over
+    const most = need - plan.left > 0n ? need - plan.left : 0n;
+    throw new TradeError(plan.error && !plan.moves.length ? plan.error : `Moving your cash between networks costs a little. Try ${$(most > 50_000n ? most - 50_000n : 0n)} or less.`);
   }
-  const q = await moveApi({ action: "quote", from: src.x.id, to: chainId, user: s.address, amount: S(up(n, short)) });
-  if (q.amountIn && down(src.x, BigInt(q.amountIn)) > src.b) throw new TradeError("Not enough cash to cover this trade. Try a slightly smaller amount.");
+  const ids: string[] = [];
+  for (const m of plan.moves) {
+    await runMove(m.q, netById.get(m.id)!, chainId, s);
+    if (m.q.requestId) ids.push(m.q.requestId);
+  }
+  // wait for the cash to land (usually a few seconds; each move is checked now and then)
+  const t0 = Date.now();
+  for (let i = 0; Date.now() - t0 < 180_000; i++) {
+    const now = await usdcBalance(chainId, s.address).catch(() => 0n);
+    if (now >= need) return;
+    if (i % 4 === 3) {
+      for (const id of ids) {
+        const st = await moveApi({ action: "status", requestId: id }).catch(() => null);
+        if (st?.status === "failure" || st?.status === "refund") throw new TradeError("Moving your cash didn't go through. Your funds are safe; please try again.");
+      }
+    }
+    await new Promise((ok) => setTimeout(ok, 800));
+  }
+  throw new TradeError("Your cash is still on its way between networks. Your funds are safe: try again in a minute.");
+}
+
+/** Runs one Relay move from `src` (signatures or the user's own transactions). */
+async function runMove(q: MoveQuote, src: Net, dest: number, s: Signer) {
   let topped = false;
   for (const step of q.steps ?? []) {
     for (const item of step.items ?? []) {
@@ -421,17 +492,17 @@ export async function ensureCash(chainId: number, need: bigint, s: Signer): Prom
         if (!sign || sign.signatureKind !== "eip712" || !post) throw new TradeError("Couldn't move your cash right now. Please try again.");
         const types = { ...sign.types };
         delete (types as Record<string, unknown>).EIP712Domain;
-        const signature = await s.signTypedData(Number(sign.domain.chainId ?? src.x.id), { domain: sign.domain, types, primaryType: sign.primaryType, message: sign.value });
+        const signature = await s.signTypedData(Number(sign.domain.chainId ?? src.id), { domain: sign.domain, types, primaryType: sign.primaryType, message: sign.value });
         await moveApi({ action: "permit", signature, post });
       } else {
         const d = item.data as { to?: Address; data?: Hex; value?: string; chainId?: number } | undefined;
         if (!d?.to || !d.data) throw new TradeError("Couldn't move your cash right now. Please try again.");
         if (BigInt(String(d.value ?? "0")) !== 0n) throw new TradeError("Couldn't move your cash right now. Please try again.");
         if (!s.sendTx) throw new TradeError("This wallet can't move cash between networks yet.");
-        const cid = Number(d.chainId ?? src.x.id);
+        const cid = Number(d.chainId ?? src.id);
         if (!topped) {
-          await relay({ chainId: cid, kind: "gas", spender: "move", user: s.address, token: src.x.usdc, dest: chainId });
-          owedHint.add(chainId);
+          await relay({ chainId: cid, kind: "gas", spender: "move", user: s.address, token: src.usdc, dest });
+          owedHint.add(dest);
           topped = true;
         }
         const hash = await Promise.race([
@@ -443,18 +514,6 @@ export async function ensureCash(chainId: number, need: bigint, s: Signer): Prom
       }
     }
   }
-  // wait for the cash to land (usually a few seconds)
-  const t0 = Date.now();
-  for (let i = 0; Date.now() - t0 < 120_000; i++) {
-    const now = await usdcBalance(chainId, s.address).catch(() => 0n);
-    if (now >= need) return;
-    if (q.requestId && i % 4 === 3) {
-      const st = await moveApi({ action: "status", requestId: q.requestId }).catch(() => null);
-      if (st?.status === "failure" || st?.status === "refund") throw new TradeError("Moving your cash didn't go through. Your funds are safe; please try again.");
-    }
-    await new Promise((ok) => setTimeout(ok, 800));
-  }
-  throw new TradeError("This is taking longer than usual. Your cash is on its way: try again in a minute.");
 }
 export async function tokenBalance(chainId: number, token: Address, who: Address) {
   return client(chainId).readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [who] });

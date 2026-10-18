@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getAddress, isAddress, type Address } from "viem";
-import { NETS, faucet, toUsdc, withdraw, LIVE, NET_NAMES, HOME_CHAIN } from "@/lib/chain";
+import { NETS, faucet, toUsdc, withdraw, LIVE, NET_NAMES, HOME_CHAIN, netFee, fromUsdc } from "@/lib/chain";
 import { useWallet } from "./wallet";
 import { IAlert, IX } from "./icons";
 import { BrandMark } from "./bits";
@@ -37,8 +37,15 @@ export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdra
   const n = NETS.find((x) => x.id === net) ?? NETS[0];
   const bal = LIVE ? w.totalUsdc : Number(w.usdc[net] ?? 0n) / 1e6;
   const homeBal = Number(w.usdc[net] ?? 0n) / 1e6;
-  // cash that has to come over from another network first costs a little to move
-  const maxOut = homeBal >= bal - 0.01 ? bal - 0.01 : bal * 0.99 - 0.05;
+  // The network fee for a withdrawal comes on top; cash that has to come over from another
+  // network first costs a little to move (Relay: about 1% and a few cents per network).
+  const [wdFee, setWdFee] = useState(0.05);
+  useEffect(() => {
+    if (tab !== "withdraw") return;
+    netFee(net, "withdraw").then((f) => setWdFee(fromUsdc(f))).catch(() => {});
+  }, [tab, net]);
+  const away = NETS.filter((x) => x.id !== net).map((x) => Number(w.usdc[x.id] ?? 0n) / 1e6).filter((v) => v >= 0.5);
+  const maxOut = Math.floor((homeBal + away.reduce((a, v) => a + v * 0.985 - 0.06, 0) - wdFee - 0.01) * 100) / 100;
   useEffect(() => {
     if (!w.address) return;
     import("qrcode").then((Q) => Q.toDataURL(w.address as string, { margin: 1, width: 220, color: { dark: "#0A0B10", light: "#FFFFFF" } })).then(setQr).catch(() => setQr(null));
@@ -94,6 +101,7 @@ export function FundsModal({ tab, setTab, onClose }: { tab: "deposit" | "withdra
           <div className="field"><label htmlFor="wd-amt">Amount ({n.dollar ?? "USDC"})</label>
             <div style={{ display: "flex", gap: 6 }}><input id="wd-amt" className="inp mono" inputMode="decimal" placeholder="0.00" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} /><button type="button" className="btn sm" style={{ height: 46 }} onClick={() => setAmt(Math.max(0, maxOut).toFixed(2))}>Max</button></div>
           </div>
+          <span className="dim" style={{ fontSize: 12 }}>Network fee ${wdFee.toFixed(2)}{away.length > 0 ? ". Part of your cash is moved to Base first (a few seconds)." : "."}</span>
           <button type="button" className="btn volt lg" disabled={busy} onClick={send}>{busy ? "Sending…" : "Withdraw"}</button>
         </>
       )}
