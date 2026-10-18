@@ -6,7 +6,7 @@
 // Env: RELAYER_KEY (the relayer wallet's private key), and the chain RPC env vars.
 import fs from "node:fs";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { createPublicClient, createWalletClient, http, encodeFunctionData, decodeErrorResult, decodeFunctionResult, decodeFunctionData, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress, verifyTypedData } from "viem";
+import { createPublicClient, createWalletClient, http, fallback, encodeFunctionData, decodeErrorResult, decodeFunctionResult, decodeFunctionData, getAddress, isAddress, isHex, parseSignature, nonceManager, keccak256, recoverTypedDataAddress, verifyTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { moderate } from "./moderation.mjs";
 import { makeFees } from "./fees.mjs";
@@ -152,10 +152,15 @@ export function makeRelayer() {
   const nets = new Map();
   for (const c of CHAINS) {
     // The relayer can use its own (faster, paid) RPC; the indexer keeps the one with big log ranges.
-    const rpc = ((c.relayRpcEnv && process.env[c.relayRpcEnv]) || process.env[c.rpcEnv] || "").trim();
+    // One URL, or several comma-separated: the first one is used, the next ones take over
+    // when it fails (a free node going down for a while doesn't stop the relayer).
+    const urls = ((c.relayRpcEnv && process.env[c.relayRpcEnv]) || process.env[c.rpcEnv] || "").split(",").map((u) => u.trim()).filter(Boolean);
+    const rpc = urls[0];
     if (!rpc || !c.router) continue;
-    const chain = { id: c.chainId, name: c.name, nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } };
-    const transport = http(rpc, { retryCount: 2, timeout: 20_000 });
+    const chain = { id: c.chainId, name: c.name, nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: urls } } };
+    const transport = urls.length > 1
+      ? fallback(urls.map((u) => http(u, { retryCount: 1, timeout: 20_000 })), { rank: false, retryCount: 1 })
+      : http(rpc, { retryCount: 2, timeout: 20_000 });
     // read-only backups, used to look up receipts when the main RPC lags or forgets (BNB)
     const backups = (c.receiptRpcs ?? []).filter((u) => u !== rpc).map((u) => createPublicClient({ chain, transport: http(u, { retryCount: 0, timeout: 8_000 }) }));
     nets.set(c.chainId, { c, pub: createPublicClient({ chain, transport }), backups, wallet: createWalletClient({ account, chain, transport }), router: getAddress(c.router), faucet: c.faucet ? getAddress(c.usdc) : null });
