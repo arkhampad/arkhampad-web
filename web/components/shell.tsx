@@ -95,7 +95,7 @@ function ThemeButton() {
   );
 }
 
-const NAV = [["/", "Discover"], ["/futures/", "Futures"], ["/terminal/", "Terminal"], ["/traders/", "Traders"], ["/analytics/", "Analytics"], ["/learn/", "Learn"]] as const;
+const NAV = [["/", "Discover"], ["/market/", "Market"], ["/terminal/", "Terminal"], ["/traders/", "Traders"], ["/analytics/", "Analytics"], ["/learn/", "Learn"]] as const;
 
 function Ticker() {
   // Latest testnet trades on ArkhamPad, topped up with what's trending on other DEXs.
@@ -123,8 +123,10 @@ function Ticker() {
   );
 }
 
+const MARKET = ["/market", "/futures", "/data"];
 function isOn(path: string, href: string) {
   if (href === "/") return path === "/" ;
+  if (href === "/market/") return MARKET.some((m) => path.startsWith(m));
   return path.startsWith(href.replace(/\/$/, ""));
 }
 
@@ -227,13 +229,13 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main id="main">{children}</main>
-      {!isOn(path, "/terminal/") && !isOn(path, "/futures/") && <Footer />}
+      {!isOn(path, "/terminal/") && !isOn(path, "/market/") && <Footer />}
       <StatusBar />
       <nav className="bnav show-m" aria-label="Bottom">
         <Link href="/" className={path === "/" ? "on" : ""}><IHome size={22} />Discover</Link>
         <Link href="/terminal/" className={isOn(path, "/terminal/") ? "on" : ""}><IChart size={22} />Terminal</Link>
         <Link href="/create/" className={`bnav-create${isOn(path, "/create/") ? " on" : ""}`}><span className="plus"><IPlus size={22} color="currentColor" w={1.8} /></span>Create</Link>
-        <Link href="/futures/" className={isOn(path, "/futures/") ? "on" : ""}><IUp size={22} />Futures</Link>
+        <Link href="/market/" className={isOn(path, "/market/") ? "on" : ""}><IUp size={22} />Market</Link>
         <Link href="/profile/" className={isOn(path, "/profile/") ? "on" : ""}><IUser size={22} />Profile</Link>
       </nav>
       {funds && <FundsModal tab={funds} setTab={setFunds} onClose={() => setFunds(null)} />}

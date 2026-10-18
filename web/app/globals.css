@@ -714,3 +714,24 @@ body { font-size: 14px; letter-spacing: -0.1px; }
 @media (min-width: 768px) { body { padding-bottom: 30px; } }
 @media (max-width: 1100px) { .statusbar .dim { display: none; } }
 .term-stats b.burn, b.mono.burn { color: var(--burn); }
+
+/* Market: Spot | Futures | Data */
+.mkt-tabs { max-width: 1600px; margin: 0 auto; padding: 14px 20px 0; display: flex; gap: 6px; }
+.mkt-tabs a { height: 40px; padding: 0 18px; border-radius: 11px; display: inline-flex; align-items: center; font-weight: 800; font-size: 14px; color: var(--dim); border: 1px solid var(--line2); background: var(--card); }
+.mkt-tabs a:hover { color: var(--text); }
+.mkt-tabs a.on { background: var(--volt); color: var(--on-volt); border-color: var(--volt); }
+@media (max-width: 760px) { .mkt-tabs { padding: 10px 12px 0; } .mkt-tabs a { flex: 1; justify-content: center; padding: 0 8px; } }
+.data-grid { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th { text-align: right; font-weight: 600; color: var(--faint); font-size: 11px; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.data-table td { text-align: right; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.data-table th:first-child, .data-table td:first-child { text-align: left; }
+.data-table tr.click { cursor: pointer; }
+.data-table tr.click:hover td { background: var(--hover); }
+.data-scroll { overflow-x: auto; }
+.data-split { display: grid; gap: 12px; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 1000px) { .data-split { grid-template-columns: minmax(0, 1fr); } }
+.data-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.data-tabs::-webkit-scrollbar { display: none; }
+.data-tabs .tab { flex: none; }

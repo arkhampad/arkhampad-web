@@ -36,6 +36,8 @@ import {
   type PerpPosition,
 } from "@/lib/hl";
 import { HL_WITHDRAW_FEE, MIN_MOVE, makeFuturesTrade } from "@/lib/hltrade";
+import { combineCash, fetchAccountMode, fetchSpotBalances } from "@/lib/hlspot";
+import { MarketTabs } from "./markettabs";
 
 const TvChart = dynamic(() => import("./tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
 
@@ -114,9 +116,17 @@ export function FuturesScreen() {
   userRef.current = user;
   const loadMine = useCallback(async () => {
     if (!user) return;
-    const [a, o, f] = await Promise.all([fetchPerpAccount(user).catch(() => null), fetchPerpOrders(user).catch(() => null), fetchPerpFills(user).catch(() => null)]);
+    const [a, o, f, sb, mode] = await Promise.all([
+      fetchPerpAccount(user).catch(() => null),
+      fetchPerpOrders(user).catch(() => null),
+      fetchPerpFills(user).catch(() => null),
+      fetchSpotBalances(user).catch(() => null),
+      fetchAccountMode(user).catch(() => null),
+    ]);
     if (userRef.current !== user) return;
-    if (a) setAccount(a);
+    // one trading balance: spot dollars count too (they're moved over when an order needs them)
+    const cash = combineCash(a, sb, mode);
+    if (a) setAccount(cash ? { ...a, accountValue: cash.value, withdrawable: cash.available } : a);
     if (o) setOrders(o);
     if (f) setFills(f);
   }, [user]);
@@ -196,6 +206,8 @@ export function FuturesScreen() {
     : [];
 
   return (
+    <>
+    <MarketTabs at="futures" />
     <div className="term">
       <aside className="panel term-list">{list}</aside>
 
@@ -275,17 +287,18 @@ export function FuturesScreen() {
       )}
       {funds && <FundsSheet mode={funds} setMode={setFunds} account={account} cash={w.totalUsdc} trade={trade} onClose={() => setFunds(null)} />}
     </div>
+    </>
   );
 }
 
 // ------------------------------------------------------------------ balance
 
-function Balance({ account, signedIn, allowed, onFunds, onLogin }: { account: PerpAccount | null; signedIn: boolean; allowed: boolean | null; onFunds: (m: "add" | "withdraw") => void; onLogin: () => void }) {
+export function Balance({ account, signedIn, allowed, onFunds, onLogin, blurb = "Up to 20x on BTC, ETH, SOL and hundreds more. Orders run on Hyperliquid." }: { account: PerpAccount | null; signedIn: boolean; allowed: boolean | null; onFunds: (m: "add" | "withdraw") => void; onLogin: () => void; blurb?: string }) {
   if (!signedIn) {
     return (
       <div className="card" style={{ gap: 10, padding: 14 }}>
-        <span style={{ fontWeight: 700 }}>Trade futures with your ArkhamPad cash</span>
-        <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>Up to 20x on BTC, ETH, SOL and hundreds more. Orders run on Hyperliquid.</span>
+        <span style={{ fontWeight: 700 }}>Trade with your ArkhamPad cash</span>
+        <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>{blurb}</span>
         <button type="button" className="btn volt" onClick={onLogin}>Sign in</button>
       </div>
     );
@@ -293,7 +306,7 @@ function Balance({ account, signedIn, allowed, onFunds, onLogin }: { account: Pe
   return (
     <div className="card" style={{ gap: 10, padding: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <span className="dim" style={{ fontSize: 12 }}>Futures balance</span>
+        <span className="dim" style={{ fontSize: 12 }}>Trading balance</span>
         <b className="mono" style={{ fontSize: 18 }}>{account ? usd(account.accountValue) : "…"}</b>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
@@ -310,7 +323,7 @@ function Balance({ account, signedIn, allowed, onFunds, onLogin }: { account: Pe
   );
 }
 
-function FundsSheet({ mode, setMode, account, cash, trade, onClose }: { mode: "add" | "withdraw"; setMode: (m: "add" | "withdraw") => void; account: PerpAccount | null; cash: number; trade: ReturnType<typeof makeFuturesTrade>; onClose: () => void }) {
+export function FundsSheet({ mode, setMode, account, cash, trade, onClose }: { mode: "add" | "withdraw"; setMode: (m: "add" | "withdraw") => void; account: PerpAccount | null; cash: number; trade: ReturnType<typeof makeFuturesTrade>; onClose: () => void }) {
   const [amt, setAmt] = useState("");
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<string | null>(null);
@@ -332,7 +345,7 @@ function FundsSheet({ mode, setMode, account, cash, trade, onClose }: { mode: "a
     try {
       if (mode === "add") {
         await trade.deposit(v, setStep);
-        setMsg({ ok: true, text: `${usd(v)} added to futures.` });
+        setMsg({ ok: true, text: `${usd(v)} added to your trading balance.` });
       } else {
         await trade.withdraw(v, setStep);
         setMsg({ ok: true, text: `${usd(v - HL_WITHDRAW_FEE)} is on its way to your cash (a few minutes).` });
@@ -347,12 +360,12 @@ function FundsSheet({ mode, setMode, account, cash, trade, onClose }: { mode: "a
   };
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={mode === "add" ? "Add to futures" : "Withdraw from futures"}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={mode === "add" ? "Add to trading" : "Withdraw from trading"}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", gap: 4 }}>
             {(["add", "withdraw"] as const).map((t) => (
               <button key={t} type="button" className={`tab${mode === t ? " on" : ""}`} onClick={() => !busy && (setMode(t), setMsg(null), setAmt(""))} style={{ fontSize: 15 }}>
-                {t === "add" ? "Add to futures" : "Withdraw"}
+                {t === "add" ? "Add money" : "Withdraw"}
               </button>
             ))}
           </div>
@@ -361,7 +374,7 @@ function FundsSheet({ mode, setMode, account, cash, trade, onClose }: { mode: "a
           </button>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-          <span className="dim">{mode === "add" ? "Your cash" : "Available in futures"}</span>
+          <span className="dim">{mode === "add" ? "Your cash" : "Available to withdraw"}</span>
           <b className="mono">{usd(mode === "add" ? cash : account?.withdrawable ?? 0)}</b>
         </div>
         <div className="field">
@@ -373,10 +386,10 @@ function FundsSheet({ mode, setMode, account, cash, trade, onClose }: { mode: "a
         </div>
         <span className="dim" style={{ fontSize: 12, lineHeight: 1.5 }}>
           {mode === "add"
-            ? "Moves your ArkhamPad cash into your futures balance on Hyperliquid. Usually under a minute."
+            ? "Moves your ArkhamPad cash into your trading balance on Hyperliquid (futures and spot). Usually under a minute."
             : `Hyperliquid takes a $${HL_WITHDRAW_FEE} fee. The rest comes back to your ArkhamPad cash in a few minutes.`}
         </span>
-        <button type="button" className="btn volt lg" disabled={busy} onClick={go}>{busy ? step ?? "Working…" : mode === "add" ? "Add to futures" : "Withdraw"}</button>
+        <button type="button" className="btn volt lg" disabled={busy} onClick={go}>{busy ? step ?? "Working…" : mode === "add" ? "Add money" : "Withdraw"}</button>
         {msg && <div role="status" style={{ fontSize: 13, fontWeight: 600, color: msg.ok ? "var(--up)" : "var(--down)", textAlign: "center" }}>{msg.text}</div>}
       </div>
     </div>
@@ -516,7 +529,7 @@ function OrderPanel({ market, account, allowed, trade, onFunds }: { market: Perp
 
 // ------------------------------------------------------------------ order book
 
-function Book({ book, market }: { book: { bids: BookLevel[]; asks: BookLevel[] } | null; market: PerpMarket | null }) {
+export function Book({ book, market }: { book: { bids: BookLevel[]; asks: BookLevel[] } | null; market: { mark: number; coin: string } | null }) {
   const asks = (book?.asks ?? []).slice(0, 8).reverse();
   const bids = (book?.bids ?? []).slice(0, 8);
   const maxSz = Math.max(1e-12, ...asks.map((a) => a.sz), ...bids.map((b) => b.sz));

@@ -16,6 +16,7 @@ import { ExchangeClient, HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { HOME_CHAIN, ensureCash, moveApi, netOf, runMove, toUsdc, type Signer } from "./chain";
 import { BUILDER_FEE_TENTHS_BP, HL_API, HL_BUILDER, MIN_NOTIONAL, info, priceString, sizeString, type PerpMarket, type PerpOrder, type PerpPosition } from "./hl";
+import { SPOT_MIN_NOTIONAL, SPOT_SLIP, fetchAccountMode, fetchSpotBalances, holdingOf, spotPriceString, usdcOf, type SpotMarket } from "./hlspot";
 
 /** Hyperliquid's withdrawal fee (dollars), taken from what is moved out. */
 export const HL_WITHDRAW_FEE = 1;
@@ -38,6 +39,12 @@ export type FuturesTrade = {
   /** Sets (or removes, with null) the take profit and stop loss of an open position. */
   setTpsl: (p: PerpPosition, m: PerpMarket | null, t: { tp: number | null; sl: number | null }, current: PerpOrder[]) => Promise<void>;
   cancel: (o: PerpOrder, m: PerpMarket | null) => Promise<void>;
+  /** Spot: buys `usd` dollars of the coin (a limit order at `limitPx` when given). */
+  spotBuy: (m: SpotMarket, usd: number, limitPx: number | null, onStep: (m: string | null) => void) => Promise<{ avgPx: number | null; coins: number; resting?: boolean }>;
+  /** Spot: sells `fraction` (0..1] of the coins held (a limit order at `limitPx` when given). */
+  spotSell: (m: SpotMarket, fraction: number, limitPx: number | null, onStep: (m: string | null) => void) => Promise<{ avgPx: number | null; usd: number; resting?: boolean }>;
+  /** Spot: cancels an open spot order. */
+  spotCancel: (m: SpotMarket, oid: number) => Promise<void>;
 };
 
 const transport = new HttpTransport({ apiUrl: HL_API });
@@ -56,7 +63,7 @@ function readAgent(user: string): `0x${string}` | null {
 /** Hyperliquid's error text, in plain words where we know it. */
 export function hlError(e: unknown): Error {
   const m = String((e as { message?: string })?.message ?? e);
-  if (/insufficient margin|not enough/i.test(m)) return new Error("Not enough in your futures balance for that.");
+  if (/insufficient margin|not enough/i.test(m)) return new Error("Not enough in your trading balance for that.");
   if (/could not immediately match|no resting orders/i.test(m)) return new Error("The price moved too fast. Try again.");
   if (/minimum value|min.*\$10/i.test(m)) return new Error(`The smallest position is $${MIN_NOTIONAL} (amount × leverage).`);
   if (/builder fee has not been approved|builder/i.test(m) && /approv/i.test(m)) return new Error("Trading isn't approved yet. Try again to approve it.");
@@ -152,6 +159,22 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
     async withdraw(amount, onStep) {
       if (!s || !user) throw new Error("Sign in first.");
       if (!(amount >= MIN_MOVE)) throw new Error(`The smallest amount is $${MIN_MOVE}.`);
+      // a standard account keeps spot dollars apart: bring over what the futures side is short
+      const mode = await fetchAccountMode(user);
+      if (mode === "standard") {
+        const perp = Number((await info<{ withdrawable?: string }>({ type: "clearinghouseState", user: user.toLowerCase() }).catch(() => null))?.withdrawable ?? 0);
+        if (perp + 1e-6 < amount) {
+          const spot = usdcOf(await fetchSpotBalances(user).catch(() => []))?.free ?? 0;
+          const move = Math.ceil((amount - perp) * 100) / 100;
+          if (move > spot + 1e-6) throw new Error(`You can withdraw up to $${(Math.floor((perp + spot) * 100) / 100).toFixed(2)}.`);
+          onStep("Getting your dollars together…");
+          try {
+            await mainClient().usdClassTransfer({ amount: move.toFixed(2), toPerp: true });
+          } catch (e) {
+            throw hlError(e);
+          }
+        }
+      }
       onStep("Getting the route…");
       const q = await moveApi({ action: "hlOut", user, amount: toUsdc(amount - HL_WITHDRAW_FEE).toString() });
       if (!q.depositAddress || !/^0x[0-9a-fA-F]{40}$/.test(q.depositAddress)) throw new Error("This route isn't available right now. Try again in a moment.");
@@ -169,6 +192,8 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
       const ex = await ready(onStep);
       const m = o.market;
       const buy = o.side === "long";
+      // dollars sitting on the spot side of a standard account come over for the margin
+      await futuresDollars(o.margin * 1.01 + 0.05, onStep);
       try {
         onStep(`Setting ${o.lev}x…`);
         await ex.updateLeverage({ asset: m.index, isCross: false, leverage: o.lev });
@@ -288,5 +313,119 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
       }
       void after();
     },
+
+    async spotBuy(m, usd, limitPx, onStep) {
+      if (!user) throw new Error("Sign in first.");
+      if (!(usd >= SPOT_MIN_NOTIONAL)) throw new Error(`The smallest order is $${SPOT_MIN_NOTIONAL}.`);
+      const at = limitPx && limitPx > 0 ? limitPx : m.mark * (1 + SPOT_SLIP);
+      const coins = sizeString(usd / (limitPx && limitPx > 0 ? limitPx : m.mark), m.szDecimals);
+      if (!(Number(coins) > 0)) throw new Error("That amount is too small for this coin.");
+      const ex = await ready(onStep);
+      // dollars the order can take at most (its price bound), and a little for the fee
+      const need = Number(coins) * at * 1.002;
+      await spotDollars(need, onStep);
+      onStep(limitPx ? "Placing the order…" : "Buying…");
+      try {
+        const res = await ex.order({
+          orders: [{ a: m.asset, b: true, p: spotPriceString(at, m.szDecimals), s: coins, r: false, t: { limit: { tif: limitPx ? "Gtc" : "Ioc" } } }],
+          grouping: "na",
+          builder,
+        });
+        const first = res.response.data.statuses[0];
+        onStep(null);
+        void after();
+        if (first && typeof first === "object" && "filled" in first) return { avgPx: Number(first.filled.avgPx), coins: Number(first.filled.totalSz) };
+        if (limitPx && first && typeof first === "object" && "resting" in first) return { avgPx: null, coins: Number(coins), resting: true };
+        throw new Error("The order didn't fill. Try again.");
+      } catch (e) {
+        throw hlError(e);
+      }
+    },
+
+    async spotSell(m, fraction, limitPx, onStep) {
+      if (!user) throw new Error("Sign in first.");
+      const held = holdingOf(await fetchSpotBalances(user), m)?.free ?? 0;
+      const f = fraction > 0 && fraction < 1 ? fraction : 1;
+      const coins = sizeString(held * f, m.szDecimals);
+      if (!(Number(coins) > 0)) throw new Error(`You don't have ${m.base} to sell.`);
+      const ref = limitPx && limitPx > 0 ? limitPx : m.mark;
+      if (Number(coins) * ref < SPOT_MIN_NOTIONAL) throw new Error(`The smallest order is $${SPOT_MIN_NOTIONAL}.`);
+      const ex = await ready(onStep);
+      const at = limitPx && limitPx > 0 ? limitPx : m.mark * (1 - SPOT_SLIP);
+      onStep(limitPx ? "Placing the order…" : "Selling…");
+      try {
+        const res = await ex.order({
+          orders: [{ a: m.asset, b: false, p: spotPriceString(at, m.szDecimals), s: coins, r: false, t: { limit: { tif: limitPx ? "Gtc" : "Ioc" } } }],
+          grouping: "na",
+          builder,
+        });
+        const first = res.response.data.statuses[0];
+        onStep(null);
+        void after();
+        if (first && typeof first === "object" && "filled" in first) return { avgPx: Number(first.filled.avgPx), usd: Number(first.filled.avgPx) * Number(first.filled.totalSz) };
+        if (limitPx && first && typeof first === "object" && "resting" in first) return { avgPx: null, usd: Number(coins) * limitPx, resting: true };
+        throw new Error("The order didn't fill. Try again.");
+      } catch (e) {
+        throw hlError(e);
+      }
+    },
+
+    async spotCancel(m, oid) {
+      const ex = await ready(() => {});
+      try {
+        await ex.cancel({ cancels: [{ a: m.asset, o: oid }] });
+      } catch (e) {
+        throw hlError(e);
+      }
+      void after();
+    },
   };
+
+  /** Makes sure the futures side of a standard account can spend `need` dollars (moving spot dollars over). */
+  async function futuresDollars(need: number, onStep: (m: string | null) => void) {
+    if (!user) return;
+    const mode = await fetchAccountMode(user);
+    if (mode !== "standard") return;
+    const perp = Number((await info<{ withdrawable?: string }>({ type: "clearinghouseState", user: user.toLowerCase() }).catch(() => null))?.withdrawable ?? 0);
+    if (perp + 1e-6 >= need) return;
+    const spot = usdcOf(await fetchSpotBalances(user).catch(() => []))?.free ?? 0;
+    if (spot <= 0.01) return; // nothing to bring; Hyperliquid answers with its own message
+    const move = Math.min(spot, Math.ceil((need - perp) * 100) / 100);
+    onStep("Getting your dollars ready…");
+    try {
+      await mainClient().usdClassTransfer({ amount: (Math.floor(move * 100) / 100).toFixed(2), toPerp: true });
+    } catch (e) {
+      throw hlError(e);
+    }
+  }
+
+  /**
+   * Makes sure the spot side holds `need` dollars. A unified account has one balance (nothing to
+   * do); a standard one gets the difference moved over from its futures side.
+   */
+  async function spotDollars(need: number, onStep: (m: string | null) => void) {
+    if (!user) throw new Error("Sign in first.");
+    const mode = await fetchAccountMode(user);
+    const spot = usdcOf(await fetchSpotBalances(user).catch(() => []))?.free ?? 0;
+    if (mode !== "standard") {
+      if (spot + 1e-6 < need) throw new Error(`Not enough in your trading balance ($${spot.toFixed(2)}). Add money first.`);
+      return;
+    }
+    if (spot + 1e-6 >= need) return;
+    const perp = Number((await info<{ withdrawable?: string }>({ type: "clearinghouseState", user: user.toLowerCase() }).catch(() => null))?.withdrawable ?? 0);
+    const move = Math.ceil((need - spot) * 100) / 100;
+    if (move > perp + 1e-6) throw new Error(`Not enough in your trading balance ($${(spot + perp).toFixed(2)}). Add money first.`);
+    onStep("Getting your dollars ready…");
+    try {
+      await mainClient().usdClassTransfer({ amount: move.toFixed(2), toPerp: false });
+    } catch (e) {
+      throw hlError(e);
+    }
+    // the order needs to see them
+    for (let i = 0; i < 10; i++) {
+      const now = usdcOf(await fetchSpotBalances(user).catch(() => []))?.free ?? 0;
+      if (now + 1e-6 >= need) return;
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  }
 }
