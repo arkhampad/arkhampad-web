@@ -123,7 +123,7 @@ function Ticker() {
   );
 }
 
-const MARKET = ["/market", "/futures", "/stocks", "/data"];
+const MARKET = ["/market", "/futures", "/stocks", "/predict", "/data"];
 function isOn(path: string, href: string) {
   if (href === "/") return path === "/" ;
   if (href === "/market/") return MARKET.some((m) => path.startsWith(m));

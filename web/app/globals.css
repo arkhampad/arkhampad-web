@@ -739,3 +739,14 @@ body { font-size: 14px; letter-spacing: -0.1px; }
 .cat-chips::-webkit-scrollbar { display: none; }
 .cat-chips .tab { flex: none; height: 30px; font-size: 12px; padding: 0 10px; }
 @media (max-width: 760px) { .mkt-tabs a { font-size: 13px; padding: 0 4px; } }
+.pm-row { align-items: center; min-height: 58px; }
+.pm-odds { display: inline-flex; flex-direction: column; align-items: center; padding: 6px 14px; border-radius: 10px; border: 1px solid var(--line2); background: var(--card); min-width: 72px; }
+.pm-odds i { font-style: normal; font-size: 11px; color: var(--dim); }
+.pm-odds b { font-size: 18px; }
+.pm-bar { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--down) 55%, transparent); overflow: hidden; }
+.pm-bar span { display: block; height: 100%; background: var(--up); border-radius: 99px; transition: width .4s; }
+.pm-side { height: 54px; border-radius: 12px; border: 1px solid var(--line2); background: var(--card); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-weight: 700; font-size: 13px; color: var(--text); cursor: pointer; }
+.pm-side b { font-size: 16px; }
+.pm-side.yes.on { background: var(--up); border-color: var(--up); color: #04130C; }
+.pm-side.no.on { background: var(--down); border-color: var(--down); color: #1A0505; }
+@media (max-width: 420px) { .mkt-tabs { gap: 4px; } .mkt-tabs a { font-size: 12px; padding: 0 2px; height: 36px; border-radius: 9px; } }

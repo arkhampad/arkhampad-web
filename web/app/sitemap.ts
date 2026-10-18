@@ -12,7 +12,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ["/", 1, "hourly"], ["/terminal/", 0.8, "hourly"], ["/create/", 0.9, "weekly"], ["/traders/", 0.7, "daily"],
     ["/analytics/", 0.6, "daily"], ["/daily/", 0.6, "daily"], ["/learn/", 0.8, "weekly"], ["/help/", 0.7, "weekly"],
     ["/invite/", 0.4, "monthly"], ["/terms/", 0.2, "yearly"], ["/privacy/", 0.2, "yearly"],
-    ["/security/", 0.5, "monthly"], ["/market/", 0.8, "hourly"], ["/futures/", 0.8, "hourly"], ["/stocks/", 0.8, "hourly"], ["/data/", 0.7, "hourly"],
+    ["/security/", 0.5, "monthly"], ["/market/", 0.8, "hourly"], ["/futures/", 0.8, "hourly"], ["/stocks/", 0.8, "hourly"], ["/predict/", 0.8, "hourly"], ["/data/", 0.7, "hourly"],
   ];
   return [
     ...pages.map(([p, priority, changeFrequency]) => ({ url: `${SITE}${p}`, lastModified: now, changeFrequency, priority })),

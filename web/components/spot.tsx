@@ -445,7 +445,8 @@ function MySpot({ balances, markets, orders, fills, trade, signedIn, onPick }: {
   const byBase = new Map((markets ?? []).map((m) => [m.base, m]));
   const byPair = new Map((markets ?? []).map((m) => [m.pair, m]));
   const coins = (balances ?? [])
-    .filter((b) => b.coin !== "USDC")
+    // outcome shares ("+20", "o3") live on the Predict screen
+    .filter((b) => b.coin !== "USDC" && !/^(\+|o)\d+$/.test(b.coin))
     .map((b) => {
       const m = byBase.get(b.coin) ?? null;
       const value = m ? b.total * m.mark : null;

@@ -17,6 +17,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { HOME_CHAIN, ensureCash, moveApi, netOf, runMove, toUsdc, type Signer } from "./chain";
 import { BUILDER_FEE_TENTHS_BP, HL_API, HL_BUILDER, MIN_NOTIONAL, fetchPerpAccount, fetchPerpOrders, info, priceString, sizeString, type PerpMarket, type PerpOrder, type PerpPosition } from "./hl";
 import { fetchStockDexes } from "./hlstocks";
+import { PREDICT_MIN_NOTIONAL, PREDICT_SLIP, fetchPredictHoldings, predictPriceString, sharesFor, type PredictSide } from "./hlpredict";
 import { SPOT_MIN_NOTIONAL, SPOT_SLIP, fetchAccountMode, fetchSpotBalances, holdingOf, spotPriceString, usdcOf, type SpotMarket } from "./hlspot";
 
 /** Hyperliquid's withdrawal fee (dollars), taken from what is moved out. */
@@ -46,6 +47,11 @@ export type FuturesTrade = {
   spotSell: (m: SpotMarket, fraction: number, limitPx: number | null, onStep: (m: string | null) => void) => Promise<{ avgPx: number | null; usd: number; resting?: boolean }>;
   /** Spot: cancels an open spot order. */
   spotCancel: (m: SpotMarket, oid: number) => Promise<void>;
+  /** Predict: buys `usd` dollars of shares of one side (a limit order at `limitPx` when given). */
+  predictBuy: (s: PredictSide, usd: number, limitPx: number | null, onStep: (m: string | null) => void) => Promise<{ avgPx: number | null; shares: number; resting?: boolean }>;
+  /** Predict: sells `fraction` (0..1] of the shares held of one side. */
+  predictSell: (s: PredictSide, fraction: number, limitPx: number | null, onStep: (m: string | null) => void) => Promise<{ avgPx: number | null; usd: number; resting?: boolean }>;
+  predictCancel: (asset: number, oid: number) => Promise<void>;
 };
 
 const transport = new HttpTransport({ apiUrl: HL_API });
@@ -391,6 +397,74 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
       } catch (e) {
         throw hlError(e);
       }
+    },
+
+    async predictBuy(side, usd, limitPx, onStep) {
+      if (!user) throw new Error("Sign in first.");
+      const ref = limitPx && limitPx > 0 ? limitPx : side.mid;
+      if (!ref) throw new Error("This market has no price yet. Try a limit order.");
+      if (!(usd >= PREDICT_MIN_NOTIONAL)) throw new Error(`The smallest order is $${PREDICT_MIN_NOTIONAL}.`);
+      // whole shares only, and the order itself must be worth $10 at its price
+      const shares = sharesFor(usd, ref);
+      if (shares * ref < PREDICT_MIN_NOTIONAL) throw new Error(`The smallest order is $${PREDICT_MIN_NOTIONAL}.`);
+      const at = Number(predictPriceString(limitPx && limitPx > 0 ? limitPx : ref + PREDICT_SLIP));
+      const ex = await ready(onStep);
+      await spotDollars(shares * at + 0.01, onStep);
+      onStep(limitPx ? "Placing the order…" : "Buying…");
+      try {
+        const res = await ex.order({
+          orders: [{ a: side.asset, b: true, p: String(at), s: String(shares), r: false, t: { limit: { tif: limitPx ? "Gtc" : "Ioc" } } }],
+          grouping: "na",
+        });
+        const first = res.response.data.statuses[0];
+        onStep(null);
+        void after();
+        if (first && typeof first === "object" && "filled" in first) return { avgPx: Number(first.filled.avgPx), shares: Number(first.filled.totalSz) };
+        if (limitPx && first && typeof first === "object" && "resting" in first) return { avgPx: null, shares, resting: true };
+        throw new Error("The order didn't fill. Try again.");
+      } catch (e) {
+        throw hlError(e);
+      }
+    },
+
+    async predictSell(side, fraction, limitPx, onStep) {
+      if (!user) throw new Error("Sign in first.");
+      const held = (await fetchPredictHoldings(user)).find((h) => !h.settled && h.enc === side.enc)?.free ?? 0;
+      const f = fraction > 0 && fraction < 1 ? fraction : 1;
+      const shares = Math.floor(held * f);
+      if (!(shares > 0)) throw new Error(`You don't have ${side.name} shares to sell.`);
+      const ref = limitPx && limitPx > 0 ? limitPx : side.mid;
+      if (!ref) throw new Error("This market has no price yet. Try a limit order.");
+      if (shares * ref < PREDICT_MIN_NOTIONAL) throw new Error(`The smallest order is $${PREDICT_MIN_NOTIONAL}.`);
+      const at = Number(predictPriceString(limitPx && limitPx > 0 ? limitPx : ref - PREDICT_SLIP));
+      const ex = await ready(onStep);
+      onStep(limitPx ? "Placing the order…" : "Selling…");
+      try {
+        // Hyperliquid pays builders on outcome sells
+        const res = await ex.order({
+          orders: [{ a: side.asset, b: false, p: String(at), s: String(shares), r: false, t: { limit: { tif: limitPx ? "Gtc" : "Ioc" } } }],
+          grouping: "na",
+          builder,
+        });
+        const first = res.response.data.statuses[0];
+        onStep(null);
+        void after();
+        if (first && typeof first === "object" && "filled" in first) return { avgPx: Number(first.filled.avgPx), usd: Number(first.filled.avgPx) * Number(first.filled.totalSz) };
+        if (limitPx && first && typeof first === "object" && "resting" in first) return { avgPx: null, usd: shares * limitPx, resting: true };
+        throw new Error("The order didn't fill. Try again.");
+      } catch (e) {
+        throw hlError(e);
+      }
+    },
+
+    async predictCancel(asset, oid) {
+      const ex = await ready(() => {});
+      try {
+        await ex.cancel({ cancels: [{ a: asset, o: oid }] });
+      } catch (e) {
+        throw hlError(e);
+      }
+      void after();
     },
 
     async spotCancel(m, oid) {
