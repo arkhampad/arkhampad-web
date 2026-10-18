@@ -117,7 +117,16 @@ async function syncChain(c, client) {
   // behind the tip so getLogs never asks a lagging node for a block it doesn't have yet.
   const head = tip - BigInt(c.headLag || 0);
   // the cursor is read once and then kept in memory, so a stale process can't move it
-  if (c.cursor === undefined) c.cursor = await lastBlock(c);
+  if (c.cursor === undefined) {
+    c.cursor = await lastBlock(c);
+    // FROM_<chainId>: skip ahead to this block (e.g. after an RPC outage, when the gap can't be
+    // read back from a free node). Only ever moves forward; a saved cursor past it wins.
+    const floor = BigInt(process.env[`FROM_${c.chainId}`] || "0");
+    if (floor > 0n && c.cursor < floor - 1n) {
+      log(`${c.name}: skipping ahead from block ${c.cursor + 1n} to ${floor} (FROM_${c.chainId})`);
+      c.cursor = floor - 1n;
+    }
+  }
   let from = c.cursor + 1n;
   while (from <= head) {
     const to = from + RANGE - 1n > head ? head : from + RANGE - 1n;
