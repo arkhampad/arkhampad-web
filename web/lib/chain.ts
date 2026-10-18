@@ -356,7 +356,7 @@ const owedHint = new Set<number>();
 
 type MoveItem = { status?: string; data?: Record<string, unknown> & { sign?: { signatureKind?: string; domain: Record<string, unknown>; types: Record<string, { name: string; type: string }[]>; primaryType: string; value: Record<string, unknown> }; post?: { endpoint: string; method: string; body: Record<string, unknown> } } };
 type MoveStep = { id?: string; kind?: string; requestId?: string; items?: MoveItem[] };
-async function moveApi(body: Record<string, unknown>): Promise<{ requestId?: string | null; steps?: MoveStep[]; amountIn?: string | null; status?: string }> {
+export async function moveApi(body: Record<string, unknown>): Promise<{ requestId?: string | null; steps?: MoveStep[]; amountIn?: string | null; amountOut?: string | null; depositAddress?: string | null; status?: string }> {
   let r: Response;
   try {
     r = await fetch(`${RELAYER}/move`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
@@ -482,7 +482,7 @@ export async function ensureCash(chainId: number, need: bigint, s: Signer): Prom
 }
 
 /** Runs one Relay move from `src` (signatures or the user's own transactions). */
-async function runMove(q: MoveQuote, src: Net, dest: number, s: Signer) {
+export async function runMove(q: MoveQuote, src: Net, dest: number, s: Signer) {
   let topped = false;
   for (const step of q.steps ?? []) {
     for (const item of step.items ?? []) {

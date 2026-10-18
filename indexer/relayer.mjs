@@ -1094,6 +1094,10 @@ export function makeRelayer() {
   const RELAY_KEY = (process.env.RELAY_API_KEY || "").trim();
   const MOVE_FEE_TO = process.env.MOVE_FEE_TO || "0xd9D46EB26c9D753135683b7736FC2be097e7B099"; // treasury
   const MOVE_FEE_BPS = process.env.MOVE_FEE_BPS || "25";
+  const HL_CHAIN_ID = 1337; // Hyperliquid, as Relay names it
+  const HL_PERPS_USDC = "0x00000000000000000000000000000000"; // Hyperliquid's futures USDC, as Relay names it
+  const ARBITRUM_ID = 42161;
+  const ARBITRUM_USDC = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831";
   async function relayApi(path, init = {}) {
     const r = await fetch(RELAY_API + path, { ...init, headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) }, signal: AbortSignal.timeout(15_000) });
     const j = await r.json().catch(() => null);
@@ -1122,6 +1126,43 @@ export function makeRelayer() {
       const q = await ask(true).catch(() => ask(false));
       const steps = Array.isArray(q?.steps) ? q.steps : [];
       return { requestId: steps[0]?.requestId ?? null, steps, amountIn: q?.details?.currencyIn?.amount ?? null };
+    }
+    // Futures (Hyperliquid): Base cash -> the user's Hyperliquid futures balance, and back.
+    // No app fee on these moves (futures earn the builder fee instead).
+    if (a === "hlIn") {
+      const base = nets.get(8453);
+      if (!base) throw err("unsupported route");
+      const user = addr(body.user, "user");
+      const amount = big(body.amount, "amount"); // Base USDC units the user sends
+      if (amount < 5_000_000n || amount > 50_000_000_000n) throw err("amount out of range");
+      const ask = (usePermit) => relayApi("/quote/v2", { method: "POST", body: JSON.stringify({
+        user, recipient: user, refundTo: user,
+        originChainId: 8453, destinationChainId: HL_CHAIN_ID,
+        originCurrency: getAddress(base.c.usdc), destinationCurrency: HL_PERPS_USDC,
+        amount: String(amount), tradeType: "EXACT_INPUT", usePermit,
+      }) });
+      const q = await ask(true).catch(() => ask(false));
+      const steps = Array.isArray(q?.steps) ? q.steps : [];
+      return { requestId: steps.find((s) => s.requestId)?.requestId ?? null, steps, amountIn: q?.details?.currencyIn?.amount ?? null, amountOut: q?.details?.currencyOut?.amount ?? null };
+    }
+    if (a === "hlOut") {
+      // Hyperliquid pays withdrawals out on Arbitrum: a one-time Relay address there delivers the
+      // USDC to the user's address on Base. `amount`: what arrives on Arbitrum (USDC units).
+      const base = nets.get(8453);
+      if (!base) throw err("unsupported route");
+      const user = addr(body.user, "user");
+      const amount = big(body.amount, "amount");
+      if (amount < 2_000_000n || amount > 50_000_000_000n) throw err("amount out of range");
+      const q = await relayApi("/quote/v2", { method: "POST", body: JSON.stringify({
+        user, recipient: user, refundTo: user,
+        originChainId: ARBITRUM_ID, destinationChainId: 8453,
+        originCurrency: ARBITRUM_USDC, destinationCurrency: getAddress(base.c.usdc),
+        amount: String(amount), tradeType: "EXACT_INPUT", useDepositAddress: true,
+      }) });
+      const steps = Array.isArray(q?.steps) ? q.steps : [];
+      const depositAddress = steps.find((s) => s.depositAddress)?.depositAddress ?? null;
+      if (!depositAddress || !/^0x[0-9a-fA-F]{40}$/.test(depositAddress)) throw err("This route isn't available right now. Try again in a moment.", 502);
+      return { depositAddress, requestId: steps.find((s) => s.requestId)?.requestId ?? null, amountOut: q?.details?.currencyOut?.amount ?? null };
     }
     if (a === "permit") {
       const sig = hex(body.signature, "signature");

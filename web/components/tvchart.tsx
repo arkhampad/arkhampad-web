@@ -110,7 +110,7 @@ export default function TvChart({ candles, supply, height = 380, empty = "No tra
 
   return (
     <div style={{ position: "relative" }}>
-      <div style={{ position: "absolute", top: 6, left: 8, zIndex: 3, display: "flex", gap: 2, background: "var(--hdr)", borderRadius: 8, padding: 2 }}>
+      <div style={{ position: "absolute", top: 6, left: 8, zIndex: 3, display: supply === null ? "none" : "flex", gap: 2, background: "var(--hdr)", borderRadius: 8, padding: 2 }}>
         {(["MC", "Price"] as const).map((t) => {
           const on = (t === "MC") === useMc;
           return <button key={t} type="button" disabled={t === "MC" && !mcOk} onClick={() => setMc(t === "MC")} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: 6, border: 0, background: on ? "var(--raise2)" : "transparent", color: on ? "var(--text)" : "var(--dim)", fontWeight: 600, fontSize: 11 }}>{t}</button>;

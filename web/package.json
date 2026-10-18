@@ -10,6 +10,7 @@
   "dependencies": {
     "@fontsource/geist-mono": "^5.2.5",
     "@fontsource/geist-sans": "^5.2.5",
+    "@nktkas/hyperliquid": "0.33.3",
     "@privy-io/react-auth": "^3.47.0",
     "@supabase/supabase-js": "^2.117.2",
     "@types/qrcode": "^1.5.6",
