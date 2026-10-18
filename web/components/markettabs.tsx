@@ -1,11 +1,12 @@
 "use client";
 
-/** Market's sections: Spot, Futures, Data. One bar on top of each, same place on every screen. */
+/** Market's sections: Spot, Futures, Stocks, Data. One bar on top of each, same place on every screen. */
 import Link from "next/link";
 
 const TABS = [
   { id: "spot", href: "/market/", label: "Spot" },
   { id: "futures", href: "/futures/", label: "Futures" },
+  { id: "stocks", href: "/stocks/", label: "Stocks" },
   { id: "data", href: "/data/", label: "Data" },
 ] as const;
 

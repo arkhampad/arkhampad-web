@@ -24,7 +24,14 @@ export const HL_TAKER_FEE = 0.00045;
 export const MIN_NOTIONAL = 10;
 
 export type PerpMarket = {
+  /** Hyperliquid's name: "BTC" on the main exchange, "xyz:TSLA" on a builder-deployed one. */
   coin: string;
+  /** What people see: the ticker without the exchange prefix. */
+  name: string;
+  /** "" for Hyperliquid's own futures, else the builder exchange (HIP-3) the market is on. */
+  dex: string;
+  /** The number orders use: the index on the main exchange, 100000 + dex * 10000 + index on a HIP-3 one. */
+  asset: number;
   index: number;
   szDecimals: number;
   /** Hyperliquid's limit for this market. */
@@ -71,8 +78,13 @@ type Universe = { name: string; szDecimals: number; maxLeverage: number; onlyIso
 type Ctx = { prevDayPx: string; dayNtlVlm: string; markPx: string; funding: string; openInterest: string };
 
 /** Every live crypto futures market, busiest first. */
-export async function fetchPerpMarkets(signal?: AbortSignal): Promise<PerpMarket[]> {
-  const [meta, ctxs] = await info<[{ universe: Universe }, Ctx[]]>({ type: "metaAndAssetCtxs" }, signal);
+export async function fetchPerpMarkets(signal?: AbortSignal, dex: { name: string; index: number } | null = null): Promise<PerpMarket[]> {
+  return (await fetchPerpBook(signal, dex)).markets;
+}
+
+/** The markets of one exchange and the token it settles in (USDC is 0). */
+export async function fetchPerpBook(signal?: AbortSignal, dex: { name: string; index: number } | null = null): Promise<{ markets: PerpMarket[]; collateralToken: number }> {
+  const [meta, ctxs] = await info<[{ universe: Universe; collateralToken?: number }, Ctx[]]>(dex ? { type: "metaAndAssetCtxs", dex: dex.name } : { type: "metaAndAssetCtxs" }, signal);
   const out: PerpMarket[] = [];
   meta.universe.forEach((u, index) => {
     const c = ctxs[index];
@@ -82,6 +94,9 @@ export async function fetchPerpMarkets(signal?: AbortSignal): Promise<PerpMarket
     if (mark <= 0) return;
     out.push({
       coin: u.name,
+      name: u.name.includes(":") ? u.name.slice(u.name.indexOf(":") + 1) : u.name,
+      dex: dex?.name ?? "",
+      asset: dex ? 100_000 + dex.index * 10_000 + index : index,
       index,
       szDecimals: u.szDecimals,
       hlMaxLev: u.maxLeverage,
@@ -95,7 +110,7 @@ export async function fetchPerpMarkets(signal?: AbortSignal): Promise<PerpMarket
       funding: num(c.funding),
     });
   });
-  return out.sort((a, b) => b.volume24h - a.volume24h);
+  return { markets: out.sort((a, b) => b.volume24h - a.volume24h), collateralToken: typeof meta.collateralToken === "number" ? meta.collateralToken : 0 };
 }
 
 export const INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"] as const;
@@ -147,8 +162,8 @@ type Clearing = {
 };
 
 /** The user's futures account: money in it, what can be moved out, open positions. */
-export async function fetchPerpAccount(user: string, signal?: AbortSignal): Promise<PerpAccount> {
-  const s = await info<Clearing>({ type: "clearinghouseState", user: user.toLowerCase() }, signal);
+export async function fetchPerpAccount(user: string, signal?: AbortSignal, dex = ""): Promise<PerpAccount> {
+  const s = await info<Clearing>(dex ? { type: "clearinghouseState", user: user.toLowerCase(), dex } : { type: "clearinghouseState", user: user.toLowerCase() }, signal);
   return {
     accountValue: num(s.marginSummary?.accountValue),
     withdrawable: num(s.withdrawable),
@@ -177,8 +192,8 @@ export async function fetchPerpAccount(user: string, signal?: AbortSignal): Prom
 
 type RawOrder = { coin: string; oid: number; side: "B" | "A"; orderType: string; isTrigger: boolean; triggerPx: string; limitPx: string; sz: string; reduceOnly: boolean };
 
-export async function fetchPerpOrders(user: string, signal?: AbortSignal): Promise<PerpOrder[]> {
-  const rows = await info<RawOrder[]>({ type: "frontendOpenOrders", user: user.toLowerCase() }, signal);
+export async function fetchPerpOrders(user: string, signal?: AbortSignal, dex = ""): Promise<PerpOrder[]> {
+  const rows = await info<RawOrder[]>(dex ? { type: "frontendOpenOrders", user: user.toLowerCase(), dex } : { type: "frontendOpenOrders", user: user.toLowerCase() }, signal);
   return (Array.isArray(rows) ? rows : []).map((o) => ({
     coin: o.coin,
     oid: o.oid,
@@ -192,12 +207,14 @@ export async function fetchPerpOrders(user: string, signal?: AbortSignal): Promi
   }));
 }
 
-export async function fetchPerpFills(user: string, signal?: AbortSignal): Promise<PerpFill[]> {
+/** The user's latest futures trades: crypto ones, or the HIP-3 ones ("xyz:TSLA") for stocks. */
+export async function fetchPerpFills(user: string, signal?: AbortSignal, venue: "crypto" | "stocks" = "crypto"): Promise<PerpFill[]> {
   const rows = await info<{ coin: string; px: string; sz: string; side: "B" | "A"; time: number; dir: string; closedPnl: string; fee: string; hash: string; tid?: number }[]>(
     { type: "userFills", user: user.toLowerCase() },
     signal
   );
   return (Array.isArray(rows) ? rows : [])
+    .filter((f) => (venue === "stocks" ? f.coin.includes(":") : !f.coin.includes(":") && !f.coin.startsWith("@") && !f.coin.includes("/") && !f.coin.startsWith("#")))
     .slice(0, 50)
     .map((f) => ({ coin: f.coin, px: num(f.px), sz: num(f.sz), side: f.side, time: f.time, dir: f.dir, pnl: num(f.closedPnl), fee: num(f.fee), hash: f.hash, tid: Number(f.tid) || 0 }));
 }

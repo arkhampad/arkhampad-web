@@ -15,7 +15,8 @@
 import { ExchangeClient, HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { HOME_CHAIN, ensureCash, moveApi, netOf, runMove, toUsdc, type Signer } from "./chain";
-import { BUILDER_FEE_TENTHS_BP, HL_API, HL_BUILDER, MIN_NOTIONAL, info, priceString, sizeString, type PerpMarket, type PerpOrder, type PerpPosition } from "./hl";
+import { BUILDER_FEE_TENTHS_BP, HL_API, HL_BUILDER, MIN_NOTIONAL, fetchPerpAccount, fetchPerpOrders, info, priceString, sizeString, type PerpMarket, type PerpOrder, type PerpPosition } from "./hl";
+import { fetchStockDexes } from "./hlstocks";
 import { SPOT_MIN_NOTIONAL, SPOT_SLIP, fetchAccountMode, fetchSpotBalances, holdingOf, spotPriceString, usdcOf, type SpotMarket } from "./hlspot";
 
 /** Hyperliquid's withdrawal fee (dollars), taken from what is moved out. */
@@ -48,6 +49,22 @@ export type FuturesTrade = {
 };
 
 const transport = new HttpTransport({ apiUrl: HL_API });
+
+/** USDC as Hyperliquid's transfers name it ("USDC:<token id>"), read once. */
+let usdcName: Promise<string> | null = null;
+function usdcToken(): Promise<string> {
+  usdcName ??= info<{ tokens: { name: string; tokenId: string }[] }>({ type: "spotMeta" })
+    .then((m) => {
+      const t = m.tokens.find((x) => x.name === "USDC");
+      if (!t?.tokenId) throw new Error("no USDC");
+      return `USDC:${t.tokenId}`;
+    })
+    .catch((e) => {
+      usdcName = null;
+      throw e;
+    });
+  return usdcName;
+}
 const infoClient = new InfoClient({ transport });
 const agentKey = (user: string) => `arkhampad.hl.agent.${user.toLowerCase()}`;
 
@@ -163,7 +180,10 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
       const mode = await fetchAccountMode(user);
       if (mode === "standard") {
         const perp = Number((await info<{ withdrawable?: string }>({ type: "clearinghouseState", user: user.toLowerCase() }).catch(() => null))?.withdrawable ?? 0);
-        if (perp + 1e-6 < amount) {
+        if (perp + 1e-6 < amount) await sweepAll();
+        const perpNow = Number((await info<{ withdrawable?: string }>({ type: "clearinghouseState", user: user.toLowerCase() }).catch(() => null))?.withdrawable ?? 0);
+        if (perpNow + 1e-6 < amount) {
+          const perp = perpNow;
           const spot = usdcOf(await fetchSpotBalances(user).catch(() => []))?.free ?? 0;
           const move = Math.ceil((amount - perp) * 100) / 100;
           if (move > spot + 1e-6) throw new Error(`You can withdraw up to $${(Math.floor((perp + spot) * 100) / 100).toFixed(2)}.`);
@@ -192,22 +212,23 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
       const ex = await ready(onStep);
       const m = o.market;
       const buy = o.side === "long";
-      // dollars sitting on the spot side of a standard account come over for the margin
-      await futuresDollars(o.margin * 1.01 + 0.05, onStep);
+      // dollars sitting on the spot side (or, for a stock, the main balance) come over for the margin
+      if (m.dex) await dexDollars(m.dex, o.margin * 1.01 + 0.05, ex, onStep);
+      else await futuresDollars(o.margin * 1.01 + 0.05, onStep);
       try {
         onStep(`Setting ${o.lev}x…`);
-        await ex.updateLeverage({ asset: m.index, isCross: false, leverage: o.lev });
+        await ex.updateLeverage({ asset: m.asset, isCross: false, leverage: o.lev });
         onStep("Opening…");
         const orders: Parameters<ExchangeClient["order"]>[0]["orders"] = [
           o.limitPx
-            ? { a: m.index, b: buy, p: priceString(o.limitPx, m.szDecimals), s: o.coins, r: false, t: { limit: { tif: "Gtc" } } }
-            : { a: m.index, b: buy, p: priceString(m.mark * (buy ? 1 + SLIP_OPEN : 1 - SLIP_OPEN), m.szDecimals), s: o.coins, r: false, t: { limit: { tif: "Ioc" } } },
+            ? { a: m.asset, b: buy, p: priceString(o.limitPx, m.szDecimals), s: o.coins, r: false, t: { limit: { tif: "Gtc" } } }
+            : { a: m.asset, b: buy, p: priceString(m.mark * (buy ? 1 + SLIP_OPEN : 1 - SLIP_OPEN), m.szDecimals), s: o.coins, r: false, t: { limit: { tif: "Ioc" } } },
         ];
         for (const [kind, at] of [["tp", o.tp], ["sl", o.sl]] as const) {
           if (!at) continue;
           // closing side; the limit is a 10% slippage bound behind the trigger
           orders.push({
-            a: m.index,
+            a: m.asset,
             b: !buy,
             p: priceString(at * (buy ? 0.9 : 1.1), m.szDecimals),
             s: o.coins,
@@ -239,13 +260,14 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
       const buy = p.side === "short";
       try {
         await ex.order({
-          orders: [{ a: m.index, b: buy, p: priceString(m.mark * (buy ? 1 + SLIP_CLOSE : 1 - SLIP_CLOSE), m.szDecimals), s: size, r: true, t: { limit: { tif: "Ioc" } } }],
+          orders: [{ a: m.asset, b: buy, p: priceString(m.mark * (buy ? 1 + SLIP_CLOSE : 1 - SLIP_CLOSE), m.szDecimals), s: size, r: true, t: { limit: { tif: "Ioc" } } }],
           grouping: "na",
           builder,
         });
       } catch (e) {
         throw hlError(e);
       }
+      if (m.dex) void sweep(m.dex, ex);
       void after();
     },
 
@@ -265,7 +287,7 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
         for (const [kind, at] of [["tp", t.tp], ["sl", t.sl]] as const) {
           if (!at) continue;
           orders.push({
-            a: m.index,
+            a: m.asset,
             b: !long,
             p: priceString(at * (long ? 0.9 : 1.1), m.szDecimals),
             s: size,
@@ -279,20 +301,20 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
           } catch (e) {
             // part of it may have gone through: drop only the old ones a new one replaced
             const oldIds = new Set(old.map((o) => o.oid));
-            const now = (await infoClient.frontendOpenOrders({ user: user! }).catch(() => [])) as { coin: string; oid: number; orderType: string }[];
+            const now = (await infoClient.frontendOpenOrders(m.dex ? { user: user!, dex: m.dex } : { user: user! }).catch(() => [])) as { coin: string; oid: number; orderType: string }[];
             const kinds = new Set(
               now
                 .filter((o) => o.coin === p.coin && !oldIds.has(o.oid))
                 .map((o) => (/take profit/i.test(o.orderType) ? "tp" : /stop/i.test(o.orderType) ? "sl" : ""))
             );
             const gone = old.filter((o) => o.tpsl && kinds.has(o.tpsl));
-            if (gone.length) await ex.cancel({ cancels: gone.map((o) => ({ a: m.index, o: o.oid })) }).catch(() => {});
+            if (gone.length) await ex.cancel({ cancels: gone.map((o) => ({ a: m.asset, o: o.oid })) }).catch(() => {});
             throw e;
           }
         }
         if (old.length) {
           try {
-            await ex.cancel({ cancels: old.map((o) => ({ a: m.index, o: o.oid })) });
+            await ex.cancel({ cancels: old.map((o) => ({ a: m.asset, o: o.oid })) });
           } catch {
             throw new Error("The new TP/SL is set, but an old one couldn't be removed. Cancel it under Orders.");
           }
@@ -307,10 +329,11 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
       if (!m) throw new Error("This market isn't loaded yet.");
       const ex = await ready(() => {});
       try {
-        await ex.cancel({ cancels: [{ a: m.index, o: o.oid }] });
+        await ex.cancel({ cancels: [{ a: m.asset, o: o.oid }] });
       } catch (e) {
         throw hlError(e);
       }
+      if (m.dex) void sweep(m.dex, ex);
       void after();
     },
 
@@ -380,6 +403,88 @@ export function makeFuturesTrade(s: Signer | null, after: () => Promise<void>): 
       void after();
     },
   };
+
+  /**
+   * Stocks (HIP-3): each exchange keeps its own margin. A unified account (or one with Hyperliquid's
+   * own auto-transfer on) is topped up by Hyperliquid; a standard one gets the difference sent from
+   * the main balance, then from spot, signed by the trading key (no pop-up).
+   */
+  async function dexDollars(dex: string, need: number, ex: ExchangeClient, onStep: (m: string | null) => void) {
+    if (!user) throw new Error("Sign in first.");
+    if (await autoDex()) return;
+    const have = (await fetchPerpAccount(user, undefined, dex).catch(() => null))?.withdrawable ?? 0;
+    if (have + 1e-6 >= need) return;
+    // cents, rounded up (a hair of float error doesn't add a cent)
+    const short = Math.ceil((need - have) * 100 - 1e-6) / 100;
+    const main = Number((await info<{ withdrawable?: string }>({ type: "clearinghouseState", user: user.toLowerCase() }).catch(() => null))?.withdrawable ?? 0);
+    const spot = usdcOf(await fetchSpotBalances(user).catch(() => []))?.free ?? 0;
+    if (main + spot + 1e-6 < short) throw new Error(`Not enough in your trading balance ($${(Math.floor((main + spot + have) * 100) / 100).toFixed(2)}). Add money first.`);
+    onStep("Getting your dollars ready…");
+    const fromMain = Math.min(short, Math.floor(main * 100) / 100);
+    if (fromMain >= 0.01) await sendUsdc(ex, "", dex, fromMain);
+    const rest = Math.ceil((short - fromMain) * 100 - 1e-6) / 100;
+    if (rest >= 0.01) await sendUsdc(ex, "spot", dex, rest);
+    // the order has to see them
+    for (let i = 0; i < 12; i++) {
+      const now = (await fetchPerpAccount(user, undefined, dex).catch(() => null))?.withdrawable ?? 0;
+      if (now + 1e-6 >= need) return;
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  }
+
+  /** Once a stock exchange holds no position and no order, its idle dollars go back to the main balance. */
+  async function sweep(dex: string, ex: ExchangeClient) {
+    if (!user) return;
+    try {
+      await new Promise((r) => setTimeout(r, 1500));
+      if (await autoDex()) return;
+      const [a, open] = await Promise.all([fetchPerpAccount(user, undefined, dex), fetchPerpOrders(user, undefined, dex)]);
+      if (a.positions.length || open.length) return;
+      const amt = Math.floor(a.withdrawable * 100) / 100;
+      if (amt < 0.01) return;
+      await sendUsdc(ex, dex, "", amt, false);
+      void after();
+    } catch {
+      /* the dollars stay there and still count in the balance; the next close tries again */
+    }
+  }
+
+  /** Brings every stock exchange's idle dollars home (before a withdrawal). Needs the trading key. */
+  async function sweepAll() {
+    if (!user || !readAgent(user)) return;
+    try {
+      const ex = await ready(() => {});
+      const dexes = await fetchStockDexes();
+      await Promise.all(dexes.map((d) => sweep(d.name, ex)));
+    } catch {
+      /* the withdrawal then says how much can go */
+    }
+  }
+
+  /** Whether Hyperliquid moves the margin for HIP-3 by itself for this account. */
+  async function autoDex(): Promise<boolean> {
+    if (!user) return false;
+    const mode = await fetchAccountMode(user).catch(() => "standard" as const);
+    if (mode !== "standard") return true;
+    return (await info<boolean | null>({ type: "userDexAbstraction", user: user.toLowerCase() }).catch(() => null)) === true;
+  }
+
+  /** Moves USDC between Hyperliquid balances ("" main, "spot", or a HIP-3 exchange). */
+  async function sendUsdc(ex: ExchangeClient, from: string, to: string, amount: number, walletOk = true) {
+    if (!user) throw new Error("Sign in first.");
+    const p = { destination: user as `0x${string}`, sourceDex: from, destinationDex: to, token: await usdcToken(), amount: amount.toFixed(2) };
+    try {
+      await ex.agentSendAsset(p);
+    } catch (agentErr) {
+      if (!walletOk) throw agentErr;
+      // an exchange that won't take it from the trading key: the wallet signs it once instead
+      try {
+        await mainClient().sendAsset({ ...p, fromSubAccount: "" });
+      } catch {
+        throw hlError(agentErr);
+      }
+    }
+  }
 
   /** Makes sure the futures side of a standard account can spend `need` dollars (moving spot dollars over). */
   async function futuresDollars(need: number, onStep: (m: string | null) => void) {

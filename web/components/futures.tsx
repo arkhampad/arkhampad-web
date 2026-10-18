@@ -37,6 +37,7 @@ import {
 } from "@/lib/hl";
 import { HL_WITHDRAW_FEE, MIN_MOVE, makeFuturesTrade } from "@/lib/hltrade";
 import { combineCash, fetchAccountMode, fetchSpotBalances } from "@/lib/hlspot";
+import { CATEGORIES, fetchStockAccount, fetchStockCash, fetchStockMarkets, tickerOf, type Category, type StockMarket } from "@/lib/hlstocks";
 import { MarketTabs } from "./markettabs";
 
 const TvChart = dynamic(() => import("./tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
@@ -47,14 +48,20 @@ const pct = (v: number | null, d = 2) => (v === null ? "—" : `${v >= 0 ? "+" :
 const tone = (v: number | null) => (v === null || v === 0 ? "dim" : v > 0 ? "up" : "down");
 const compact = (v: number) => (v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : usd(v, 0));
 
-export function FuturesScreen() {
+const STOCKS_BLURB = "Trade Tesla, Nvidia, gold, the S&P 500 and more around the clock. Orders run on Hyperliquid.";
+
+/** `venue`: Hyperliquid's crypto futures, or the stock, index and commodity markets builders run on it (HIP-3). */
+export function FuturesScreen({ venue = "crypto" }: { venue?: "crypto" | "stocks" }) {
+  const stocks = venue === "stocks";
+  const base = stocks ? "/stocks/" : "/futures/";
   const w = useWallet();
   const q = useSearchParams();
   const router = useRouter();
   const mobile = useIsMobile();
   const [allowed, setAllowed] = useState<boolean | null>(null);
-  const [markets, setMarkets] = useState<PerpMarket[] | null>(null);
-  const [coin, setCoin] = useState((q.get("c") || "BTC").trim());
+  const [markets, setMarkets] = useState<(PerpMarket | StockMarket)[] | null>(null);
+  const [want, setWant] = useState((q.get("c") || (stocks ? "" : "BTC")).trim());
+  const [cat, setCat] = useState<Category | "All">("All");
   const [iv, setIv] = useState<Interval>("15m");
   const [candles, setCandles] = useState<{ t: number; o: number; h: number; l: number; c: number; v: number }[] | null>(null);
   const [book, setBook] = useState<{ bids: BookLevel[]; asks: BookLevel[] } | null>(null);
@@ -78,17 +85,29 @@ export function FuturesScreen() {
   // every market, refreshed every 5 s while the page is open
   useEffect(() => {
     let alive = true;
-    const load = () => fetchPerpMarkets().then((m) => alive && (setMarkets(m), setError(false))).catch(() => alive && setError(true));
+    const get = stocks ? fetchStockMarkets : fetchPerpMarkets;
+    const load = () => get().then((m) => alive && (setMarkets(m), setError(false))).catch(() => alive && setError(true));
     void load();
-    const t = setInterval(() => document.visibilityState === "visible" && void load(), 5_000);
+    // the stock list is several exchanges: asked less often (Hyperliquid limits requests per visitor)
+    const t = setInterval(() => document.visibilityState === "visible" && void load(), stocks ? 15_000 : 5_000);
     return () => {
       alive = false;
       clearInterval(t);
     };
-  }, []);
+  }, [stocks]);
+
+  // the market asked for (its id, or for stocks also just the ticker), else the busiest stock
+  const market = useMemo(() => {
+    if (!markets) return null;
+    const up = want.toUpperCase();
+    return markets.find((m) => m.coin === want) ?? (stocks ? markets.find((m) => m.name.toUpperCase() === up) ?? markets[0] ?? null : null);
+  }, [markets, want, stocks]);
+  const coin = market?.coin ?? (stocks ? "" : want);
+  const dexes = useMemo(() => [...new Set((markets ?? []).map((m) => m.dex).filter(Boolean))].join(","), [markets]);
 
   // chart and order book of the open market
   useEffect(() => {
+    if (!coin) return;
     let alive = true;
     setCandles(null);
     const loadC = () => fetchPerpCandles(coin, iv).then((c) => alive && setCandles(c)).catch(() => {});
@@ -100,6 +119,7 @@ export function FuturesScreen() {
     };
   }, [coin, iv]);
   useEffect(() => {
+    if (!coin) return;
     let alive = true;
     setBook(null);
     const loadB = () => fetchBook(coin).then((b) => alive && setBook(b)).catch(() => {});
@@ -116,20 +136,29 @@ export function FuturesScreen() {
   userRef.current = user;
   const loadMine = useCallback(async () => {
     if (!user) return;
-    const [a, o, f, sb, mode] = await Promise.all([
+    if (stocks && !dexes) return;
+    const [a, o, f, sb, mode, st] = await Promise.all([
       fetchPerpAccount(user).catch(() => null),
-      fetchPerpOrders(user).catch(() => null),
-      fetchPerpFills(user).catch(() => null),
+      stocks ? Promise.resolve(null) : fetchPerpOrders(user).catch(() => null),
+      fetchPerpFills(user, undefined, venue).catch(() => null),
       fetchSpotBalances(user).catch(() => null),
       fetchAccountMode(user).catch(() => null),
+      stocks ? fetchStockAccount(user, dexes.split(",")).catch(() => null) : null,
     ]);
+    const stockCash = stocks ? (st ? { value: st.account.accountValue, available: st.account.withdrawable } : null) : await fetchStockCash(user).catch(() => null);
     if (userRef.current !== user) return;
-    // one trading balance: spot dollars count too (they're moved over when an order needs them)
+    // one trading balance: spot and stock dollars count too (they're moved over when an order needs them)
     const cash = combineCash(a, sb, mode);
-    if (a) setAccount(cash ? { ...a, accountValue: cash.value, withdrawable: cash.available } : a);
-    if (o) setOrders(o);
+    const plus = stockCash ?? { value: 0, available: 0 };
+    if (a && cash) {
+      const positions = stocks ? st?.account.positions ?? [] : a.positions;
+      setAccount({ ...a, positions, accountValue: cash.value + plus.value, withdrawable: cash.available + plus.available });
+    } else if (a && !stocks) setAccount(a);
+    if (stocks) {
+      if (st) setOrders(st.orders);
+    } else if (o) setOrders(o);
     if (f) setFills(f);
-  }, [user]);
+  }, [user, stocks, dexes, venue]);
   useEffect(() => {
     setAccount(null);
     setOrders([]);
@@ -146,12 +175,13 @@ export function FuturesScreen() {
   }, [loadMine, w]);
   const trade = useMemo(() => makeFuturesTrade(w.signer, after), [w.signer, after]);
 
-  const market = markets?.find((m) => m.coin === coin) ?? null;
   const pick = (c: string) => {
-    setCoin(c);
+    setWant(c);
     setPicker(false);
-    router.replace(`/futures/?c=${encodeURIComponent(c)}`, { scroll: false });
+    router.replace(`${base}?c=${encodeURIComponent(c)}`, { scroll: false });
   };
+  const cats = useMemo(() => (stocks ? CATEGORIES.filter((c) => (markets ?? []).some((m) => (m as StockMarket).category === c)) : []), [markets, stocks]);
+  const name = market?.name ?? (stocks ? "…" : tickerOf(coin));
   // the coin picker is a full screen on phones: no page scroll behind it
   useEffect(() => {
     if (!picker) return;
@@ -167,22 +197,36 @@ export function FuturesScreen() {
       <label className="search" style={{ height: 40, flex: "none" }}>
         <ISearch size={15} color="var(--faint)" />
         <span className="sr">Search markets</span>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search markets" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={stocks ? "Search stocks, gold, indices" : "Search markets"} />
       </label>
+      {cats.length > 1 && (
+        <div className="cat-chips" role="group" aria-label="Kind">
+          {(["All", ...cats] as const).map((c) => (
+            <button key={c} type="button" className={`tab${cat === c ? " on" : ""}`} onClick={() => setCat(c)}>{c}</button>
+          ))}
+        </div>
+      )}
       <div className="tl-scroll">
         {!markets ? (
           Array.from({ length: 12 }, (_, i) => <div key={i} className="skel" style={{ height: 44, borderRadius: 10, marginBottom: 6 }} />)
         ) : (
           markets
-            .filter((m) => !search.trim() || m.coin.toLowerCase().includes(search.trim().toLowerCase()))
+            .filter((m) => {
+              const s = search.trim().toLowerCase();
+              if (stocks && cat !== "All" && (m as StockMarket).category !== cat) return false;
+              return !s || m.name.toLowerCase().includes(s) || m.coin.toLowerCase().includes(s);
+            })
             .slice(0, 150)
             .map((m) => (
               <button key={m.coin} type="button" onClick={() => pick(m.coin)} className={`tl-row${m.coin === coin ? " on" : ""}`} style={{ width: "100%" }}>
                 <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
                   <span style={{ fontWeight: 700, fontSize: 13 }}>
-                    {m.coin}-USD <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{m.maxLev}x</span>
+                    {m.name}-USD <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>{m.maxLev}x</span>
                   </span>
-                  <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>Vol {compact(m.volume24h)}</span>
+                  <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>
+                    Vol {compact(m.volume24h)}
+                    {stocks && "dexName" in m ? ` · ${m.dexName}` : ""}
+                  </span>
                 </span>
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
                   <span className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{px(m.mark)}</span>
@@ -207,14 +251,14 @@ export function FuturesScreen() {
 
   return (
     <>
-    <MarketTabs at="futures" />
+    <MarketTabs at={stocks ? "stocks" : "futures"} />
     <div className="term">
       <aside className="panel term-list">{list}</aside>
 
       <section className="term-main">
         <button type="button" className="term-switch" onClick={() => setPicker(true)} aria-haspopup="dialog">
           <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-            <b style={{ fontSize: 15 }}>{coin}-USD</b> <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>· switch</span>
+            <b style={{ fontSize: 15 }}>{name}-USD</b> <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>· switch</span>
           </span>
           <IDown size={14} color="var(--faint)" />
           {market && <span className={`chg ${(market.change24h ?? 0) >= 0 ? "u" : "d"}`}>{pct(market.change24h, 1)}</span>}
@@ -223,14 +267,16 @@ export function FuturesScreen() {
         {error && !markets && (
           <div className="warn-note">
             <IAlert size={16} color="var(--warn)" />
-            <span>Can&apos;t reach the futures markets right now. Retrying…</span>
+            <span>Can&apos;t reach the {stocks ? "stock" : "futures"} markets right now. Retrying…</span>
           </div>
         )}
 
         <div className="panel term-head">
           <span className="hide-m" style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-            <b style={{ fontSize: 18 }}>{coin}-USD</b>
-            <span className="mono dim" style={{ fontSize: 11 }}>Futures · up to {market?.maxLev ?? "…"}x</span>
+            <b style={{ fontSize: 18 }}>{name}-USD</b>
+            <span className="mono dim" style={{ fontSize: 11 }}>
+              {stocks ? `${(market as StockMarket | null)?.category ?? "Stocks"} · ${(market as StockMarket | null)?.dexName ?? "…"}` : "Futures"} · up to {market?.maxLev ?? "…"}x
+            </span>
           </span>
           <span className="term-stats">
             {stats.map(([k, v, cls]) => (
@@ -248,13 +294,13 @@ export function FuturesScreen() {
           <span className="dim" style={{ fontSize: 11 }}>Powered by Hyperliquid</span>
         </div>
 
-        {mobile && <Balance account={account} signedIn={!!user} allowed={allowed} onFunds={setFunds} onLogin={w.login} />}
+        {mobile && <Balance account={account} signedIn={!!user} allowed={allowed} onFunds={setFunds} onLogin={w.login} blurb={stocks ? STOCKS_BLURB : undefined} />}
         {mobile && allowed !== false && (
           <OrderPanel market={market} account={account} allowed={allowed} trade={trade} onFunds={setFunds} />
         )}
         {mobile && allowed === false && (
           <div className="card" style={{ gap: 6, padding: 14 }}>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Futures aren&apos;t available where you are</span>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>{stocks ? "Stock trading isn't" : "Futures aren't"} available where you are</span>
             <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>Leverage trading isn&apos;t offered in your country. Charts and prices stay open to everyone.</span>
           </div>
         )}
@@ -263,15 +309,15 @@ export function FuturesScreen() {
       </section>
 
       <aside className="term-trade">
-        <Balance account={account} signedIn={!!user} allowed={allowed} onFunds={setFunds} onLogin={w.login} />
+        <Balance account={account} signedIn={!!user} allowed={allowed} onFunds={setFunds} onLogin={w.login} blurb={stocks ? STOCKS_BLURB : undefined} />
         {!mobile && allowed !== false && <OrderPanel market={market} account={account} allowed={allowed} trade={trade} onFunds={setFunds} />}
         {allowed === false && (
           <div className="card" style={{ gap: 6, padding: 14 }}>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Futures aren&apos;t available where you are</span>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>{stocks ? "Stock trading isn't" : "Futures aren't"} available where you are</span>
             <span className="dim" style={{ fontSize: 13, lineHeight: 1.5 }}>Leverage trading isn&apos;t offered in your country. Charts and prices stay open to everyone.</span>
           </div>
         )}
-        <Book book={book} market={market} />
+        <Book book={book} market={market ? { mark: market.mark, coin: market.name } : null} />
       </aside>
 
       {picker && (
@@ -440,7 +486,7 @@ function OrderPanel({ market, account, allowed, trade, onFunds }: { market: Perp
     setBusy(true);
     try {
       const r = await trade.open({ market, side, margin: Number(margin), lev, coins: plan.coins, tp: tpN, sl: slN, limitPx: kind === "limit" ? Number(limitPx) : null }, setStep);
-      setMsg({ ok: true, text: r.resting ? `Limit order placed at ${px(Number(limitPx))}.` : `${long ? "Long" : "Short"} ${market.coin} opened${r.avgPx ? ` at ${px(r.avgPx)}` : ""}.` });
+      setMsg({ ok: true, text: r.resting ? `Limit order placed at ${px(Number(limitPx))}.` : `${long ? "Long" : "Short"} ${market.name} opened${r.avgPx ? ` at ${px(r.avgPx)}` : ""}.` });
       setMargin("");
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
@@ -507,7 +553,7 @@ function OrderPanel({ market, account, allowed, trade, onFunds }: { market: Perp
       )}
       {plan && Number(margin) > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><span className="dim">Position</span><span className="mono">{usd(plan.notional)} · {plan.coins} {market?.coin}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><span className="dim">Position</span><span className="mono">{usd(plan.notional)} · {plan.coins} {market?.name}</span></div>
           <div style={{ display: "flex", justifyContent: "space-between" }}><span className="dim">Liquidation price</span><span className="mono">{px(plan.liq)}</span></div>
           <div style={{ display: "flex", justifyContent: "space-between" }}><span className="dim">Fee</span><span className="mono">{usd(plan.fees)} ({((HL_TAKER_FEE + BUILDER_FEE) * 100).toFixed(3)}%)</span></div>
         </div>
@@ -518,7 +564,7 @@ function OrderPanel({ market, account, allowed, trade, onFunds }: { market: Perp
         <button type="button" className="btn volt lg" onClick={() => onFunds("add")}>Add money to start</button>
       ) : (
         <button type="button" className={`btn lg ${long ? "buy" : "sell"}`} disabled={busy || !market || allowed === null} onClick={go}>
-          {busy ? step ?? "Working…" : `${long ? "Long" : "Short"} ${market?.coin ?? ""}`}
+          {busy ? step ?? "Working…" : `${long ? "Long" : "Short"} ${market?.name ?? ""}`}
         </button>
       )}
       {msg && <div role="status" style={{ fontSize: 13, fontWeight: 600, color: msg.ok ? "var(--up)" : "var(--down)", textAlign: "center" }}>{msg.text}</div>}
@@ -610,7 +656,7 @@ function Mine({ account, orders, fills, markets, trade, signedIn, onPick }: { ac
                   const slPx = tps.find((o) => o.tpsl === "sl")?.triggerPx ?? null;
                   return (
                     <tr key={p.coin}>
-                      <td><button type="button" className="linkbtn" onClick={() => onPick(p.coin)} style={{ fontWeight: 700 }}><span className={p.side === "long" ? "up" : "down"}>{p.side === "long" ? "Long" : "Short"}</span> {p.coin} {p.lev}x</button></td>
+                      <td><button type="button" className="linkbtn" onClick={() => onPick(p.coin)} style={{ fontWeight: 700 }}><span className={p.side === "long" ? "up" : "down"}>{p.side === "long" ? "Long" : "Short"}</span> {tickerOf(p.coin)} {p.lev}x</button></td>
                       <td>{Math.abs(p.size)} ({usd(p.value)})</td>
                       <td>{px(p.entry)}</td>
                       <td>{px(m?.mark)}</td>
@@ -619,8 +665,8 @@ function Mine({ account, orders, fills, markets, trade, signedIn, onPick }: { ac
                       <td><button type="button" className="linkbtn" onClick={() => setEdit(p)}>{tpPx ? px(tpPx) : "—"} / {slPx ? px(slPx) : "—"}</button></td>
                       <td>
                         <span style={{ display: "inline-flex", gap: 6 }}>
-                          <button type="button" className="btn sm" disabled={!!busy} onClick={() => act(`h${p.coin}`, () => trade.close(p, m, 0.5), `Closed half of ${p.coin}.`)}>50%</button>
-                          <button type="button" className="btn sm" disabled={!!busy} onClick={() => act(`c${p.coin}`, () => trade.close(p, m), `${p.coin} closed.`)}>{busy === `c${p.coin}` ? "…" : "Close"}</button>
+                          <button type="button" className="btn sm" disabled={!!busy} onClick={() => act(`h${p.coin}`, () => trade.close(p, m, 0.5), `Closed half of ${tickerOf(p.coin)}.`)}>50%</button>
+                          <button type="button" className="btn sm" disabled={!!busy} onClick={() => act(`c${p.coin}`, () => trade.close(p, m), `${tickerOf(p.coin)} closed.`)}>{busy === `c${p.coin}` ? "…" : "Close"}</button>
                         </span>
                       </td>
                     </tr>
@@ -638,7 +684,7 @@ function Mine({ account, orders, fills, markets, trade, signedIn, onPick }: { ac
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.oid}>
-                    <td>{o.coin}</td>
+                    <td>{tickerOf(o.coin)}</td>
                     <td>{o.type}</td>
                     <td className={o.side === "B" ? "up" : "down"}>{o.side === "B" ? "Buy" : "Sell"}</td>
                     <td>{px(o.triggerPx ?? o.limitPx)}</td>
@@ -659,7 +705,7 @@ function Mine({ account, orders, fills, markets, trade, signedIn, onPick }: { ac
                 {fills.map((f) => (
                   <tr key={`${f.hash}${f.tid}`}>
                     <td>{new Date(f.time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-                    <td>{f.coin}</td>
+                    <td>{tickerOf(f.coin)}</td>
                     <td>{f.dir}</td>
                     <td>{px(f.px)}</td>
                     <td>{f.sz}</td>
@@ -696,9 +742,9 @@ function TpslSheet({ p, market, orders, trade, onClose }: { p: PerpPosition; mar
   };
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={`Take profit and stop loss for ${p.coin}`}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={`Take profit and stop loss for ${tickerOf(p.coin)}`}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <b style={{ fontSize: 18 }}>TP / SL · {p.side === "long" ? "Long" : "Short"} {p.coin}</b>
+          <b style={{ fontSize: 18 }}>TP / SL · {p.side === "long" ? "Long" : "Short"} {tickerOf(p.coin)}</b>
           <button type="button" className="icon-btn" aria-label="Close" onClick={() => !busy && onClose()} style={{ width: 40, height: 40, background: "transparent" }}><IX size={15} /></button>
         </div>
         <span className="dim mono" style={{ fontSize: 12 }}>Entry {px(p.entry)} · Mark {px(market?.mark)} · Liq. {px(p.liq)}</span>
@@ -706,7 +752,7 @@ function TpslSheet({ p, market, orders, trade, onClose }: { p: PerpPosition; mar
         <div className="field"><label htmlFor="ts-sl">Stop loss price</label><input id="ts-sl" className="inp mono" inputMode="decimal" value={sl} onChange={(e) => setSl(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="Empty: none" /></div>
         <button type="button" className="btn volt lg" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
         {err && <div role="status" style={{ fontSize: 13, fontWeight: 600, color: "var(--down)", textAlign: "center" }}>{err}</div>}
-        <span className="dim" style={{ fontSize: 12 }}>Size {sizeString(Math.abs(p.size), market?.szDecimals ?? 4)} {p.coin}: the whole position closes at either price.</span>
+        <span className="dim" style={{ fontSize: 12 }}>Size {sizeString(Math.abs(p.size), market?.szDecimals ?? 4)} {tickerOf(p.coin)}: the whole position closes at either price.</span>
       </div>
     </div>
   );

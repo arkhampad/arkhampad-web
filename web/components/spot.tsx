@@ -30,6 +30,7 @@ import {
   type SpotMarket,
 } from "@/lib/hlspot";
 import { makeFuturesTrade } from "@/lib/hltrade";
+import { fetchStockCash } from "@/lib/hlstocks";
 
 const TvChart = dynamic(() => import("./tvchart"), { ssr: false, loading: () => <div className="skel" style={{ height: 380, borderRadius: 12 }} /> });
 
@@ -116,15 +117,17 @@ export function SpotScreen() {
   userRef.current = user;
   const loadMine = useCallback(async () => {
     if (!user) return;
-    const [a, b, m, o, f] = await Promise.all([
+    const [a, b, m, o, f, sc] = await Promise.all([
       fetchPerpAccount(user).catch(() => null),
       fetchSpotBalances(user).catch(() => null),
       fetchAccountMode(user).catch(() => null),
       info<{ coin: string; oid: number; side: "B" | "A"; limitPx: string; sz: string }[]>({ type: "frontendOpenOrders", user: user.toLowerCase() }).catch(() => null),
       fetchSpotFills(user).catch(() => null),
+      fetchStockCash(user).catch(() => null),
     ]);
     if (userRef.current !== user) return;
-    if (a) setPerp(a);
+    // dollars on the stock exchanges count in the one balance (value only: they come back on close)
+    if (a) setPerp(sc ? { ...a, accountValue: a.accountValue + sc.value } : a);
     if (b) setBalances(b);
     if (m) setMode(m);
     if (o) setOrders(o.filter((x) => x.coin.startsWith("@") || x.coin.includes("/")).map((x) => ({ pair: x.coin, oid: x.oid, side: x.side, limitPx: Number(x.limitPx), size: Number(x.sz) })));

@@ -735,3 +735,7 @@ body { font-size: 14px; letter-spacing: -0.1px; }
 .data-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .data-tabs::-webkit-scrollbar { display: none; }
 .data-tabs .tab { flex: none; }
+.cat-chips { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: none; }
+.cat-chips::-webkit-scrollbar { display: none; }
+.cat-chips .tab { flex: none; height: 30px; font-size: 12px; padding: 0 10px; }
+@media (max-width: 760px) { .mkt-tabs a { font-size: 13px; padding: 0 4px; } }
