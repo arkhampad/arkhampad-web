@@ -5,6 +5,7 @@ import {Script, console2} from "forge-std/Script.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ArkhamV3Launcher, IV3PositionManager, IWrappedNative} from "../src/ArkhamV3Launcher.sol";
 import {WHYPE} from "../src/WHYPE.sol";
+import {ArkhamRouter} from "../src/ArkhamRouter.sol";
 
 /**
  * ArkhamPad on Elysium, in one run: WHYPE, Uniswap v3 (the official npm artifacts in v3/: factory,
@@ -12,7 +13,8 @@ import {WHYPE} from "../src/WHYPE.sol";
  * buy, checked end to end. Pass WHYPE / FACTORY / NPM / ROUTER / QUOTER to reuse existing ones.
  *
  * env: PRIVATE_KEY, OWNER, TREASURY, START_MC (wei of HYPE for the whole supply), CREATOR_BPS,
- *      FEE (default 10000 = 1%), SPACING (default 200), SMOKE_BUY (wei, 0 = skip)
+ *      FEE (default 10000 = 1%), SPACING (default 200), SMOKE_BUY (wei, 0 = skip),
+ *      ROUTER_FEE_BPS (router fee on other launchpads' pools, default 50 = 0.5%)
  */
 contract DeployAll is Script {
     address whype;
@@ -20,6 +22,7 @@ contract DeployAll is Script {
     address npm;
     address router;
     address quoter;
+    address ark;
 
     function _create(bytes memory code) internal returns (address a) {
         assembly ("memory-safe") {
@@ -45,6 +48,8 @@ contract DeployAll is Script {
         address me = vm.addr(key);
         console2.log("deployer", me, "balance", me.balance);
 
+        uint16 routerFee = uint16(vm.envOr("ROUTER_FEE_BPS", uint256(50)));
+
         vm.startBroadcast(key);
         if (whype == address(0)) whype = address(new WHYPE());
         if (factory == address(0)) factory = _create(vm.getCode("v3/UniswapV3Factory.json"));
@@ -57,10 +62,19 @@ contract DeployAll is Script {
         ArkhamV3Launcher l = new ArkhamV3Launcher(
             owner, IV3PositionManager(npm), IWrappedNative(whype), fee, spacing, treasury, startMc, creatorBps
         );
+        ark = address(new ArkhamRouter(owner, treasury, routerFee, factory));
         address coin;
         uint256 bought;
+        uint256 viaRouter;
+        uint256 back;
         if (smokeBuy > 0) {
             (coin, bought) = l.launch{value: smokeBuy}("ArkhamPad Check", "CHECK", "https://arkhampad.com", me, 0);
+            (, address pool,,,) = l.coins(coin);
+            ArkhamRouter.Pool memory p = ArkhamRouter.Pool(3, pool, coin, whype, coin < whype, fee, spacing, address(0));
+            uint256 tiny = smokeBuy / 4;
+            viaRouter = ArkhamRouter(payable(ark)).buy{value: tiny}(p, 1, block.timestamp + 600);
+            IERC20(coin).approve(ark, viaRouter);
+            back = ArkhamRouter(payable(ark)).sell(p, viaRouter, 1, block.timestamp + 600);
         }
         vm.stopBroadcast();
 
@@ -70,12 +84,15 @@ contract DeployAll is Script {
         console2.log("router", router);
         console2.log("quoter", quoter);
         console2.log("launcher", address(l));
+        console2.log("arkhamRouter", ark);
         if (coin != address(0)) {
             (uint256 tokenId, address pool,,,) = l.coins(coin);
             console2.log("smoke coin", coin, "pool", pool);
             console2.log("tokenId", tokenId, "bought", bought);
             require(bought > 0 && IERC20(coin).balanceOf(me) == bought, "smoke buy failed");
             require(IERC20(coin).balanceOf(address(l)) == 0, "coins left in launcher");
+            console2.log("router round trip: coins", viaRouter, "HYPE back", back);
+            require(viaRouter > 0 && back > 0, "router smoke failed");
         }
 
         _save(address(l), owner, treasury, fee, startMc, creatorBps, coin);
@@ -89,6 +106,7 @@ contract DeployAll is Script {
         vm.serializeAddress(o, "router", router);
         vm.serializeAddress(o, "quoter", quoter);
         vm.serializeAddress(o, "launcher", l);
+        vm.serializeAddress(o, "arkhamRouter", ark);
         vm.serializeAddress(o, "owner", owner);
         vm.serializeAddress(o, "treasury", treasury);
         vm.serializeUint(o, "fee", fee);

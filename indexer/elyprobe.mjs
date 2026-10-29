@@ -7,6 +7,7 @@
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { makeElysium } from "./elysium.mjs";
 import { makeMemStore } from "./elymem.mjs";
+import { checkRouter } from "./routercheck.mjs";
 
 const RPC = process.argv[2] || process.env.ELYSIUM_RPC || "https://rpc-live.boxa.club";
 const store = makeMemStore();
@@ -33,6 +34,19 @@ const check = {
   launchpadContracts: [...ely.launchpadOf.entries()],
   top: top.map((t) => ({ symbol: t.symbol, name: t.name, address: t.address, pad: t.launchpad, venue: t.venue, mcapUsd: Math.round(t.mcap_usd || 0), vol24Hype: +(t.vol24_hype || 0).toFixed(2), txns: (t.buys24 || 0) + (t.sells24 || 0), change24: t.change24 == null ? null : +t.change24.toFixed(1), holders: t.holders, priceHype: t.price_hype })),
 };
+// Can the ArkhamPad router trade these? Top 40 by volume plus a few from every launchpad.
+const pick = new Map(top.slice(0, 20).map((t) => [t.address, t]));
+for (const t of all.slice(0, 60)) if ((t.vol24_hype || 0) > 0) pick.set(t.address, t);
+const perPad = {};
+for (const t of all) {
+  const k = t.launchpad || "other";
+  if ((perPad[k] = (perPad[k] || 0) + 1) <= 5 && (t.vol24_hype || 0) > 0) pick.set(t.address, t);
+}
+try {
+  check.router = await checkRouter(RPC, [...pick.values()].slice(0, 70));
+} catch (e) {
+  check.router = { error: String(e?.message || e) };
+}
 const file = new URL("./ely-mainnet.json", import.meta.url);
 let out = {};
 try {
