@@ -1,12 +1,17 @@
 {
  "rpcs": [
   {
+   "url": "https://rpc-live.boxa.club",
+   "chainId": 99901,
+   "block": 54805
+  },
+  {
    "url": "https://rpc.ronspad.fun",
    "error": "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON"
   },
   {
    "url": "https://rpc-elysium-mainnet.t.conduit.xyz",
-   "error": "eth_blockNumber: unauthorized rpc key. visit https://app.conduit.xyz/rpc-keys to create a new key"
+   "error": "eth_chainId: unauthorized rpc key. visit https://app.conduit.xyz/rpc-keys to create a new key"
   },
   {
    "url": "https://rpc.elysium.kinetiq.xyz",
@@ -17,5 +22,253 @@
    "error": "fetch failed"
   }
  ],
- "at": "2026-10-29T17:28:12.669Z"
+ "at": "2026-10-29T17:34:49.520Z",
+ "rpc": "https://rpc-live.boxa.club",
+ "tip": 54805,
+ "v3": {
+  "pools": 144,
+  "factories": [
+   [
+    "0x809ff79945fffbf9b8df33bb3b62872ceb2efaf1",
+    50
+   ],
+   [
+    "0x367f85886af509e364c8190862bc714555fefc3e",
+    48
+   ],
+   [
+    "0xe83aabbd2e326ceaae3bdcb605b3af94ac3cf883",
+    16
+   ],
+   [
+    "0xd5a7c10820446c58868a204b8979b8cc9cb2a1a3",
+    11
+   ],
+   [
+    "0xf460854da9a40ad833c27996c749c1b8baaf3b86",
+    5
+   ]
+  ],
+  "topTokens": [
+   [
+    "0xba876237b0f021a6c6d852d6c26e107997cc5e81",
+    72
+   ],
+   [
+    "0x0269031ace34a7821e9d9980d087c35ce7c19eef",
+    50
+   ],
+   [
+    "0xa27c79491bac6e20e2b18c0b21feb8dedd8caa41",
+    16
+   ],
+   [
+    "0xe45a355d9e9cad2ad85f2d03e3ee3102a036acf0",
+    4
+   ],
+   [
+    "0xaeb7ede82165bb12ea5c0c80ce8c0a0d05bce6af",
+    2
+   ],
+   [
+    "0xcceeedb7f7f6fb96451789900bc73937f43d9b6f",
+    1
+   ]
+  ],
+  "fees": [
+   [
+    10000,
+    136
+   ],
+   [
+    15000,
+    3
+   ],
+   [
+    3000,
+    3
+   ],
+   [
+    20000,
+    1
+   ],
+   [
+    25000,
+    1
+   ]
+  ],
+  "poolCreatedBy": [
+   [
+    "0x6e3afddc49f5d43858a1fdd48184426ded11029b",
+    46
+   ],
+   [
+    "0x5afe876a625a6fe230dd361b9a5bef8e9bea6fe3",
+    43
+   ],
+   [
+    "0x56f810328a4e42e983f7f487f34776680d6cd7ab",
+    14
+   ],
+   [
+    "0x8ca88b12bc89b58034c583f1a5df02f7e67d62e1",
+    11
+   ],
+   [
+    "0x29e30681d02295b59106baae3e42a0e4a8a48888",
+    4
+   ],
+   [
+    "0x55c7fcc06339e2d2fc5b444f52c24085c1da2549",
+    3
+   ],
+   [
+    "0x7700cb672bbd853cf57e82ea14c3ebbaac3ec470",
+    3
+   ],
+   [
+    "0xf77ba28e57ae5c12edbe213a4aa6c9ddf2ca4795",
+    2
+   ],
+   [
+    "0x5b8a01a2a99f77ff78a2a68a94e4cf125b3f0150",
+    2
+   ],
+   [
+    "0x718af7e914c01a6385986d7009e62ba557a8993e",
+    2
+   ]
+  ],
+  "positionManagers": [
+   [
+    "0x59c3630b078d2c561ab69c990987c9f13e90ed37",
+    50
+   ],
+   [
+    "0xf77ba28e57ae5c12edbe213a4aa6c9ddf2ca4795",
+    18
+   ],
+   [
+    "0x1814deff479ae09fef672f6ebe24650de7465790",
+    12
+   ],
+   [
+    "0xc4e2781b7be7d5c61f45774a9628fa0e66218afa",
+    11
+   ],
+   [
+    "0xa7b383e4b413602436ec7e67c9de3576b447d4ba",
+    6
+   ]
+  ],
+  "swaps": 200,
+  "swapsSentTo": [
+   [
+    "0x03c291d55cc178b8fc3e20607125b8f6e9d12687",
+    33
+   ],
+   [
+    "0xca11bde05977b3631167028862be2a173976ca11",
+    19
+   ],
+   [
+    "0x892f8fab3bd1b45639316875bb736d83372b9aa1",
+    14
+   ],
+   [
+    "0x10c2b8f290f90f373b9b86c14cdf532367d1a22e",
+    4
+   ],
+   [
+    "0x6f2fad2a0cd5924299bf80d6b355176e4b66f17a",
+    3
+   ],
+   [
+    "0x03c820b17f17ea86449f6cf700788c97511566c4",
+    2
+   ],
+   [
+    "0x6e3afddc49f5d43858a1fdd48184426ded11029b",
+    2
+   ],
+   [
+    "0x6fb41010c3e05546a0f08bc40bbbd70fd7de23dd",
+    2
+   ],
+   [
+    "0x8ca88b12bc89b58034c583f1a5df02f7e67d62e1",
+    1
+   ]
+  ]
+ },
+ "v4": {
+  "pools": 533,
+  "poolManagers": [
+   [
+    "0x5fb015a49f5b35073f9ce01c2adb287a75f89600",
+    214
+   ],
+   [
+    "0x06c63714fbf1f5753017123e2fcfdede4540b2c4",
+    206
+   ],
+   [
+    "0xb308b5df891c300a5f5a5b8fdbc30108ba842490",
+    113
+   ]
+  ],
+  "hooks": [
+   [
+    "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+    211
+   ],
+   [
+    "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+    205
+   ],
+   [
+    "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+    113
+   ],
+   [
+    "0x071205d416d5278e4149ca05f5cf98aa769760cc",
+    2
+   ],
+   [
+    "0x47033f589a91035fdb9862a52d33b833f5f4aacc",
+    1
+   ],
+   [
+    "0x95f469393d2587030eb704738c044d908989eacc",
+    1
+   ]
+  ]
+ },
+ "v2": {
+  "pairs": 10,
+  "factories": [
+   [
+    "0x08088565144090650402e3a65431b8805ac16392",
+    4
+   ],
+   [
+    "0x2f6dbfff5a8c17a255b7590c73887c535f41aade",
+    4
+   ],
+   [
+    "0xd380d23a4d4a80b588d3c6c6b5d5517dff55ec68",
+    1
+   ]
+  ]
+ },
+ "tokenSymbols": {
+  "0xba876237b0f021a6c6d852d6c26e107997cc5e81": "WHYPE",
+  "0x0269031ace34a7821e9d9980d087c35ce7c19eef": "WHYPE",
+  "0xa27c79491bac6e20e2b18c0b21feb8dedd8caa41": "WHYPE"
+ },
+ "wellKnown": {
+  "multicall3": true,
+  "permit2": true,
+  "create2Deployer": true
+ }
 }
