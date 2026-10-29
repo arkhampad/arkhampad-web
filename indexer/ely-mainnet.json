@@ -505,27 +505,27 @@
  },
  "indexCheck": {
   "rpc": "https://rpc-live.boxa.club",
-  "blocks": 57153,
-  "seconds": 280.025,
-  "hypeUsd": 94.3545,
-  "tokens": 701,
-  "trades": 28384,
+  "blocks": 58544,
+  "seconds": 274.832,
+  "hypeUsd": 92.7525,
+  "tokens": 710,
+  "trades": 29066,
   "byLaunchpad": [
    [
     "ElysPump",
-    262
+    260
    ],
    [
     "Boxa",
-    213
+    215
    ],
    [
     "other:0x893217cb",
-    124
+    129
    ],
    [
     "Kleos",
-    51
+    52
    ],
    [
     "other:0x56f81032",
@@ -533,11 +533,15 @@
    ],
    [
     "other:0x8ca88b12",
-    11
+    12
    ],
    [
     "other:0x29e30681",
     4
+   ],
+   [
+    "other:0x5afe876a",
+    3
    ],
    [
     "other:0xe11cafa5",
@@ -568,10 +572,6 @@
     2
    ],
    [
-    "other:0x5afe876a",
-    1
-   ],
-   [
     "other:0xb85b1d40",
     1
    ],
@@ -580,15 +580,15 @@
     1
    ],
    [
-    "other:0x6e3afddc",
-    1
-   ],
-   [
     "other:0x3ec96f4e",
     1
    ],
    [
     "other:0xea9ccd7d",
+    1
+   ],
+   [
+    "other:0x482da548",
     1
    ]
   ],
@@ -633,12 +633,12 @@
     "address": "0xa3c1d6a8648df3978a38ce1478fbc284c75d95d7",
     "pad": "Boxa",
     "venue": "v4",
-    "mcapUsd": 1396071,
-    "vol24Hype": 10371.41,
-    "txns": 1314,
-    "change24": 186.7,
-    "holders": 676,
-    "priceHype": 0.000014796020065316882
+    "mcapUsd": 1249255,
+    "vol24Hype": 10322.45,
+    "txns": 1306,
+    "change24": 78,
+    "holders": 683,
+    "priceHype": 0.000013468694549993211
    },
    {
     "symbol": "KLEOS",
@@ -646,12 +646,12 @@
     "address": "0x51c343ed5131f17895991849860b61c2cb0e7e7a",
     "pad": "Kleos",
     "venue": "v3",
-    "mcapUsd": 1720140,
-    "vol24Hype": 4927.9,
-    "txns": 1461,
-    "change24": 149.6,
-    "holders": 611,
-    "priceHype": 0.00001823060908221209
+    "mcapUsd": 1560321,
+    "vol24Hype": 4761.48,
+    "txns": 1425,
+    "change24": 112.5,
+    "holders": 618,
+    "priceHype": 0.000016822411422875842
    },
    {
     "symbol": "ELYSP",
@@ -659,12 +659,12 @@
     "address": "0x7a7ae0e715867fc3b0055192624982017328c60b",
     "pad": "ElysPump",
     "venue": "v4",
-    "mcapUsd": 282081,
-    "vol24Hype": 2468.6,
-    "txns": 858,
-    "change24": 23.1,
-    "holders": 611,
-    "priceHype": 0.0000029895899974129093
+    "mcapUsd": 275847,
+    "vol24Hype": 2371.08,
+    "txns": 849,
+    "change24": -0.1,
+    "holders": 609,
+    "priceHype": 0.0000029740132414327456
    },
    {
     "symbol": "e/acc",
@@ -672,12 +672,12 @@
     "address": "0xedb963ed6efe231f6327c87a42ed49abe2447afa",
     "pad": "ElysPump",
     "venue": "v3",
-    "mcapUsd": 531785,
-    "vol24Hype": 1494.72,
-    "txns": 588,
-    "change24": -32.9,
-    "holders": 779,
-    "priceHype": 0.0000056360316997158375
+    "mcapUsd": 583355,
+    "vol24Hype": 1404.14,
+    "txns": 563,
+    "change24": -28.4,
+    "holders": 781,
+    "priceHype": 0.000006289370389423888
    },
    {
     "symbol": "CLEO",
@@ -685,12 +685,12 @@
     "address": "0xa9e18f454cf4f28b0922ffa80e1004dac0643f30",
     "pad": "Kleos",
     "venue": "v3",
-    "mcapUsd": 83672,
-    "vol24Hype": 1001.71,
-    "txns": 716,
-    "change24": 2904.8,
-    "holders": 230,
-    "priceHype": 8.867795718868849e-7
+    "mcapUsd": 93286,
+    "vol24Hype": 1065.72,
+    "txns": 753,
+    "change24": 3307.9,
+    "holders": 231,
+    "priceHype": 0.000001005749453069871
    },
    {
     "symbol": "KNUTS",
@@ -698,12 +698,12 @@
     "address": "0xdfa5397cb2d0c2d21ed654d49e7a5f6e0c18e9ed",
     "pad": null,
     "venue": "v4",
-    "mcapUsd": 42345,
-    "vol24Hype": 937.95,
-    "txns": 991,
-    "change24": -27.8,
-    "holders": 195,
-    "priceHype": 4.4878940257656764e-7
+    "mcapUsd": 34826,
+    "vol24Hype": 872.14,
+    "txns": 917,
+    "change24": -28.8,
+    "holders": 188,
+    "priceHype": 3.754770186173161e-7
    },
    {
     "symbol": "BLOB",
@@ -711,12 +711,12 @@
     "address": "0x9d9a6161cb7399f7a73f47f8195c9c3ad6911c76",
     "pad": "Boxa",
     "venue": "v4",
-    "mcapUsd": 48706,
-    "vol24Hype": 714.97,
-    "txns": 362,
-    "change24": -33,
-    "holders": 158,
-    "priceHype": 5.162009766056137e-7
+    "mcapUsd": 44437,
+    "vol24Hype": 725.18,
+    "txns": 364,
+    "change24": -45.4,
+    "holders": 155,
+    "priceHype": 4.790882603549185e-7
    },
    {
     "symbol": "ECAT",
@@ -724,12 +724,12 @@
     "address": "0x949a66ac7d58ec0a64b1414a9471f1083143fdab",
     "pad": "ElysPump",
     "venue": "v4",
-    "mcapUsd": 188204,
-    "vol24Hype": 568.31,
-    "txns": 596,
-    "change24": 62.7,
-    "holders": 793,
-    "priceHype": 0.0000019946503444799657
+    "mcapUsd": 174985,
+    "vol24Hype": 548.14,
+    "txns": 564,
+    "change24": 20.6,
+    "holders": 791,
+    "priceHype": 0.0000018865818681986527
    },
    {
     "symbol": "BLOB",
@@ -737,12 +737,12 @@
     "address": "0x9a9815af521149e8d982791703a31bca2f95f534",
     "pad": "ElysPump",
     "venue": "v4",
-    "mcapUsd": 111202,
-    "vol24Hype": 535.34,
-    "txns": 300,
-    "change24": 168.2,
-    "holders": 191,
-    "priceHype": 0.0000011785572625235055
+    "mcapUsd": 148357,
+    "vol24Hype": 544.02,
+    "txns": 299,
+    "change24": 155.6,
+    "holders": 200,
+    "priceHype": 0.0000015994954226139634
    },
    {
     "symbol": "VONSPEED",
@@ -750,12 +750,12 @@
     "address": "0x51ae950676696835def813ef3590ba805429f202",
     "pad": "ElysPump",
     "venue": "v4",
-    "mcapUsd": 37791,
-    "vol24Hype": 511.35,
-    "txns": 384,
-    "change24": 1147.7,
-    "holders": 130,
-    "priceHype": 4.0051805717736985e-7
+    "mcapUsd": 36231,
+    "vol24Hype": 519.24,
+    "txns": 394,
+    "change24": 1116.9,
+    "holders": 134,
+    "priceHype": 3.906218875672075e-7
    },
    {
     "symbol": "kPurr",
@@ -763,12 +763,12 @@
     "address": "0x19227610f807310b4e1fe5f4723b91ce6d14b725",
     "pad": "ElysPump",
     "venue": "v4",
-    "mcapUsd": 32600,
-    "vol24Hype": 484.98,
-    "txns": 348,
-    "change24": 259.4,
-    "holders": 139,
-    "priceHype": 3.4550421034763396e-7
+    "mcapUsd": 31479,
+    "vol24Hype": 494.24,
+    "txns": 353,
+    "change24": 253.1,
+    "holders": 138,
+    "priceHype": 3.393918847234547e-7
    },
    {
     "symbol": "ETHEL",
@@ -776,12 +776,12 @@
     "address": "0x866be81dc10971983737c6deea0c6d4294ae1ca6",
     "pad": "Boxa",
     "venue": "v4",
-    "mcapUsd": 15077,
-    "vol24Hype": 474.89,
-    "txns": 378,
-    "change24": 147.3,
-    "holders": 64,
-    "priceHype": 1.5979543721946407e-7
+    "mcapUsd": 14894,
+    "vol24Hype": 477.67,
+    "txns": 384,
+    "change24": 148.5,
+    "holders": 66,
+    "priceHype": 1.6058183899344508e-7
    },
    {
     "symbol": "SPARTANS",
@@ -789,25 +789,12 @@
     "address": "0x0febe6efab129f4c907753b866edc559dc6014ec",
     "pad": "Kleos",
     "venue": "v3",
-    "mcapUsd": 8289,
-    "vol24Hype": 306.85,
-    "txns": 352,
-    "change24": 168.8,
-    "holders": 73,
-    "priceHype": 8.785164895996308e-8
-   },
-   {
-    "symbol": "BLOB",
-    "name": "BLOB",
-    "address": "0x29575521af8b4e93161cfc6f6b6142d3d1723f88",
-    "pad": "Kleos",
-    "venue": "v3",
-    "mcapUsd": 14944,
-    "vol24Hype": 249.32,
-    "txns": 197,
-    "change24": -13.7,
-    "holders": 40,
-    "priceHype": 1.5837952578740693e-7
+    "mcapUsd": 7134,
+    "vol24Hype": 310.32,
+    "txns": 361,
+    "change24": 135.4,
+    "holders": 66,
+    "priceHype": 7.691025626651796e-8
    },
    {
     "symbol": "ELOOONG",
@@ -815,25 +802,25 @@
     "address": "0x789e4d02e270857cd133b0eac56ab2894416df23",
     "pad": null,
     "venue": "v4",
-    "mcapUsd": 5161,
-    "vol24Hype": 237.26,
-    "txns": 314,
-    "change24": 73.8,
-    "holders": 37,
-    "priceHype": 5.469669886512985e-8
+    "mcapUsd": 4506,
+    "vol24Hype": 239.8,
+    "txns": 321,
+    "change24": 54.4,
+    "holders": 34,
+    "priceHype": 4.85821568926868e-8
    },
    {
-    "symbol": "AK",
-    "name": "Agent K",
-    "address": "0xcceeedb7f7f6fb96451789900bc73937f43d9b6f",
-    "pad": "ElysPump",
+    "symbol": "BLOB",
+    "name": "BLOB",
+    "address": "0x29575521af8b4e93161cfc6f6b6142d3d1723f88",
+    "pad": "Kleos",
     "venue": "v3",
-    "mcapUsd": 64363,
-    "vol24Hype": 197.49,
-    "txns": 135,
-    "change24": -6.7,
-    "holders": 285,
-    "priceHype": 6.821379913170841e-7
+    "mcapUsd": 11284,
+    "vol24Hype": 228.01,
+    "txns": 174,
+    "change24": 15.4,
+    "holders": 36,
+    "priceHype": 1.216595091010512e-7
    },
    {
     "symbol": "KCAT",
@@ -841,25 +828,25 @@
     "address": "0x484c57eba501c02b020c48269c850a54a6a3e3a9",
     "pad": null,
     "venue": "v4",
-    "mcapUsd": 11762,
-    "vol24Hype": 188.59,
-    "txns": 189,
-    "change24": 295.7,
-    "holders": 69,
-    "priceHype": 1.246612696390864e-7
+    "mcapUsd": 8318,
+    "vol24Hype": 210.12,
+    "txns": 218,
+    "change24": 184.7,
+    "holders": 57,
+    "priceHype": 8.968168814040037e-8
    },
    {
-    "symbol": "EGG",
-    "name": "EGG",
-    "address": "0xd9a081945a487a06b2381e8f359c0aeedcad3fab",
+    "symbol": "AK",
+    "name": "Agent K",
+    "address": "0xcceeedb7f7f6fb96451789900bc73937f43d9b6f",
     "pad": null,
-    "venue": "v4",
-    "mcapUsd": 3180,
-    "vol24Hype": 166.27,
-    "txns": 152,
-    "change24": 5.9,
-    "holders": 11,
-    "priceHype": 3.369848689340343e-8
+    "venue": "v3",
+    "mcapUsd": 55694,
+    "vol24Hype": 191.19,
+    "txns": 132,
+    "change24": -24.5,
+    "holders": 280,
+    "priceHype": 6.004620820776635e-7
    },
    {
     "symbol": "EGIRL",
@@ -867,26 +854,703 @@
     "address": "0x1f3ec9941687d7cd59cffe777907f1d72eb98f18",
     "pad": "Kleos",
     "venue": "v3",
-    "mcapUsd": 11387,
-    "vol24Hype": 151.96,
-    "txns": 193,
-    "change24": 275.7,
-    "holders": 55,
-    "priceHype": 1.2068673458398675e-7
+    "mcapUsd": 8986,
+    "vol24Hype": 175.66,
+    "txns": 224,
+    "change24": 201.6,
+    "holders": 49,
+    "priceHype": 9.688400746899011e-8
    },
    {
-    "symbol": "KEKE",
-    "name": "Keke The Frog",
-    "address": "0xb8f75b36e80e06974bd0c4553487ac12259578e0",
-    "pad": "Boxa",
+    "symbol": "EGG",
+    "name": "EGG",
+    "address": "0xd9a081945a487a06b2381e8f359c0aeedcad3fab",
+    "pad": null,
     "venue": "v4",
-    "mcapUsd": 7016,
-    "vol24Hype": 150.19,
-    "txns": 129,
-    "change24": 20.7,
+    "mcapUsd": 3325,
+    "vol24Hype": 169.23,
+    "txns": 155,
+    "change24": 12.6,
     "holders": 12,
-    "priceHype": 7.43548926701796e-8
+    "priceHype": 3.5848204664424075e-8
+   },
+   {
+    "symbol": "EI",
+    "name": "Elysium Inu",
+    "address": "0x4c9862028080ceb42da5ea54003b81d01125d118",
+    "pad": null,
+    "venue": "v4",
+    "mcapUsd": 11639,
+    "vol24Hype": 149.12,
+    "txns": 129,
+    "change24": 284,
+    "holders": 47,
+    "priceHype": 1.2548467097965468e-7
    }
-  ]
+  ],
+  "router": {
+   "hypeIn": 0.1,
+   "checked": 60,
+   "ok": 59,
+   "results": [
+    {
+     "symbol": "BOXA",
+     "address": "0xa3c1d6a8648df3978a38ce1478fbc284c75d95d7",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 95.08
+    },
+    {
+     "symbol": "KLEOS",
+     "address": "0x51c343ed5131f17895991849860b61c2cb0e7e7a",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "ELYSP",
+     "address": "0x7a7ae0e715867fc3b0055192624982017328c60b",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "e/acc",
+     "address": "0xedb963ed6efe231f6327c87a42ed49abe2447afa",
+     "pad": "ElysPump",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "CLEO",
+     "address": "0xa9e18f454cf4f28b0922ffa80e1004dac0643f30",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "KNUTS",
+     "address": "0xdfa5397cb2d0c2d21ed654d49e7a5f6e0c18e9ed",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "BLOB",
+     "address": "0x9d9a6161cb7399f7a73f47f8195c9c3ad6911c76",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 95.08
+    },
+    {
+     "symbol": "ECAT",
+     "address": "0x949a66ac7d58ec0a64b1414a9471f1083143fdab",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "BLOB",
+     "address": "0x9a9815af521149e8d982791703a31bca2f95f534",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "VONSPEED",
+     "address": "0x51ae950676696835def813ef3590ba805429f202",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "kPurr",
+     "address": "0x19227610f807310b4e1fe5f4723b91ce6d14b725",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "ETHEL",
+     "address": "0x866be81dc10971983737c6deea0c6d4294ae1ca6",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "SPARTANS",
+     "address": "0x0febe6efab129f4c907753b866edc559dc6014ec",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "ELOOONG",
+     "address": "0x789e4d02e270857cd133b0eac56ab2894416df23",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 93.15
+    },
+    {
+     "symbol": "BLOB",
+     "address": "0x29575521af8b4e93161cfc6f6b6142d3d1723f88",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "KCAT",
+     "address": "0x484c57eba501c02b020c48269c850a54a6a3e3a9",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "AK",
+     "address": "0xcceeedb7f7f6fb96451789900bc73937f43d9b6f",
+     "pad": null,
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "EGIRL",
+     "address": "0x1f3ec9941687d7cd59cffe777907f1d72eb98f18",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "EGG",
+     "address": "0xd9a081945a487a06b2381e8f359c0aeedcad3fab",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "EI",
+     "address": "0x4c9862028080ceb42da5ea54003b81d01125d118",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "EPEPE",
+     "address": "0x21f9e36407b098a99a6727837077bbd0ff1a06cd",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 95.08
+    },
+    {
+     "symbol": "BULL",
+     "address": "0xf3bc1443b3ac94fcd77a9808cc51ebe6007f38bd",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 96.05
+    },
+    {
+     "symbol": "BTRFLY",
+     "address": "0x8504f65dcff3967cfa803c3e6d204dc48f3d2849",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "HI",
+     "address": "0x0300c1f8a03166da2326d97042afdbdc924b5b9a",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 95.08
+    },
+    {
+     "symbol": "KM",
+     "address": "0x7a4477f702ae5f9555e93eb90db177fbc579a892",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.05
+    },
+    {
+     "symbol": "KEKE",
+     "address": "0xb8f75b36e80e06974bd0c4553487ac12259578e0",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "EDOG",
+     "address": "0x3fc84b59a15975412abac458233c5d88cb98bca3",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "CC",
+     "address": "0x793292f2e07fbd6bb910ad153e9773457e2e1f76",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.04
+    },
+    {
+     "symbol": "EACC",
+     "address": "0x2b8cb0338db7515026e294c1fda18e9258ff96af",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "ELYPURR",
+     "address": "0x7a6798b1d5aa48fada5eba3d3901a45b06338710",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "VONSPEED",
+     "address": "0x603a00911ed2841b2fd1309abe5972d4f24ab372",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "MOOZ",
+     "address": "0xd297c1791a8172a903bcb0cb39028ba0274e8d93",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 95.08
+    },
+    {
+     "symbol": "ELYSIGHT",
+     "address": "0x7c13b5542fef19b69301d88b53ace5fdea9bea31",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 93.63
+    },
+    {
+     "symbol": "EDWIN",
+     "address": "0x21f2ae9c15aa516c34f3c0c779f7e5aa4433f9a5",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.04
+    },
+    {
+     "symbol": "EINU",
+     "address": "0xe62a5f61953eabf524d71eaafad292a2fc782a1a",
+     "pad": null,
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "99901",
+     "address": "0x8a06e4507b7fc59e516cf408f6c52a789fa3f602",
+     "pad": null,
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "VALHALLA",
+     "address": "0x896518b27b6f8688d87dfe45e30d57b553b15656",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.04
+    },
+    {
+     "symbol": "STOCKIUM",
+     "address": "0x1e0cc793904f7d33fc632e97fe23b81a00a762a3",
+     "pad": null,
+     "venue": "v3",
+     "hooks": null,
+     "result": "failed at quote buy: no data"
+    },
+    {
+     "symbol": "LEONIDAS",
+     "address": "0x8cfae344e4d6398b4c3737d55859134a9bdebe87",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "ELYCAT",
+     "address": "0x8618a00f0bb38205fbc955135e926055904002e0",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "1",
+     "address": "0xb825bb3814828b0b41e89e88f0663f43c578b255",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "PURR",
+     "address": "0x3c1d00f52de08bc1be1bcf8b22cfa1d75b765ba6",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "KLEON",
+     "address": "0xcf0c1b188797a14eae84aa6007fe4ebf89ec7eab",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.04
+    },
+    {
+     "symbol": "ELYCAT",
+     "address": "0x325f3c91bc7dda7cee954d50122ac2e358e3f042",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 94.11
+    },
+    {
+     "symbol": "SHARKCAT",
+     "address": "0xe25d1a25cdb738cfad4d2b365d9a7f66e0f8c3de",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 93.15
+    },
+    {
+     "symbol": "VONSPEED",
+     "address": "0xf6122b85c9882321a330e8b740a0995932788410",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "SPRT",
+     "address": "0x775b5fc8a3776dc42102af74c4225fa74d12055b",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "e/acc",
+     "address": "0x9927a54812658e5a170702530d61c0dc37aba7a6",
+     "pad": null,
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "VOCEM",
+     "address": "0xe1c3dfff999ca8cc440d478b57ed8398c9084ecc",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 94.11
+    },
+    {
+     "symbol": "WORTH",
+     "address": "0x3ae7f518342c134064cde0f3e43f4a43603b2c45",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 95.08
+    },
+    {
+     "symbol": "DADDY",
+     "address": "0x8980e0699220d08dcc6ceaa19efc5eecfa99c2f9",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "BLOB",
+     "address": "0xd316d36eba412d611289d72347699ad1c27eb8ca",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "EDOG",
+     "address": "0xb783a325c08469c2cac69d13131678b136a2cb9a",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0xe11cafa5901b0aab51eb78251488400f9e4320cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "e/acc",
+     "address": "0x3b1e5ab66e9482804f91affeddb1b78fd39d6959",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 95.08
+    },
+    {
+     "symbol": "ELONG",
+     "address": "0x59776332021c59abe8283f345b1ebd3d30b48888",
+     "pad": null,
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 95.1
+    },
+    {
+     "symbol": "k/acc",
+     "address": "0x2c18d3367cbd16d1b3d6ab81e5d23b58ad5835bb",
+     "pad": "ElysPump",
+     "venue": "v4",
+     "hooks": "0x071205d416d5278e4149ca05f5cf98aa769760cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 94.11
+    },
+    {
+     "symbol": "MAX",
+     "address": "0x5c89f91c9f61555f1b1e012d5b21ae4c889d764d",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "EARNY",
+     "address": "0xe667fd64847ea4d5665b2a9e5b35cff53020a7ba",
+     "pad": "Boxa",
+     "venue": "v4",
+     "hooks": "0xbcc1f22d137c1d98dfa5548e4d4261d7aee06acc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.03
+    },
+    {
+     "symbol": "TOFU",
+     "address": "0xca3e4ff0fb440b1a3679b735ccc17f11cdea7ddc",
+     "pad": null,
+     "venue": "v4",
+     "hooks": "0x0c835e6a51717a514144d95c7f0a1c640179e0cc",
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 93.15
+    },
+    {
+     "symbol": "KI",
+     "address": "0x8fa965720166e3e141066e273f129fbd57f1fea3",
+     "pad": "Kleos",
+     "venue": "v3",
+     "hooks": null,
+     "result": "ok",
+     "quoteMatchesBuy": true,
+     "quoteMatchesSell": true,
+     "roundTripPct": 97.04
+    }
+   ]
+  }
  }
 }
