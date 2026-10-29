@@ -488,5 +488,19 @@
     "input": "0xbb2dba95"
    }
   ]
+ },
+ "bridgeCheck": {
+  "inbox": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+  "bridge": "0x503d572157113faaad4dbed2647bb10b949216b6",
+  "sequencerInboxFromInbox": "0x7f3ff53aecb87261206ad3bdc27a88b6d8420fa6",
+  "rollup": "0x508c173dfe5f737b3493195bf785d71fa76fd217",
+  "activeOutbox": "0x0000000000000000000000000000000000000000",
+  "nativeToken": "error: execution reverted",
+  "chainId": 99901,
+  "confirmPeriodBlocks": 483840,
+  "hyperEvmSecondsPerBlock": 0.9836666666666667,
+  "withdrawWaitIfHyperEvmBlocksHours": 132.2,
+  "withdrawWaitIf12sBlocksHours": 1612.8,
+  "isElysium": true
  }
 }
