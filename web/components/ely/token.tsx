@@ -192,6 +192,7 @@ export function TokenPage() {
   const trades = usePoll(async () => (valid ? fetchTrades(a, 1500) : []), 8000, [a]);
   const [tab, setTab] = useState<"trades" | "holders" | "about">("trades");
   const [sheet, setSheet] = useState<"buy" | "sell" | null>(null);
+  const [fresh, setFresh] = useState(params.get("new") === "1");
 
   useEffect(() => { if (t) document.title = `${t.symbol} · ${money((t.mcap_hype ?? 0) * usd)} · ArkhamPad`; }, [t, usd]);
   useEffect(() => {
@@ -286,6 +287,20 @@ export function TokenPage() {
         <button type="button" className="e-go buy" onClick={() => setSheet("buy")}>Buy</button>
         <button type="button" className="e-go sell" onClick={() => setSheet("sell")}>Sell</button>
       </div>
+      {fresh && (
+        <div className="e-sheet e-center" role="dialog" aria-modal="true" aria-label="Your coin is live" onClick={(e) => { if (e.target === e.currentTarget) setFresh(false); }}>
+          <div className="e-sheet-in e-live-card">
+            <TokenAvatar t={t} size={84} />
+            <h2>{t.symbol} is live on Elysium</h2>
+            <p className="muted">Your coin is trading now. Share it: the first hour decides most launches. You earn 30% of the fees on every trade.</p>
+            <a className="e-go" style={{ display: "grid", placeItems: "center", textDecoration: "none" }} href={`https://x.com/intent/post?text=${encodeURIComponent(`I just launched $${t.symbol} on Elysium. Liquidity locked forever, trading live now on @Arkhampad`)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer">Share on X</a>
+            <div className="e-cta-btns" style={{ justifyContent: "center" }}>
+              <Copy text={shareUrl} label="Copy link" />
+              <button type="button" className="e-copy" onClick={() => { setFresh(false); history.replaceState(null, "", `/t/?a=${t.address}`); }}>Go to my coin</button>
+            </div>
+          </div>
+        </div>
+      )}
       {sheet && (
         <div className="e-sheet" role="dialog" aria-modal="true" aria-label={`${sheet === "buy" ? "Buy" : "Sell"} ${t.symbol}`} onClick={(e) => { if (e.target === e.currentTarget) setSheet(null); }}>
           <div className="e-sheet-in">

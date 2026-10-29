@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { createPublicClient, encodeFunctionData, formatUnits, http, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { usePoll } from "@/lib/ely";
-import { ely, fromWei, toWei } from "@/lib/elytrade";
+import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC, ely, fromWei, toWei } from "@/lib/elytrade";
 
 const HYPEREVM = 999;
 const HYPEREVM_RPC = "https://rpc.hyperliquid.xyz/evm";
@@ -197,13 +197,164 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
   );
 }
 
-function Withdraw() {
+// ---------------------------------------------------------------- withdrawals (Arbitrum Orbit)
+const ARBSYS = "0x0000000000000000000000000000000000000064" as Address;
+const NODE_IFACE = "0x00000000000000000000000000000000000000c8" as Address;
+const ROLLUP = "0x508c173dfe5f737b3493195bf785d71fa76fd217" as Address; // Elysium rollup on HyperEVM
+const W_ABI = parseAbi([
+  "function withdrawEth(address destination) payable returns (uint256)",
+  "event L2ToL1Tx(address caller, address indexed destination, uint256 indexed hash, uint256 indexed position, uint256 arbBlockNum, uint256 ethBlockNum, uint256 timestamp, uint256 callvalue, bytes data)",
+  "function constructOutboxProof(uint64 size, uint64 leaf) view returns (bytes32 send, bytes32 root, bytes32[] proof)",
+  "function outbox() view returns (address)",
+  "function isSpent(uint256 index) view returns (bool)",
+  "function executeTransaction(bytes32[] proof, uint256 index, address l2Sender, address to, uint256 l2Block, uint256 l1Block, uint256 l2Timestamp, uint256 value, bytes data)",
+  "event SendRootUpdated(bytes32 indexed outputRoot, bytes32 indexed l2BlockHash)",
+]);
+const CHALLENGE_MS = 132 * 3600 * 1000; // about 5.5 days on Elysium mainnet
+const W_GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays on Elysium for gas
+
+type Wd = { position: bigint; caller: Address; destination: Address; arbBlockNum: bigint; ethBlockNum: bigint; timestamp: bigint; callvalue: bigint; data: Hex; tx: Hex };
+
+let outboxAddr: Promise<Address> | null = null;
+const outbox = () => (outboxAddr ??= hyperevm.readContract({ address: ROLLUP, abi: W_ABI, functionName: "outbox" }) as Promise<Address>);
+
+/** How many L2 -> L1 messages are confirmed (claimable): from the newest SendRootUpdated on the outbox. */
+async function confirmedCount(): Promise<bigint> {
+  const ob = await outbox();
+  const tip = await hyperevm.getBlockNumber();
+  const ev = W_ABI.find((x) => x.type === "event" && x.name === "SendRootUpdated")!;
+  for (let i = 0n; i < 60n; i++) {
+    const to = tip - i * 1000n;
+    const from = to - 999n;
+    if (to < 0n) break;
+    const logs = await hyperevm.getLogs({ address: ob, event: ev as never, fromBlock: from < 0n ? 0n : from, toBlock: to }).catch(() => []);
+    const last = logs[logs.length - 1] as unknown as { topics: Hex[] } | undefined;
+    if (last) {
+      const blockHash = last.topics[2];
+      const res = await fetch(ELY_RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBlockByHash", params: [blockHash, false] }) });
+      const blk = ((await res.json()) as { result?: { sendCount?: Hex } }).result;
+      return blk?.sendCount ? BigInt(blk.sendCount) : 0n;
+    }
+  }
+  return 0n;
+}
+
+async function myWithdrawals(me: Address): Promise<Wd[]> {
+  const ev = W_ABI.find((x) => x.type === "event" && x.name === "L2ToL1Tx")!;
+  const q = (fromBlock: bigint, toBlock: bigint) => ely().getLogs({ address: ARBSYS, event: ev as never, args: { destination: me } as never, fromBlock, toBlock });
+  const tip = await ely().getBlockNumber();
+  let logs: unknown[];
+  try {
+    logs = await q(0n, tip);
+  } catch {
+    // the node limits the range: ask in slices (newest first, up to ~2.5M blocks back)
+    logs = [];
+    const STEP = 50_000n;
+    const slices: bigint[] = [];
+    for (let to = tip; to >= 0n && slices.length < 50; to -= STEP) slices.push(to);
+    for (let i = 0; i < slices.length; i += 10) {
+      const part = await Promise.all(slices.slice(i, i + 10).map((to) => q(to - STEP + 1n < 0n ? 0n : to - STEP + 1n, to).catch(() => [])));
+      for (const p of part.reverse()) logs.unshift(...p);
+    }
+  }
+  return (logs as { args: Omit<Wd, "tx">; transactionHash: Hex }[]).map((l) => ({ ...l.args, tx: l.transactionHash })).sort((a, b) => (b.position > a.position ? 1 : -1));
+}
+
+function WdRow({ w: x, confirmed, me, onDone }: { w: Wd; confirmed: bigint | null; me: Address; onDone: () => void }) {
+  const wallet = useWallet();
+  const spent = usePoll(async () => hyperevm.readContract({ address: await outbox(), abi: W_ABI, functionName: "isSpent", args: [x.position] }) as Promise<boolean>, 30_000, [x.position]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const ready = confirmed != null && x.position < confirmed;
+  const eta = Number(x.timestamp) * 1000 + CHALLENGE_MS;
+  async function claim() {
+    if (!wallet.signer?.sendTx || confirmed == null) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const [, , proof] = (await ely().readContract({ address: NODE_IFACE, abi: W_ABI, functionName: "constructOutboxProof", args: [confirmed, x.position] })) as [Hex, Hex, Hex[]];
+      const data = encodeFunctionData({ abi: W_ABI, functionName: "executeTransaction", args: [proof, x.position, x.caller, x.destination, x.arbBlockNum, x.ethBlockNum, x.timestamp, x.callvalue, x.data] });
+      const hash = await wallet.signer.sendTx(HYPEREVM, { to: await outbox(), data });
+      const r = await hyperevm.waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
+      if (r.status !== "success") throw new Error("failed");
+      onDone();
+    } catch (e) {
+      const m = String((e as Error)?.message ?? "");
+      setErr(/insufficient/i.test(m) ? "You need a little HYPE on HyperEVM (about 0.001) to pay for the claim." : /reject|denied|cancel/i.test(m) ? "Cancelled." : "Claim failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="e-wd">
+      <div>
+        <b className="num">{fmt(x.callvalue)} HYPE</b>
+        <span className="dim">{new Date(Number(x.timestamp) * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}{x.destination.toLowerCase() !== me.toLowerCase() ? ` · to ${x.destination.slice(0, 6)}…` : ""}</span>
+      </div>
+      {spent ? <span className="e-pill up">Claimed</span> : ready ? (
+        <button type="button" className="e-btn pri" disabled={busy} onClick={claim}>{busy ? "Claiming…" : "Claim"}</button>
+      ) : (
+        <span className="e-pill" style={{ background: "var(--e-raise)", color: "var(--e-muted)" }}>{Date.now() > eta ? "Finalizing…" : `Ready ~${new Date(eta).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}</span>
+      )}
+      {err && <div className="e-msg bad" style={{ flexBasis: "100%" }}>{err}</div>}
+    </div>
+  );
+}
+
+function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
+  const w = useWallet();
+  const [tick, setTick] = useState(0);
+  const bal = usePoll(() => ely().getBalance({ address: me }), 5000, [me, tick]);
+  const list = usePoll(() => myWithdrawals(me), 20_000, [me, tick]);
+  const confirmed = usePoll(() => confirmedCount(), 120_000, [tick]);
+  const [val, setVal] = useState("");
+  const [agree, setAgree] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const amount = toWei(val);
+  const max = bal != null && bal > W_GAS_KEEP ? bal - W_GAS_KEEP : 0n;
+  async function go() {
+    if (!w.signer?.sendTx) return w.login();
+    setBusy(true);
+    setMsg(null);
+    try {
+      const data = encodeFunctionData({ abi: W_ABI, functionName: "withdrawEth", args: [me] });
+      const hash = await w.signer.sendTx(ELY_CHAIN_ID, { to: ARBSYS, data, value: amount });
+      const r = await ely().waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
+      if (r.status !== "success") throw new Error("failed");
+      setMsg({ ok: true, text: `Withdrawal of ${val} HYPE started. Claim it here in about 5.5 days.` });
+      setVal("");
+      setAgree(false);
+      setTick((t) => t + 1);
+      onSent();
+    } catch (e) {
+      const m = String((e as Error)?.message ?? "");
+      setMsg({ ok: false, text: /reject|denied|cancel/i.test(m) ? "Cancelled." : "Withdrawal failed. Nothing was moved. Please try again." });
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div className="e-trade">
-      <p className="e-wnote">
-        <b>Withdrawals take about 5.5 days.</b> Elysium is an optimistic rollup: anything leaving it through the official bridge waits out a challenge period before it can be claimed on HyperEVM. Your funds are safe during this time; they just can&apos;t be moved.
-      </p>
-      <p className="e-note">Withdrawals open on ArkhamPad shortly after launch, together with a faster exit option. <Link href="/learn/elysium-withdrawal-time/">Why withdrawals take 5.5 days →</Link></p>
+      <p className="e-wnote"><b>Withdrawals take about 5.5 days.</b> Elysium is an optimistic rollup: HYPE leaving it through the official bridge waits out a challenge period, then you claim it on HyperEVM. Your HYPE is safe while it waits. <Link href="/learn/elysium-withdrawal-time/">Why?</Link></p>
+      <label className="e-amt">
+        <span className="e-amt-top"><span>Withdraw to HyperEVM</span><span className="dim">On Elysium: {fmt(bal)} HYPE</span></span>
+        <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="HYPE amount" /><b>HYPE</b></span>
+      </label>
+      <div className="e-quick">
+        {[25, 50, 75].map((p) => <button key={p} type="button" disabled={!max} onClick={() => setVal(formatUnits((max * BigInt(p)) / 100n, 18))}>{p}%</button>)}
+        <button type="button" disabled={!max} onClick={() => setVal(formatUnits(max, 18))}>Max</button>
+      </div>
+      <label className="e-check"><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> I understand this takes about 5.5 days and I claim it on HyperEVM afterwards.</label>
+      <button type="button" className="e-go" disabled={busy || !agree || amount <= 0n || amount > max} onClick={go}>{busy ? "Starting…" : amount > max && amount > 0n ? "Not enough HYPE on Elysium" : "Start withdrawal"}</button>
+      {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
+      {!!list?.length && (
+        <div className="e-wdlist">
+          <b>Your withdrawals</b>
+          {list.map((x) => <WdRow key={x.position.toString()} w={x} confirmed={confirmed ?? null} me={me} onDone={() => setTick((t) => t + 1)} />)}
+          <p className="e-note">Claiming is a transaction on HyperEVM, so keep about 0.001 HYPE there for gas.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -238,7 +389,7 @@ export function BridgePage() {
               <p className="e-note" style={{ fontSize: 15 }}>Log in with email, Google or a wallet to get your Elysium address.</p>
               <button type="button" className="e-go" onClick={w.login}>Log in</button>
             </div>
-          ) : tab === "hype" ? <HypeIn me={me} onSent={() => setTick((x) => x + 1)} /> : tab === "usdc" ? <UsdcIn me={me} onSent={() => setTick((x) => x + 1)} /> : <Withdraw />}
+          ) : tab === "hype" ? <HypeIn me={me} onSent={() => setTick((x) => x + 1)} /> : tab === "usdc" ? <UsdcIn me={me} onSent={() => setTick((x) => x + 1)} /> : <Withdraw me={me} onSent={() => setTick((x) => x + 1)} />}
         </section>
         <aside className="e-panel e-bside">
           <h3 className="e-ph">Good to know</h3>
