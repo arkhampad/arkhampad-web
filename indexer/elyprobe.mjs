@@ -10,7 +10,7 @@ import { makeMemStore } from "./elymem.mjs";
 
 const RPC = process.argv[2] || process.env.ELYSIUM_RPC || "https://rpc-live.boxa.club";
 const store = makeMemStore();
-const ely = makeElysium({ rpc: RPC, step: 2000, log: console.log }, store);
+const ely = makeElysium({ rpc: RPC, step: 2000, log: console.log, progress: true }, store);
 const t0 = Date.now();
 const blocks = await ely.syncOnce();
 await ely.hypeUsd();

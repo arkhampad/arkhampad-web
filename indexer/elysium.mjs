@@ -32,6 +32,13 @@ export const KNOWN_CONTRACTS = {
   "0x06c63714fbf1f5753017123e2fcfdede4540b2c4": "Boxa", // Boxa's v4 pool manager (shown on boxa.club)
 };
 
+/** Runs async jobs, `n` at a time. */
+async function pool(jobs, n) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, jobs.length) }, async () => {
+    while (i < jobs.length) await jobs[i++]();
+  }));
+}
 const hex = (n) => "0x" + n.toString(16);
 const word = (data, i) => data.slice(2 + i * 64, 2 + (i + 1) * 64);
 const uintAt = (data, i) => BigInt("0x" + word(data, i));
@@ -129,7 +136,7 @@ export function makeElysium(cfg, store) {
   // from the event itself; only recent blocks cost an extra call each.
   let tipNow = 0;
   let win = null; // { from, to, tFrom, tTo }
-  const recent = (b) => tipNow - b < 3000;
+  const recent = (b) => tipNow - b < (cfg.liveBlocks ?? 300);
   async function timeOf(b) {
     if (!recent(b) && win && b >= win.from && b <= win.to && win.to > win.from) {
       return Math.round(win.tFrom + ((b - win.from) / (win.to - win.from)) * (win.tTo - win.tFrom));
@@ -198,27 +205,30 @@ export function makeElysium(cfg, store) {
   async function scanPools(from, to) {
     const q = { fromBlock: hex(from), toBlock: hex(to) };
     const [v3, v4] = await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3PoolCreated] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Initialize] }])]);
-    for (const l of v3) {
+    const jobs = [];
+    for (const l of v3) jobs.push(async () => {
       const t0 = addrTopic(l.topics[1]);
       const t1 = addrTopic(l.topics[2]);
       const h0 = await hypeWrap(t0);
       const h1 = await hypeWrap(t1);
-      if (h0 === h1) continue; // not a token/HYPE pool
+      if (h0 === h1) return; // not a token/HYPE pool
       const token = h0 ? t1 : t0;
       const pool = addrWord(l.data, 1);
       const slot0 = await call(pool, SEL.slot0);
       const sqrt = slot0 && slot0.length >= 66 ? BigInt("0x" + slot0.slice(2, 66)) : null;
       await addPool({ token, hype: h0 ? t0 : t1, venue: "v3", pool, sqrt, manager: lc(l.address), fee: Number(BigInt(l.topics[3])), tickSpacing: Number(intAt(l.data, 0)), tokenIs0: !h0, block: Number(l.blockNumber), tx: l.transactionHash });
-    }
-    for (const l of v4) {
+    });
+    for (const l of v4) jobs.push(async () => {
       const c0 = addrTopic(l.topics[2]);
       const c1 = addrTopic(l.topics[3]);
       const h0 = await hypeWrap(c0);
       const h1 = await hypeWrap(c1);
-      if (h0 === h1) continue;
+      if (h0 === h1) return;
       const token = h0 ? c1 : c0;
       await addPool({ token, hype: h0 ? c0 : c1, venue: "v4", pool: l.topics[1].toLowerCase(), manager: lc(l.address), fee: Number(uintAt(l.data, 0)), tickSpacing: Number(intAt(l.data, 1)), hooks: addrWord(l.data, 2), sqrt: uintAt(l.data, 3), tokenIs0: !h0, block: Number(l.blockNumber), tx: l.transactionHash });
-    }
+    });
+    // WHYPE symbols first (shared by many pools), then the pools in parallel
+    await pool(jobs, 12);
   }
 
   async function scanTrades(from, to) {
@@ -248,13 +258,14 @@ export function makeElysium(cfg, store) {
         trader: recent(Number(l.blockNumber)) ? await txField(txFrom, l.transactionHash, "from") : addrTopic(l.topics[2]),
       });
     };
+    const jobs = [];
     for (const l of v3) {
       const token = poolIndex.get(lc(l.address));
       if (!token) continue;
       const t = tokens.get(token);
       const a0 = intAt(l.data, 0);
       const a1 = intAt(l.data, 1);
-      await add(l, token, t.token_is0 ? a0 : a1, t.token_is0 ? a1 : a0, uintAt(l.data, 2), false);
+      jobs.push(() => add(l, token, t.token_is0 ? a0 : a1, t.token_is0 ? a1 : a0, uintAt(l.data, 2), false));
     }
     for (const l of v4) {
       const token = poolIndex.get(`${lc(l.address)}:${l.topics[1].toLowerCase()}`);
@@ -262,8 +273,10 @@ export function makeElysium(cfg, store) {
       const t = tokens.get(token);
       const a0 = intAt(l.data, 0);
       const a1 = intAt(l.data, 1);
-      await add(l, token, t.token_is0 ? a0 : a1, t.token_is0 ? a1 : a0, uintAt(l.data, 2), true);
+      jobs.push(() => add(l, token, t.token_is0 ? a0 : a1, t.token_is0 ? a1 : a0, uintAt(l.data, 2), true));
     }
+    await pool(jobs, 16);
+    out.sort((a, b) => a.block - b.block || a.log_index - b.log_index);
     if (out.length) await store.addTrades(out);
     return out.length;
   }
@@ -302,7 +315,7 @@ export function makeElysium(cfg, store) {
     const startAt = last;
     while (last < tip) {
       let to = Math.min(tip, last + step);
-      if (!recent(last + 1)) {
+      if (!recent(to)) {
         const [a, b] = await Promise.all([rpc("eth_getBlockByNumber", [hex(last + 1), false]), rpc("eth_getBlockByNumber", [hex(to), false])]);
         win = { from: last + 1, to, tFrom: Number(a.timestamp) * 1000, tTo: Number(b.timestamp) * 1000 };
       }
@@ -320,6 +333,7 @@ export function makeElysium(cfg, store) {
       }
       last = to;
       await store.setState("ely_block", last);
+      if (cfg.progress) log(`elysium: block ${last}/${tip}, ${store.tokens().size} tokens`);
     }
     return last - startAt;
   }
