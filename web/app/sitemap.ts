@@ -8,7 +8,7 @@ const SITE = "https://arkhampad.com";
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
   const pages: [string, number, MetadataRoute.Sitemap[number]["changeFrequency"]][] = [
-    ["/", 1, "hourly"], ["/create/", 0.9, "weekly"], ["/bridge/", 0.8, "weekly"], ["/learn/", 0.8, "weekly"],
+    ["/", 1, "hourly"], ["/create/", 0.9, "weekly"], ["/bridge/", 0.8, "weekly"], ["/stats/", 0.8, "daily"], ["/learn/", 0.8, "weekly"],
     ["/terms/", 0.2, "yearly"], ["/privacy/", 0.2, "yearly"],
   ];
   return [

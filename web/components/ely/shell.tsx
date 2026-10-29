@@ -116,6 +116,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="e-links" aria-label="Main">
             {NAV.map((n) => <Link key={n.href} href={n.href} className={`e-link ${on(n.href) ? "on" : ""}`}>{n.label}</Link>)}
+            <Link href="/stats/" className={`e-link ${on("/stats/") ? "on" : ""}`}>Stats</Link>
             <Link href="/learn/" className={`e-link ${on("/learn/") ? "on" : ""}`}>Learn</Link>
           </nav>
           <Search />
@@ -129,6 +130,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         <div className="e-in">
           <span>ArkhamPad · the Elysium launchpad</span>
           <nav aria-label="Footer">
+            <Link href="/stats/">Stats</Link>
             <Link href="/learn/">Learn</Link>
             <Link href="/learn/what-is-elysium/">What is Elysium</Link>
             <Link href="/learn/create-a-token-on-elysium/">Create a token</Link>

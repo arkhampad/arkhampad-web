@@ -298,9 +298,10 @@ contract ArkhamV3Launcher is Ownable2Step, ReentrancyGuard {
         uint256 nativeCreator = (nativeAmount * c.creatorBps) / 10_000;
         if (coinCreator > 0) IERC20(coin).safeTransfer(c.creator, coinCreator);
         if (coinAmount > coinCreator) IERC20(coin).safeTransfer(treasury, coinAmount - coinCreator);
-        IERC20 w = IERC20(address(wrapped));
-        if (nativeCreator > 0) w.safeTransfer(c.creator, nativeCreator);
-        if (nativeAmount > nativeCreator) w.safeTransfer(treasury, nativeAmount - nativeCreator);
+        // HYPE fees are paid out as native HYPE (not wrapped), so they show up as plain balance
+        if (nativeAmount > 0) wrapped.withdraw(nativeAmount);
+        if (nativeCreator > 0) _sendNative(c.creator, nativeCreator);
+        if (nativeAmount > nativeCreator) _sendNative(treasury, nativeAmount - nativeCreator);
         emit FeesCollected(coin, coinCreator, coinAmount - coinCreator, nativeCreator, nativeAmount - nativeCreator);
     }
 

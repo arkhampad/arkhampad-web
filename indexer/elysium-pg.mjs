@@ -13,6 +13,8 @@ export async function makePgStore(pool) {
     getState: async (k) => (await pool.query("select v from ely_state where k=$1", [k])).rows[0]?.v,
     setState: async (k, v) => void (await pool.query("insert into ely_state (k, v) values ($1, $2) on conflict (k) do update set v = excluded.v", [k, String(v)])),
     setMeta: async (k, v) => void (await pool.query("insert into ely_meta (k, v, updated_at) values ($1, $2, now()) on conflict (k) do update set v = excluded.v, updated_at = now()", [k, JSON.stringify(v)])),
+    /** Network stats for the Stats page (db/026: ely_stats), stored in ely_meta('stats'). */
+    saveStats: async () => void (await pool.query("select public.ely_save_stats()")),
     upsertToken: async (t) => {
       tokens.set(t.address, { ...tokens.get(t.address), ...t });
       const vals = COLS.map((c) => t[c] ?? null);

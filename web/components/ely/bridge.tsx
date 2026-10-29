@@ -4,10 +4,11 @@
 // through the official bridge and take about 5.5 days.
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createPublicClient, encodeFunctionData, formatUnits, http, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { usePoll } from "@/lib/ely";
-import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC, ely, fromWei, toWei } from "@/lib/elytrade";
+import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC, balanceChanged, ely, fromWei, toWei } from "@/lib/elytrade";
 
 const HYPEREVM = 999;
 const HYPEREVM_RPC = "https://rpc.hyperliquid.xyz/evm";
@@ -48,48 +49,70 @@ function HypeIn({ me, onSent }: { me: Address; onSent: () => void }) {
   const w = useWallet();
   const bal = usePoll(() => hyperevm.getBalance({ address: me }), 5000, [me]);
   const [val, setVal] = useState("");
+  const [custom, setCustom] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const amount = toWei(val);
   const max = bal != null && bal > GAS_KEEP ? bal - GAS_KEEP : 0n;
+  const amount = custom ? toWei(val) : max;
+  const arrived = max > 0n;
   async function go() {
     if (!w.signer?.sendTx) return w.login();
     setBusy(true);
     setMsg(null);
     try {
-      const hash = await w.signer.sendTx(HYPEREVM, { to: INBOX, data: DEPOSIT, value: amount });
+      const sent = amount;
+      const hash = await w.signer.sendTx(HYPEREVM, { to: INBOX, data: DEPOSIT, value: sent });
       const r = await hyperevm.waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
       if (r.status !== "success") throw new Error("failed");
-      setMsg({ ok: true, text: `Sent ${val} HYPE. It shows up on Elysium in about a minute.` });
+      setMsg({ ok: true, text: `${fmt(sent)} HYPE is on its way. It shows up on Elysium in about a minute.` });
       setVal("");
+      setCustom(false);
       onSent();
+      balanceChanged();
     } catch (e) {
       const m = String((e as Error)?.message ?? "");
-      setMsg({ ok: false, text: /insufficient/i.test(m) ? "Not enough HYPE on HyperEVM for this amount and gas." : /reject|denied|cancel/i.test(m) ? "Cancelled." : "Bridge failed. Nothing was moved. Please try again." });
+      setMsg({ ok: false, text: /insufficient/i.test(m) ? "Not enough HYPE on HyperEVM for this amount and the network fee." : /reject|denied|cancel/i.test(m) ? "Cancelled." : "Couldn't move it. Nothing was sent. Please try again." });
     } finally {
       setBusy(false);
     }
   }
   return (
     <div className="e-trade">
-      <ol className="e-steps">
-        <li>Send HYPE on <b>HyperEVM</b> to your address below (from Hyperliquid, an exchange that supports HyperEVM, or another wallet).</li>
-        <li>Bridge it to Elysium here. It arrives in about a minute.</li>
-      </ol>
-      <Address0 address={me} />
-      <label className="e-amt">
-        <span className="e-amt-top"><span>Bridge to Elysium</span><span className="dim">On HyperEVM: {fmt(bal)} HYPE</span></span>
-        <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="HYPE amount" /><b>HYPE</b></span>
-      </label>
-      <div className="e-quick">
-        {["0.5", "1", "5"].map((v) => <button key={v} type="button" onClick={() => setVal(v)}>{v}</button>)}
-        <button type="button" disabled={max === 0n} onClick={() => setVal(formatUnits(max, 18))}>Max</button>
+      <div className="e-step">
+        <span className="e-stepn">1</span>
+        <div>
+          <b>Send HYPE to your address</b>
+          <p>On Binance or another exchange: <b>Withdraw → HYPE</b>, choose the network <b>HYPE EVM</b> (HyperEVM) and paste your address.</p>
+        </div>
       </div>
-      <button type="button" className="e-go" disabled={busy || amount <= 0n || (bal != null && amount > max)} onClick={go}>
-        {busy ? "Bridging…" : bal != null && amount > max && amount > 0n ? "Not enough HYPE on HyperEVM" : "Bridge to Elysium"}
+      <Address0 address={me} />
+      <div className="e-step">
+        <span className="e-stepn">2</span>
+        <div>
+          <b>Move it to Elysium</b>
+          <p>One tap when it arrives. It lands on Elysium in about a minute.</p>
+        </div>
+      </div>
+      {arrived ? (
+        <div className="e-arrived">
+          <span className="e-dot" />
+          <div><b className="num">{fmt(bal)} HYPE</b> arrived on HyperEVM</div>
+        </div>
+      ) : (
+        <div className="e-waiting"><span className="e-spin" />Waiting for your HYPE on HyperEVM… this updates by itself.</div>
+      )}
+      {custom && (
+        <label className="e-amt">
+          <span className="e-amt-top"><span>Amount</span><span className="dim">Max {fmt(max)} HYPE</span></span>
+          <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="HYPE amount" autoFocus /><b>HYPE</b></span>
+        </label>
+      )}
+      <button type="button" className="e-go" disabled={busy || !arrived || amount <= 0n || amount > max} onClick={go}>
+        {busy ? "Moving…" : !arrived ? "Move to Elysium" : custom ? `Move ${val || "0"} HYPE to Elysium` : `Move ${fmt(max)} HYPE to Elysium`}
       </button>
+      {arrived && <button type="button" className="e-link-btn" onClick={() => setCustom(!custom)}>{custom ? "Move everything instead" : "Move a different amount"}</button>}
       {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
-      <p className="e-note">Uses Elysium&apos;s official bridge. Keep about 0.01 HYPE on HyperEVM for the network fee.</p>
+      <p className="e-note">Uses Elysium&apos;s official bridge. About 0.01 HYPE stays on HyperEVM for the network fee.</p>
     </div>
   );
 }
@@ -362,7 +385,8 @@ function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
 export function BridgePage() {
   const w = useWallet();
   const me = w.address as Address | null;
-  const [tab, setTab] = useState<"hype" | "usdc" | "out">("hype");
+  const q = useSearchParams().get("tab");
+  const [tab, setTab] = useState<"hype" | "usdc" | "out">(q === "usdc" || q === "out" ? q : "hype");
   const [tick, setTick] = useState(0);
   const elyBal = usePoll(async () => (me ? ely().getBalance({ address: me }) : null), 5000, [me, tick]);
   return (
@@ -370,8 +394,8 @@ export function BridgePage() {
       <section className="e-hero">
         <div>
           <span className="e-eyebrow">Bridge</span>
-          <h1>Add HYPE to Elysium</h1>
-          <p>Trading and creating on Elysium is paid in HYPE. Bring HYPE from HyperEVM, or USDC from Base.</p>
+          <h1>Add money</h1>
+          <p>Everything on Elysium is paid in HYPE. Send HYPE from an exchange, or USDC from Base, and move it here in one tap.</p>
         </div>
         {me && <div className="e-stats" style={{ gridTemplateColumns: "auto" }}><div className="e-stat"><span>Your HYPE on Elysium</span><b>{elyBal == null ? "—" : fromWei(elyBal).toLocaleString("en-US", { maximumFractionDigits: 4 })}</b></div></div>}
       </section>

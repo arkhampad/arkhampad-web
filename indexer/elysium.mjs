@@ -379,6 +379,7 @@ export function makeElysium(cfg, store) {
   }
 
   let statsAt = 0;
+  let pageStatsAt = 0;
   async function loop() {
     log(`elysium: indexing every HYPE pair (launcher ${launcher || "not set"})`);
     for (;;) {
@@ -389,6 +390,10 @@ export function makeElysium(cfg, store) {
           statsAt = Date.now();
           await hypeUsd();
           await store.refreshStats();
+        }
+        if (store.saveStats && Date.now() - pageStatsAt > 5 * 60_000) {
+          pageStatsAt = Date.now();
+          await store.saveStats().catch((e) => log(`elysium: stats ${e.message}`));
         }
         if (n > 500) log(`elysium: ${n} blocks, ${store.tokens().size} tokens`);
       } catch (e) {

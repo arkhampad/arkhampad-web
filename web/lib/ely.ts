@@ -91,10 +91,14 @@ export function usePoll<T>(load: () => Promise<T>, ms: number, deps: unknown[] =
       if (alive.current) t = setTimeout(tick, ms);
     };
     const tick = () => (document.visibilityState === "visible" ? run() : (t = setTimeout(tick, 1500)));
+    // a trade or deposit on this page: read again at once, then once more after the indexer has it
+    const now = () => { clearTimeout(t); run(); setTimeout(() => { if (alive.current) { clearTimeout(t); run(); } }, 2500); };
+    window.addEventListener("ap:balance", now);
     run();
     return () => {
       alive.current = false;
       clearTimeout(t);
+      window.removeEventListener("ap:balance", now);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -181,4 +185,21 @@ export async function fetchMyTrades(trader: string, limit = 40): Promise<ETrade[
   if (MOCK) return [];
   const { data } = await db().from("ely_trades").select("id,token,tx,log_index,at,side,hype,amount,price_hype,trader").eq("trader", trader.toLowerCase()).order("at", { ascending: false }).limit(limit);
   return (data ?? []) as ETrade[];
+}
+
+// ---------------------------------------------------------------- network stats (Stats page)
+export type EStats = {
+  updated: string;
+  tokens: number; tokens_ours: number; holders: number;
+  trades_all: number; trades_24h: number; traders_24h: number; traders_all: number;
+  vol_all: number; vol_24h: number; vol_7d: number;
+  ours: { coins: number; vol_all: number; vol_24h: number; creator_fees: number };
+  daily: { d: string; vol: number; trades: number; traders: number; ours_vol: number; new_tokens: number; new_ours: number }[];
+  hourly: { h: string; vol: number; trades: number }[];
+  top: { address: string; name: string; symbol: string; image: string | null; pad: string; ours: boolean; vol_7d: number; trades_7d: number }[];
+};
+export async function fetchStats(): Promise<EStats | null> {
+  if (MOCK) return ((await mock()) as unknown as { stats?: EStats }).stats ?? null;
+  const { data } = await db().from("ely_meta").select("v").eq("k", "stats").maybeSingle();
+  return (data?.v as EStats) ?? null;
 }

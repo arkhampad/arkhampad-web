@@ -9,7 +9,7 @@ import { ElyShell } from "./shell";
 import { Soon } from "@/components/soon";
 
 const LIVE = process.env.NEXT_PUBLIC_ELY_LIVE === "1";
-const PAGES = ["/t", "/create", "/bridge", "/you", "/learn", "/terms", "/privacy"];
+const PAGES = ["/t", "/create", "/bridge", "/you", "/stats", "/learn", "/terms", "/privacy"];
 const known = (p: string) => p === "/" || PAGES.some((x) => p === x || p.startsWith(`${x}/`));
 
 function Away() {

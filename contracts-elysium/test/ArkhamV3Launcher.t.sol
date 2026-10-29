@@ -176,14 +176,14 @@ contract ArkhamV3LauncherTest is Test {
         uint256 back = _sell(coin, got);
         assertGt(back, 0);
         assertLt(back, 10 ether); // fee + price impact
-        uint256 tBefore = whype.balanceOf(treasury);
-        uint256 cBefore = whype.balanceOf(creator);
+        uint256 tBefore = treasury.balance;
+        uint256 cBefore = creator.balance;
         (uint256 coinFees, uint256 nativeFees) = launcher.collect(coin);
         // 1% of 1 + 10 HYPE bought in native, 1% of the sold coins in coin
         assertApproxEqAbs(nativeFees, 0.11 ether, 0.001 ether);
         assertGt(coinFees, 0);
-        uint256 toCreator = whype.balanceOf(creator) - cBefore;
-        uint256 toTreasury = whype.balanceOf(treasury) - tBefore;
+        uint256 toCreator = creator.balance - cBefore;
+        uint256 toTreasury = treasury.balance - tBefore;
         assertEq(toCreator + toTreasury, nativeFees);
         assertEq(toCreator, (nativeFees * 3_000) / 10_000);
         assertGt(IERC20(coin).balanceOf(treasury), 0);

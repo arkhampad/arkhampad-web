@@ -8,7 +8,7 @@ import { useRef, useState } from "react";
 import { decodeEventLog, encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { fetchHypeUsd, money, usePoll } from "@/lib/ely";
-import { ELY_CHAIN, ely, fromWei, hypeBalance, toWei } from "@/lib/elytrade";
+import { ELY_CHAIN, ely, fromWei, hypeBalance, rememberToken, toWei } from "@/lib/elytrade";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
 const START_MC = 60; // HYPE, whole supply
@@ -55,6 +55,10 @@ export function CreatePage() {
   const [buy, setBuy] = useState("");
   const [img, setImg] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
+  const [picture, setPicture] = useState("");
+  const [thinking, setThinking] = useState(false);
+  const [left, setLeft] = useState<number | null>(null);
+  const [aiMsg, setAiMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -72,19 +76,41 @@ export function CreatePage() {
     try { setImg(await shrink(url)); setMsg(null); } catch { setMsg("Couldn't read that image."); } finally { URL.revokeObjectURL(url); }
   }
 
-  async function draw() {
-    if (!name.trim()) return setMsg("Give your coin a name first, then we can draw it.");
+  async function draw(pic = picture, nm = name, ds = desc) {
     setDrawing(true);
-    setMsg(null);
+    setAiMsg(null);
     try {
-      const res = await fetch("/api/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, description: desc }) });
-      const j = await res.json();
-      if (!res.ok || !j.dataUrl) throw new Error(j.error || "Couldn't draw an image right now.");
+      const res = await fetch("/api/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: nm || "Elysium meme", description: ds, picture: pic }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.dataUrl) throw new Error(j.error || "Couldn't draw an image right now. Try again.");
       setImg(await shrink(j.dataUrl));
     } catch (e) {
-      setMsg((e as Error).message || "Couldn't draw an image right now.");
+      setAiMsg((e as Error).message || "Couldn't draw an image right now. Try again.");
     } finally {
       setDrawing(false);
+    }
+  }
+
+  /** A whole coin (name, ticker, description and picture) in the style of what trends on Elysium now. */
+  async function idea() {
+    setThinking(true);
+    setAiMsg(null);
+    try {
+      const res = await fetch("/api/ely-idea", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: me ?? "" }) });
+      const j = await res.json().catch(() => ({}));
+      if (typeof j.left === "number") setLeft(j.left);
+      if (!res.ok || !j.name) throw new Error(j.error || "AI is busy right now. Try again in a few seconds.");
+      setName(j.name);
+      setSym(j.ticker);
+      setDesc(j.description);
+      setPicture(j.picture || "");
+      setImg(null);
+      setThinking(false);
+      await draw(j.picture || "", j.name, j.description);
+    } catch (e) {
+      setAiMsg((e as Error).message);
+    } finally {
+      setThinking(false);
     }
   }
 
@@ -120,6 +146,7 @@ export function CreatePage() {
         } catch {}
       }
       if (!coin) throw new Error("no coin");
+      rememberToken(coin);
       r.push(`/t/?a=${coin.toLowerCase()}&new=1`);
     } catch (e) {
       const m = String((e as Error)?.message ?? "");
@@ -149,20 +176,28 @@ export function CreatePage() {
       <div className="e-bridge">
         <section className="e-panel">
           <div className="e-trade">
+            <button type="button" className="e-idea" onClick={idea} disabled={thinking || drawing}>
+              <span className="e-spark" aria-hidden="true">✦</span>
+              <span>
+                <b>{thinking ? "Reading Elysium trends…" : drawing && !img ? "Drawing your coin…" : "Give me a coin idea"}</b>
+                <small>AI looks at what's trending on Elysium and fills everything in{left != null ? ` · ${left} left today` : ""}</small>
+              </span>
+            </button>
             <div className="e-imgrow">
               <button type="button" className="e-imgbox" onClick={() => file.current?.click()} aria-label="Upload a picture">
                 {img ? <img src={img} alt="Coin picture" /> : <span>Add picture</span>}
               </button>
               <div className="e-imgbtns">
                 <button type="button" className="e-btn" onClick={() => file.current?.click()}>Upload</button>
-                <button type="button" className="e-btn" onClick={draw} disabled={drawing}>{drawing ? "Drawing…" : "Draw with AI"}</button>
+                <button type="button" className="e-btn" onClick={() => draw()} disabled={drawing}>{drawing ? "Drawing…" : "Draw with AI"}</button>
                 <span className="e-note">Square works best. PNG, JPG, WebP or GIF.</span>
               </div>
               <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => pick(e.target.files?.[0])} />
             </div>
-            <label className="e-field"><span>Name</span><input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="Elysium Cat" autoComplete="off" /></label>
-            <label className="e-field"><span>Ticker</span><input value={sym} maxLength={10} onChange={(e) => setSym(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())} placeholder="ECAT" autoComplete="off" autoCapitalize="characters" /></label>
-            <label className="e-field"><span>Description <i className="dim">optional</i></span><textarea value={desc} maxLength={400} rows={3} onChange={(e) => setDesc(e.target.value)} placeholder="What is your coin about?" /></label>
+            {aiMsg && <div className="e-msg bad" role="status">{aiMsg}</div>}
+            <label className="e-field"><span>Name</span><input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="Moon Otter" autoComplete="off" /></label>
+            <label className="e-field"><span>Ticker</span><input value={sym} maxLength={10} onChange={(e) => setSym(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())} placeholder="OTTER" autoComplete="off" autoCapitalize="characters" /></label>
+            <label className="e-field"><span>Description <i className="dim">optional</i></span><textarea value={desc} maxLength={400} rows={3} onChange={(e) => { setDesc(e.target.value); setPicture(""); }} placeholder="What is your coin about?" /></label>
             <details className="e-more-links">
               <summary>Links <i className="dim">optional</i></summary>
               <label className="e-field"><span>X</span><input value={x} onChange={(e) => setX(e.target.value)} placeholder="https://x.com/yourcoin" inputMode="url" autoCapitalize="off" /></label>

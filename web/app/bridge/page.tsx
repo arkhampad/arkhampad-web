@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { BridgePage } from "@/components/ely/bridge";
 
 export const metadata: Metadata = {
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <BridgePage />;
+  return (
+    <Suspense>
+      <BridgePage />
+    </Suspense>
+  );
 }

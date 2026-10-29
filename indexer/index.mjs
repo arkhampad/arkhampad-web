@@ -430,6 +430,10 @@ async function elysiumLoop() {
   if (!launcher) {
     try { launcher = JSON.parse(fs.readFileSync(new URL("../contracts-elysium/deployments/99901.json", import.meta.url), "utf8")).launcher || ""; } catch {}
   }
+  const key = (process.env.KEEPER_KEY || "").trim();
+  if (key && launcher) {
+    import("./elykeeper.mjs").then(({ keeperLoop }) => keeperLoop({ rpc, launcher, key, pool, log })).catch((e) => log(`keeper: ${e.message}`));
+  }
   for (;;) {
     try {
       const store = await makePgStore(pool);

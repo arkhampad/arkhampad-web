@@ -14,6 +14,8 @@ type WalletCtx = {
   ready: boolean;
   signedIn: boolean;
   address: Address | null;
+  /** The email (or Google email) used to log in, when there is one. */
+  email?: string | null;
   login: () => void;
   logout: () => void;
   signer: Signer | null;
@@ -104,11 +106,12 @@ function LazyPrivy({ children }: { children: React.ReactNode }) {
     else setTimeout(() => setLoad(true), 300);
   }, []);
   // only update when something the page shows actually changed
-  const onState = useCallback((s: AuthState) => setAuth((cur) => (cur.ready === s.ready && cur.address === s.address && cur.signer === s.signer ? cur : s)), []);
+  const onState = useCallback((s: AuthState) => setAuth((cur) => (cur.ready === s.ready && cur.address === s.address && cur.signer === s.signer && cur.email === s.email ? cur : s)), []);
   const value = useMemo(() => ({
     ready: auth.ready,
     signedIn: !!auth.address,
     address: auth.address,
+    email: auth.email ?? null,
     signer: auth.signer,
     login: () => { setLoad(true); if (auth.ready) auth.login(); else setWantLogin((n) => n + 1); },
     logout: auth.logout,

@@ -26,7 +26,7 @@ const arc = defineChain({
   rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_ARC_RPC || "https://arc.drpc.org"] } },
 });
 
-export type AuthState = { ready: boolean; address: Address | null; signer: Signer | null; login: () => void; logout: () => void };
+export type AuthState = { ready: boolean; address: Address | null; signer: Signer | null; login: () => void; logout: () => void; email?: string | null };
 
 function domainFields(d: Record<string, unknown>) {
   const all: [string, string][] = [["name", "string"], ["version", "string"], ["chainId", "uint256"], ["verifyingContract", "address"]];
@@ -34,7 +34,8 @@ function domainFields(d: Record<string, unknown>) {
 }
 
 function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantLogin: number }) {
-  const { ready, authenticated, login, logout } = usePrivy();
+  const { ready, authenticated, login, logout, user } = usePrivy();
+  const email = authenticated ? (user?.email?.address ?? user?.google?.email ?? null) : null;
   const { wallets } = useWallets();
   const { signTypedData } = useSignTypedData();
   const { sendTransaction } = useSendTransaction();
@@ -87,7 +88,7 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
   loginRef.current = login;
   logoutRef.current = logout;
   const stable = useMemo(() => ({ login: () => loginRef.current(), logout: () => { logoutRef.current(); } }), []);
-  useEffect(() => { onState({ ready, address, signer, ...stable }); }, [ready, address, signer, stable, onState]);
+  useEffect(() => { onState({ ready, address, signer, email, ...stable }); }, [ready, address, signer, email, stable, onState]);
   const asked = useRef(0);
   useEffect(() => {
     if (wantLogin && wantLogin !== asked.current && ready && !authenticated) { asked.current = wantLogin; loginRef.current(); }
@@ -97,7 +98,7 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
 
 const CONFIG = {
   // Telegram appears once its bot is set up in Privy (Cloudflare env NEXT_PUBLIC_TELEGRAM_LOGIN=1)
-  loginMethods: (process.env.NEXT_PUBLIC_TELEGRAM_LOGIN === "1" ? ["google", "twitter", "telegram", "email", "wallet"] : ["google", "twitter", "email", "wallet"]) as ("google" | "twitter" | "telegram" | "email" | "wallet")[],
+  loginMethods: (process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? ["email", "google", "wallet"] : process.env.NEXT_PUBLIC_TELEGRAM_LOGIN === "1" ? ["google", "twitter", "telegram", "email", "wallet"] : ["google", "twitter", "email", "wallet"]) as ("google" | "twitter" | "telegram" | "email" | "wallet")[],
   appearance: { theme: "light" as const, accentColor: "#0A9A8D" as `#${string}`, logo: "/icon-192.png", landingHeader: "Sign in to ArkhamPad", showWalletLoginFirst: false },
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" as const }, showWalletUIs: false },
   supportedChains: process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? [elysium, hyperevm, base] : [base, robinhood, bsc, arc, baseSepolia, robinhoodTestnet],

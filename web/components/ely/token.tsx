@@ -7,6 +7,7 @@ import type { Address } from "viem";
 import { useWallet } from "@/components/wallet";
 import { TokenAvatar, PadTag } from "./shell";
 import { EChart } from "./chart";
+import { Confetti } from "@/components/celebrate";
 import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
 import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, quote, sell, toWei, tokenBalance, TradeFail } from "@/lib/elytrade";
 
@@ -289,13 +290,21 @@ export function TokenPage() {
       </div>
       {fresh && (
         <div className="e-sheet e-center" role="dialog" aria-modal="true" aria-label="Your coin is live" onClick={(e) => { if (e.target === e.currentTarget) setFresh(false); }}>
+          <Confetti />
+          <Confetti />
           <div className="e-sheet-in e-live-card">
-            <TokenAvatar t={t} size={84} />
-            <h2>{t.symbol} is live on Elysium</h2>
-            <p className="muted">Your coin is trading now. Share it: the first hour decides most launches. You earn 30% of the fees on every trade.</p>
-            <a className="e-go" style={{ display: "grid", placeItems: "center", textDecoration: "none" }} href={`https://x.com/intent/post?text=${encodeURIComponent(`I just launched $${t.symbol} on Elysium. Liquidity locked forever, trading live now on @Arkhampad`)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer">Share on X</a>
+            <span className="e-live-ring"><TokenAvatar t={t} size={92} /></span>
+            <span className="e-eyebrow"><i className="e-dot" />Live on Elysium</span>
+            <h2>{t.name} <span className="dim">${t.symbol}</span></h2>
+            <p className="muted">Your coin is trading now. Share it while it&apos;s fresh: the first hour decides most launches. You earn 30% of the fees on every trade.</p>
+            <div className="e-ca">
+              <span className="dim">CA</span>
+              <code className="num">{t.address}</code>
+              <Copy text={t.address} label="Copy CA" />
+            </div>
+            <a className="e-go" style={{ display: "grid", placeItems: "center", textDecoration: "none" }} href={`https://x.com/intent/post?text=${encodeURIComponent(`I just launched $${t.symbol} on Elysium. Liquidity locked forever, trading live now on @Arkhampad\n\nCA: ${t.address}`)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer">Share on X</a>
             <div className="e-cta-btns" style={{ justifyContent: "center" }}>
-              <Copy text={shareUrl} label="Copy link" />
+              <Copy text={`$${t.symbol} is live on Elysium\nCA: ${t.address}\n${shareUrl}`} label="Copy for Telegram" />
               <button type="button" className="e-copy" onClick={() => { setFresh(false); history.replaceState(null, "", `/t/?a=${t.address}`); }}>Go to my coin</button>
             </div>
           </div>

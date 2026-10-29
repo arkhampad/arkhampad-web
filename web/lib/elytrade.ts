@@ -109,7 +109,9 @@ export async function buy(signer: Signer, t: EToken, hypeIn: bigint, minOut: big
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
   try {
     const data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "buy", args: [p, minOut, deadline] });
-    return await wait(await signer.sendTx(ELY_CHAIN, { to: ROUTER, data, value: hypeIn }));
+    const h = await wait(await signer.sendTx(ELY_CHAIN, { to: ROUTER, data, value: hypeIn }));
+    rememberToken(t.address);
+    return h;
   } catch (e) {
     throw e instanceof TradeFail ? e : new TradeFail(nice(e));
   }
@@ -127,7 +129,9 @@ export async function sell(signer: Signer, t: EToken, amountIn: bigint, minOut: 
     onStep?.("Selling…");
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
     const data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "sell", args: [p, amountIn, minOut, deadline] });
-    return await wait(await signer.sendTx(ELY_CHAIN, { to: ROUTER, data }));
+    const h = await wait(await signer.sendTx(ELY_CHAIN, { to: ROUTER, data }));
+    rememberToken(t.address);
+    return h;
   } catch (e) {
     throw e instanceof TradeFail ? e : new TradeFail(nice(e));
   }
@@ -140,3 +144,22 @@ export const toWei = (v: string, decimals = 18): bigint => {
   return BigInt(a || "0") * 10n ** BigInt(decimals) + BigInt((b + "0".repeat(decimals)).slice(0, decimals) || "0");
 };
 export const fromWei = (v: bigint, decimals = 18) => Number(v) / 10 ** decimals;
+
+// ---------------------------------------------------------------- instant balances
+/** Tokens this browser just bought or created: shown on "You" right away, before the indexer catches up. */
+export function rememberToken(token: string) {
+  try {
+    const k = "ap_recent_tokens";
+    const list: string[] = JSON.parse(localStorage.getItem(k) || "[]");
+    const next = [token.toLowerCase(), ...list.filter((x) => x !== token.toLowerCase())].slice(0, 40);
+    localStorage.setItem(k, JSON.stringify(next));
+  } catch {}
+  balanceChanged();
+}
+export function recentTokens(): string[] {
+  try { return JSON.parse(localStorage.getItem("ap_recent_tokens") || "[]"); } catch { return []; }
+}
+/** Tells every balance on screen to read again now (after a trade, launch, deposit or withdrawal). */
+export function balanceChanged() {
+  try { window.dispatchEvent(new Event("ap:balance")); } catch {}
+}

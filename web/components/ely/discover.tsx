@@ -39,31 +39,36 @@ function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
     <section>
       <div className="e-sec-h"><h2>Hot right now</h2><span className="dim" style={{ fontSize: 12.5 }}>by 24h volume</span></div>
       <div className="e-hot">
-        {!tokens.length && Array.from({ length: 5 }, (_, i) => <div key={i} className="e-hc e-skel" style={{ height: 150 }} />)}
-        {top.map((t, i) => {
-          const tx = (t.buys24 || 0) + (t.sells24 || 0);
-          const buys = tx ? Math.round(((t.buys24 || 0) / tx) * 100) : 50;
-          return (
-            <Link key={t.address} href={`/t/?a=${t.address}`} className="e-hc">
-              <div className="e-hc-top">
-                <TokenAvatar t={t} size={40} />
-                <div>
-                  <b>{t.name}</b>
-                  <small><i className="e-side-badge" style={{ background: padColor(padOf(t)) }} />{padOf(t)} · {t.symbol}</small>
-                </div>
-                <span className="e-hc-rank">#{i + 1}</span>
-              </div>
-              <div className="e-hc-mid">
-                <strong>{money((t.mcap_hype ?? 0) * usd)}</strong>
-                <span className={`e-pill ${upDown(t.change24)}`}>{pct(t.change24)}</span>
-              </div>
-              <div className="e-press">
-                <span>Buys {buys}% · {money((t.vol24_hype || 0) * usd)} vol</span>
-                <span className="e-press-bar"><i style={{ width: `${buys}%` }} /></span>
-              </div>
-            </Link>
-          );
-        })}
+        {!tokens.length && <div className="e-hot-run">{Array.from({ length: 5 }, (_, i) => <div key={i} className="e-hc e-skel" style={{ height: 150 }} />)}</div>}
+        {!!top.length && (
+          <div className="e-hot-run on" style={{ ["--n" as string]: top.length }}>
+            {[...top, ...top].map((t, j) => {
+              const i = j % top.length;
+              const tx = (t.buys24 || 0) + (t.sells24 || 0);
+              const buys = tx ? Math.round(((t.buys24 || 0) / tx) * 100) : 50;
+              return (
+                <Link key={j} href={`/t/?a=${t.address}`} className="e-hc" aria-hidden={j >= top.length ? true : undefined} tabIndex={j >= top.length ? -1 : undefined}>
+                  <div className="e-hc-top">
+                    <TokenAvatar t={t} size={40} />
+                    <div>
+                      <b>{t.name}</b>
+                      <small><i className="e-side-badge" style={{ background: padColor(padOf(t)) }} />{padOf(t)} · {t.symbol}</small>
+                    </div>
+                    <span className="e-hc-rank">#{i + 1}</span>
+                  </div>
+                  <div className="e-hc-mid">
+                    <strong>{money((t.mcap_hype ?? 0) * usd)}</strong>
+                    <span className={`e-pill ${upDown(t.change24)}`}>{pct(t.change24)}</span>
+                  </div>
+                  <div className="e-press">
+                    <span>Buys {buys}% · {money((t.vol24_hype || 0) * usd)} vol</span>
+                    <span className="e-press-bar"><i style={{ width: `${buys}%` }} /></span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );
