@@ -1,0 +1,21 @@
+{
+ "rpcs": [
+  {
+   "url": "https://rpc.ronspad.fun",
+   "error": "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON"
+  },
+  {
+   "url": "https://rpc-elysium-mainnet.t.conduit.xyz",
+   "error": "eth_blockNumber: unauthorized rpc key. visit https://app.conduit.xyz/rpc-keys to create a new key"
+  },
+  {
+   "url": "https://rpc.elysium.kinetiq.xyz",
+   "error": "fetch failed"
+  },
+  {
+   "url": "https://mainnet-rpc.elysium.kinetiq.xyz",
+   "error": "fetch failed"
+  }
+ ],
+ "at": "2026-10-29T17:28:12.669Z"
+}
