@@ -4,7 +4,7 @@
 // Once open, only the Elysium pages are shown; any old address (markets, futures, terminal, old coin
 // pages...) goes to Discover.
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ElyShell } from "./shell";
 import { Soon } from "@/components/soon";
 
@@ -18,10 +18,25 @@ function Away() {
   return null;
 }
 
+/** Team preview before opening: visit /?preview=on once (and /?preview=off to stop), only in that browser. */
+function usePreview() {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(location.search).get("preview");
+      if (q === "on") localStorage.setItem("ap_preview", "1");
+      if (q === "off") localStorage.removeItem("ap_preview");
+      setOn(localStorage.getItem("ap_preview") === "1");
+    } catch {}
+  }, []);
+  return on;
+}
+
 export function Gate({ children }: { children: React.ReactNode }) {
   const path = usePathname() || "/";
+  const preview = usePreview();
   if (path.startsWith("/learn")) return <ElyShell>{children}</ElyShell>;
-  if (!LIVE) return <Soon />;
+  if (!LIVE && !preview) return <Soon />;
   if (!known(path)) return <ElyShell><Away /></ElyShell>;
   return <ElyShell>{children}</ElyShell>;
 }
