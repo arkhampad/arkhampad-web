@@ -18,6 +18,8 @@ import { makeOg } from "./og.mjs";
 import { announce as indexNow, coinPath, startIndexNow } from "./indexnow.mjs";
 import { makeFees } from "./fees.mjs";
 import { CLANKER_CHAINS, TOKEN_CREATED, clankerOf, lockersOf, mcAtTick } from "./clanker.mjs";
+import { makeElysium } from "./elysium.mjs";
+import { makePgStore } from "./elysium-pg.mjs";
 const relayer = process.env.ONCE ? null : makeRelayer();
 // ETH / BNB prices in dollars, for coins paired with the chain's own coin (Clanker launches)
 const prices = makeFees({ log: (...a) => console.log(new Date().toISOString(), ...a) });
@@ -419,5 +421,24 @@ if (relayer) {
   setTimeout(sweep, 90_000);
   setInterval(sweep, Number(process.env.SWEEP_MINUTES || 30) * 60_000);
 }
-await Promise.all(CHAINS.map(loop));
+// Elysium: every HYPE-paired token from every launchpad (db/025_elysium.sql). Env: ELYSIUM_RPC
+// (comma-separated for fallbacks), ELY_LAUNCHER (ArkhamPad's launcher, from contracts-elysium/deployments/99901.json).
+async function elysiumLoop() {
+  const rpc = (process.env.ELYSIUM_RPC || "").trim();
+  if (!rpc || process.env.ONCE) return;
+  let launcher = (process.env.ELY_LAUNCHER || "").trim();
+  if (!launcher) {
+    try { launcher = JSON.parse(fs.readFileSync(new URL("../contracts-elysium/deployments/99901.json", import.meta.url), "utf8")).launcher || ""; } catch {}
+  }
+  for (;;) {
+    try {
+      const store = await makePgStore(pool);
+      await makeElysium({ rpc, launcher, log }, store).loop();
+    } catch (e) {
+      log(`elysium: ${e.message}; restarting in 30 s`);
+      await sleep(30_000);
+    }
+  }
+}
+await Promise.all([...CHAINS.map(loop), elysiumLoop()]);
 if (process.env.ONCE) await pool.end();
