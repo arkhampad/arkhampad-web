@@ -1,0 +1,115 @@
+name: Elysium
+
+# Started by hand. status: deployer balances. bridge: moves HYPE from HyperEVM to Elysium through
+# Elysium's official bridge (Orbit Inbox). deploy: WHYPE + Uniswap v3 + ArkhamPad launcher + a smoke
+# coin on Elysium mainnet, addresses saved to contracts-elysium/deployments/99901.json.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "status, bridge or deploy"
+        required: true
+        default: status
+        type: choice
+        options: [status, bridge, deploy]
+      amount:
+        description: "bridge: HYPE to move to Elysium"
+        required: false
+        default: "0.3"
+      rpc:
+        description: "Elysium RPC"
+        required: false
+        default: "https://rpc-live.boxa.club"
+      start_mc:
+        description: "deploy: start market cap of a new coin, in HYPE"
+        required: false
+        default: "60"
+      smoke:
+        description: "deploy: smoke-test coin's first buy, in HYPE"
+        required: false
+        default: "0.002"
+
+permissions:
+  contents: write
+
+env:
+  HYPEREVM_RPC: https://rpc.hyperliquid.xyz/evm
+  INBOX: "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff"
+  OWNER: "0xfae9d1aBac2a9fd4Ab68af9fF346eA871E819158"
+  TREASURY: "0xd9D46EB26c9D753135683b7736FC2be097e7B099"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: contracts-elysium
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+
+      - name: Balances
+        env:
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_KEY }}
+          ELY_RPC: ${{ inputs.rpc }}
+        run: |
+          ME=$(cast wallet address --private-key "$PRIVATE_KEY")
+          echo "deployer $ME"
+          echo "HyperEVM: $(cast balance "$ME" --ether --rpc-url "$HYPEREVM_RPC") HYPE"
+          echo "Elysium:  $(cast balance "$ME" --ether --rpc-url "$ELY_RPC") HYPE"
+          echo "Elysium chain id: $(cast chain-id --rpc-url "$ELY_RPC")"
+
+      - name: Bridge HYPE to Elysium (official bridge)
+        if: inputs.action == 'bridge'
+        env:
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_KEY }}
+          AMOUNT: ${{ inputs.amount }}
+          ELY_RPC: ${{ inputs.rpc }}
+        run: |
+          ME=$(cast wallet address --private-key "$PRIVATE_KEY")
+          cast send "$INBOX" "depositEth()" --value "${AMOUNT}ether" --rpc-url "$HYPEREVM_RPC" --private-key "$PRIVATE_KEY"
+          echo "sent; waiting for it on Elysium"
+          for i in $(seq 1 30); do
+            sleep 10
+            echo "Elysium: $(cast balance "$ME" --ether --rpc-url "$ELY_RPC") HYPE"
+          done
+
+      - name: Libraries
+        if: inputs.action == 'deploy'
+        run: |
+          rm -rf lib && mkdir -p lib
+          git clone -q --depth 1 --branch v1.9.6 https://github.com/foundry-rs/forge-std lib/forge-std
+          git clone -q --depth 1 --branch v5.1.0 https://github.com/OpenZeppelin/openzeppelin-contracts lib/openzeppelin-contracts
+
+      - name: Tests
+        if: inputs.action == 'deploy'
+        run: forge test -vv
+
+      - name: Deploy on Elysium
+        if: inputs.action == 'deploy'
+        env:
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_KEY }}
+          ELY_RPC: ${{ inputs.rpc }}
+          IN_MC: ${{ inputs.start_mc }}
+          IN_SMOKE: ${{ inputs.smoke }}
+        run: |
+          export START_MC=$(cast to-wei "$IN_MC")
+          export SMOKE_BUY=$(cast to-wei "$IN_SMOKE")
+          export CREATOR_BPS=3000
+          forge script script/DeployAll.s.sol --rpc-url "$ELY_RPC" --broadcast --slow --gas-estimate-multiplier 300
+          cat deployments/99901.json
+
+      - name: Save addresses
+        if: inputs.action == 'deploy'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deployments/99901.json
+          git commit -m "Elysium mainnet deploy"
+          for i in 1 2 3 4 5; do git pull --rebase && git push && exit 0; sleep 10; done
+          exit 1
