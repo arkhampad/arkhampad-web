@@ -1,40 +1,52 @@
-"use client";
+import type { Metadata } from "next";
 import Link from "next/link";
-import { useState } from "react";
-import { catLabel, guides, type Cat } from "@/lib/guides";
-import { AskBox } from "@/components/ask";
+import { CATS, POSTS, type Cat } from "@/lib/learn";
+
+export const metadata: Metadata = {
+  title: "Learn Elysium: guides to trade and create tokens",
+  description: "Plain-English guides to Elysium, Kinetiq's Layer 2 for Hyperliquid: bridging HYPE, buying Elysium tokens, creating a coin, creator fees and staying safe.",
+  alternates: { canonical: "/learn/" },
+  openGraph: { title: "Learn Elysium · ArkhamPad", description: "Guides to trade and create tokens on Elysium.", url: "/learn/", type: "website" },
+};
+
+const ORDER: Cat[] = ["elysium", "money", "trade", "create", "safety"];
 
 export default function Learn() {
-  const [cat, setCat] = useState<"all" | Cat>("all");
-  const list = cat === "all" ? guides : guides.filter((g) => g.cat === cat);
+  const ld = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: "Learn Elysium",
+    url: "https://arkhampad.com/learn/",
+    hasPart: POSTS.map((p) => ({ "@type": "Article", headline: p.title, url: `https://arkhampad.com/learn/${p.slug}/` })),
+  };
   return (
-    <div className="wrap page" style={{ maxWidth: 1300 }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, paddingTop: 12 }}>
-        <h1 className="h-title" style={{ fontSize: "clamp(36px, 5vw, 52px)" }}>Learn</h1>
-        <p className="h-sub" style={{ maxWidth: 560, fontSize: 17 }}>Short, clear guides to create, trade and stay safe. Or just ask.</p>
-        <AskBox id="lq" />
-      </div>
-      <div className="hscroll" style={{ justifyContent: "flex-start", gap: 6 }}>
-        {([["all", "All"], ...Object.entries(catLabel)] as [("all" | Cat), string][]).map(([k, v]) => (
-          <button key={k} type="button" className={`chip sm${cat === k ? " on" : ""}`} onClick={() => setCat(k)}>
-            {v} <span style={{ opacity: 0.6, marginLeft: 4 }}>{k === "all" ? guides.length : guides.filter((g) => g.cat === k).length}</span>
-          </button>
-        ))}
-      </div>
-      <div className="grid4">
-        {list.map((g) => (
-          <Link key={g.slug} href={`/learn/${g.slug}/`} className="card" style={{ padding: 14, gap: 12 }}>
-            <span style={{ display: "block", height: 120, borderRadius: 14, background: `linear-gradient(135deg, ${g.c1}, ${g.c2})`, position: "relative", overflow: "hidden" }}>
-              <span style={{ position: "absolute", right: -20, bottom: -30, width: 140, height: 140, borderRadius: "50%", border: "18px solid rgba(255,255,255,0.18)" }} />
-              <span style={{ position: "absolute", left: 14, top: 12, padding: "4px 9px", borderRadius: 999, background: "rgba(10,11,16,0.55)", color: "#fff", fontSize: 11, fontWeight: 600 }}>{catLabel[g.cat]}</span>
-            </span>
-            <span style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.3 }}>{g.title}</span>
-            <span className="muted" style={{ fontSize: 13, lineHeight: 1.5 }}>{g.desc}</span>
-            <span className="mono" style={{ fontSize: 12, color: "var(--faint)" }}>{g.read} read</span>
-          </Link>
-        ))}
-      </div>
-      <p className="dim" style={{ fontSize: 14, textAlign: "center", margin: "8px 0 0" }}>Can&apos;t find it? <Link href="/help/" className="volt">Visit Help</Link>.</p>
-    </div>
+    <main className="e-in e-page e-learn">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />
+      <section className="e-hero">
+        <div>
+          <span className="e-eyebrow">Learn</span>
+          <h1>Guides to Elysium</h1>
+          <p>Everything you need to trade and create tokens on Elysium, explained in plain English.</p>
+        </div>
+      </section>
+      {ORDER.map((c) => {
+        const list = POSTS.filter((p) => p.cat === c);
+        if (!list.length) return null;
+        return (
+          <section key={c}>
+            <div className="e-sec-h"><h2>{CATS[c]}</h2><span className="dim" style={{ fontSize: 12.5 }}>{list.length} guides</span></div>
+            <div className="e-lgrid">
+              {list.map((p) => (
+                <Link key={p.slug} href={`/learn/${p.slug}/`} className="e-lcard">
+                  <b>{p.title}</b>
+                  <span>{p.desc}</span>
+                  <small className="dim">{p.read} read</small>
+                </Link>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </main>
   );
 }

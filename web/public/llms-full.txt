@@ -1,0 +1,1786 @@
+# ArkhamPad Learn: full text
+
+
+# What Is Elysium? Kinetiq's Hyperliquid Layer 2 Explained
+URL: https://arkhampad.com/learn/what-is-elysium/
+
+Elysium is a Layer 2 blockchain for the Hyperliquid ecosystem, built by Kinetiq, the team behind kHYPE liquid staking. It is an Arbitrum Orbit chain that settles to HyperEVM, runs standard EVM contracts and wallets, and uses HYPE as its gas token. It exists to give trading apps, launchpads and AMMs far more block space than HyperEVM offers.
+
+## What is Elysium in simple terms?
+
+Elysium is a separate blockchain that sits on top of HyperEVM, the smart contract chain of Hyperliquid. This kind of chain is called a Layer 2 (L2): it produces its own blocks and processes its own transactions, but it settles back to a base chain. For Elysium, that base chain is HyperEVM.
+
+Elysium was built by Kinetiq, the team known for kHYPE, a liquid staking token for HYPE. The chain is operated with Conduit, an infrastructure provider that runs rollup chains.
+
+For a user, Elysium feels like any other EVM network. You add it to a wallet, hold some HYPE for gas, and use apps. The difference is speed and room. Elysium is designed for very fast blocks, with a target of 100 to 200 milliseconds, and much higher throughput than its base layer.
+
+## Why does Hyperliquid need a Layer 2?
+
+Hyperliquid keeps HyperEVM blocks small on purpose. That choice keeps the base layer lean, but it limits how many transactions apps can push through at once.
+
+Some apps need a lot of block space. Trading interfaces, token launchpads and AMMs (automated market makers, the pools that let you swap one token for another) all create many transactions, and demand spikes when many people trade at the same moment.
+
+Elysium gives those apps their own lane. Activity on Elysium does not compete for space in HyperEVM blocks. HyperEVM only receives compact records that let the L2 settle. For a side-by-side comparison of the two chains, read [Elysium vs HyperEVM](https://arkhampad.com/learn/elysium-vs-hyperevm/).
+
+## How does Elysium work under the hood?
+
+Elysium is an Arbitrum Orbit chain. Orbit is the framework for launching chains on the Arbitrum Nitro stack and ArbOS, the operating layer of Arbitrum chains. Because the stack is standard, Elysium is fully EVM compatible. Solidity contracts deploy unchanged, and normal tools and wallets such as MetaMask work as they do elsewhere.
+
+Four parts are worth knowing:
+
+- **Sequencer.** One sequencer orders transactions at launch. It sorts them by priority fee, and there is no public mempool where pending transactions wait in view.
+- **Data availability.** An AnyTrust-style committee stores the full transaction data and posts compact certificates to HyperEVM. If the committee cannot do its job, the chain falls back to posting full data on HyperEVM.
+- **Validators.** Validators are permissioned at launch. Permissionless fraud proofs, through Arbitrum's BoLD system, are planned for later.
+- **Escape hatch.** If the sequencer ever refuses your transaction, you can force-include it through the delayed inbox on HyperEVM.
+
+The design is optimistic. The chain treats posted results as correct unless someone challenges them within a set window. That window is why withdrawals through the official bridge take time, as explained in [Elysium withdrawal time](https://arkhampad.com/learn/elysium-withdrawal-time/).
+
+## What token does Elysium use for gas?
+
+Elysium uses HYPE, Hyperliquid's native token, as its gas token. HYPE is bridged 1:1 from HyperEVM, so there is no new coin to buy just to pay fees. Gas costs on Elysium are very low, but you still need a small HYPE balance to send any transaction. [HYPE on Elysium](https://arkhampad.com/learn/hype-on-elysium/) covers how HYPE moves between chains and how it is used for trading.
+
+There is no Elysium token at this time, and there is no official points program. Be careful with anyone selling an "Elysium token" or promising points. One related fact: half of Elysium sequencer fees are earmarked for open-market buybacks of KNTQ, the Kinetiq token.
+
+## Elysium mainnet: chain ID and launch date
+
+The key network details:
+
+- Network: Elysium mainnet
+- Chain ID: 99901
+- Gas token: HYPE
+- Settles to: HyperEVM (chain ID 999)
+- Public mainnet launch date announced by Kinetiq: November 9, 2026
+
+Some features come after launch. Kinetiq plans an ArbOS upgrade about a month after mainnet that would let smart contracts read live HyperCore market data and route orders to HyperCore, the trading engine at the center of Hyperliquid. That upgrade is not live at launch. For a trader's view of the launch period, read [Elysium mainnet launch](https://arkhampad.com/learn/elysium-mainnet-launch/).
+
+## What can you do on Elysium?
+
+Most early activity on Elysium is trading and launching tokens. People swap HYPE for new tokens, many of them memecoins, and create tokens of their own.
+
+ArkhamPad is a launchpad and trading site built for this. Its [Discover page](https://arkhampad.com/) lists every HYPE-paired token on Elysium from every launchpad, with market cap, volume, holders and live trades in one place. You can trade any of them from a single token page.
+
+You can also launch your own coin. On ArkhamPad it takes about 30 seconds, and the whole supply goes into a pool with liquidity locked forever. The steps are in [create a token on Elysium](https://arkhampad.com/learn/create-a-token-on-elysium/).
+
+Memecoins are high risk. Prices can move sharply within minutes, and many tokens fall to near zero. Only use money you can afford to lose.
+
+## How do you get started on Elysium?
+
+1. Get a wallet. On ArkhamPad you can log in with email or Google and an embedded wallet is created for you, or you can connect a wallet you already use.
+2. Fund it. Bridge HYPE from HyperEVM on the [Bridge page](https://arkhampad.com/bridge/), or bring USDC from Base, which is converted to HYPE on the way in.
+3. Keep a little HYPE for gas, then explore tokens or launch one.
+
+Deposits arrive within seconds to a few minutes. Moving funds back to HyperEVM through the official bridge takes about 5.5 days, so plan your exits ahead of time.
+
+## FAQ
+
+**Is Elysium a Layer 2 or a sidechain?**
+Elysium is a Layer 2. It is an Arbitrum Orbit chain that settles to HyperEVM and uses an optimistic design: results are treated as valid unless challenged within a set period. Transaction data is held by an AnyTrust-style committee that posts compact certificates to HyperEVM, with a fallback to full data. Validators are permissioned at launch, and permissionless fraud proofs are planned for later.
+
+**Who built Elysium?**
+Elysium was built by Kinetiq, the team behind kHYPE, a liquid staking token for HYPE. The chain is operated with Conduit, an infrastructure provider for rollup chains. Elysium belongs to the Hyperliquid ecosystem and settles to HyperEVM, Hyperliquid's smart contract layer, rather than to Ethereum.
+
+**Does Elysium have its own token or airdrop?**
+No. There is no Elysium token and no official points program at this time. Gas is paid in HYPE. Half of Elysium sequencer fees are earmarked for open-market buybacks of KNTQ, Kinetiq's token. Treat any offer of an Elysium token, presale or points claim as a likely scam unless Kinetiq announces it through its official channels.
+
+**What is the Elysium chain ID?**
+The Elysium mainnet chain ID is 99901. HyperEVM, the chain Elysium settles to, uses chain ID 999. If you add Elysium to a wallet by hand, check the chain ID carefully and take network details only from official sources, because a wrong setting can point your wallet at a different network.
+
+**Can I use MetaMask on Elysium?**
+Yes. Elysium runs the standard Arbitrum Nitro stack, so it is fully EVM compatible. MetaMask and other common EVM wallets work once the network is added. You need some HYPE in the wallet to pay gas. If you prefer not to manage a wallet extension, ArkhamPad also supports email or Google login with an embedded wallet.
+
+
+# Elysium vs HyperEVM: What's the Difference?
+URL: https://arkhampad.com/learn/elysium-vs-hyperevm/
+
+HyperEVM is Hyperliquid's own smart contract chain (chain ID 999), and it keeps its blocks small on purpose. Elysium (chain ID 99901) is a Layer 2 built by Kinetiq that settles to HyperEVM and offers much more block space and very fast blocks for trading apps. Both are EVM chains and both use HYPE for gas.
+
+## What is HyperEVM?
+
+HyperEVM is the EVM smart contract layer of Hyperliquid. It is part of Hyperliquid's base network, alongside HyperCore, the trading engine behind Hyperliquid's markets. HYPE is its native token and its chain ID is 999.
+
+Hyperliquid keeps HyperEVM blocks small on purpose. That protects the base layer, but it caps how much activity apps can fit into each block. For most transfers and everyday contract calls this is fine. For apps that generate a constant stream of trades, it becomes a limit.
+
+## What is Elysium, and how does it relate to HyperEVM?
+
+Elysium is a Layer 2 built by Kinetiq. It runs its own blocks and settles to HyperEVM, the way many Ethereum Layer 2s settle to Ethereum. It is an Arbitrum Orbit chain, so it uses the standard Arbitrum Nitro stack and ArbOS. The full background is in [what is Elysium](https://arkhampad.com/learn/what-is-elysium/).
+
+The relationship is simple. HyperEVM is the base. Elysium is an extra lane built on top of it for busy trading apps, launchpads and AMMs.
+
+## Elysium vs HyperEVM: the key differences
+
+- **Layer.** HyperEVM is part of Hyperliquid's base network. Elysium is a Layer 2 that settles to HyperEVM.
+- **Block space.** HyperEVM blocks are small by design. Elysium is built for much more block space and high throughput.
+- **Block speed.** Elysium targets very fast blocks, in the range of 100 to 200 milliseconds.
+- **Gas token.** Both use HYPE. On Elysium it is HYPE bridged 1:1 from HyperEVM.
+- **Chain ID.** HyperEVM is 999. Elysium mainnet is 99901.
+- **Compatibility.** Both are EVM chains. Solidity contracts and common wallets work on both.
+- **Transaction ordering.** On Elysium at launch, a single sequencer orders transactions by priority fee, with no public mempool.
+- **Exits.** Leaving Elysium through the official bridge takes about 5.5 days. Moving into Elysium takes seconds to a few minutes.
+
+## Is Elysium as secure as HyperEVM?
+
+They use different trust models, and it helps to know where the trust sits.
+
+On Elysium, one sequencer orders transactions at launch. Validators are permissioned, which means only approved parties can post and check results for now. Permissionless fraud proofs, through Arbitrum's BoLD system, are planned for later, which would let anyone challenge an invalid result.
+
+Two protections exist from day one. First, if the sequencer refuses your transaction, you can force-include it through the delayed inbox on HyperEVM. Second, the data needed to rebuild the chain is stored by an AnyTrust-style committee that posts compact certificates to HyperEVM, with a fallback to posting full data on HyperEVM.
+
+The optimistic design also explains the exit delay. Withdrawals wait for a challenge period so any invalid result can be disputed first. The details are in [Elysium withdrawal time](https://arkhampad.com/learn/elysium-withdrawal-time/).
+
+## How do you move funds between HyperEVM and Elysium?
+
+Deposits go from HyperEVM to Elysium through the official Elysium bridge and arrive within seconds to a few minutes. Your HYPE arrives 1:1. You can start from the [Bridge page](https://arkhampad.com/bridge/), and the full walkthrough is in [bridge HYPE to Elysium](https://arkhampad.com/learn/bridge-hype-to-elysium/).
+
+If your funds are on Base instead, ArkhamPad also accepts USDC from Base and converts it to HYPE on the way in, so you land on Elysium ready to trade. See [buy Elysium tokens with USDC](https://arkhampad.com/learn/buy-elysium-tokens-with-usdc/).
+
+Withdrawals back to HyperEVM through the official bridge take about 5.5 days (around 132 hours) on mainnet. ArkhamPad is working on a faster exit route, but there is no date yet.
+
+## Which chain should you use?
+
+It depends on what you want to do.
+
+- **Trading new Elysium tokens or launching a coin:** Elysium. That is where those tokens and pools live, and the extra block space is built for frequent trading.
+- **Using apps that only exist on HyperEVM:** HyperEVM. Contracts and balances are separate per chain.
+- **Funds you may need quickly:** think before bridging. Getting in is fast. Getting out through the official bridge takes about 5.5 days.
+
+Fees are another factor. Gas on Elysium is very low, but trading costs include more than gas. [Elysium gas fees](https://arkhampad.com/learn/elysium-gas-fees/) breaks down what a trade really costs.
+
+## What changes after the planned HyperCore upgrade?
+
+Kinetiq plans an ArbOS upgrade about a month after Elysium mainnet. It would let smart contracts on Elysium read live HyperCore market data and route orders to HyperCore.
+
+That would connect Elysium more closely to the rest of Hyperliquid. Apps on Elysium could use live market data from HyperCore inside their contracts. This upgrade is not live at launch, so treat it as planned until it ships.
+
+## FAQ
+
+**Is Elysium faster than HyperEVM?**
+Elysium is designed for very fast blocks, with a target of 100 to 200 milliseconds, and for much higher throughput. HyperEVM keeps its blocks small on purpose. For apps that send many transactions, such as launchpads and trading sites, Elysium offers far more room. Keep in mind that the block time is a design target, and real conditions can vary.
+
+**Do I need a different token for gas on Elysium?**
+No. Both Elysium and HyperEVM use HYPE for gas. On Elysium, HYPE is bridged 1:1 from HyperEVM through the official bridge, so there is no separate gas token to buy. Keep a small amount of HYPE on Elysium at all times, because every transaction, including selling a token, needs some gas.
+
+**Can I use the same wallet address on Elysium and HyperEVM?**
+Yes. Both are EVM chains, so a normal EVM wallet address works on both. Balances are separate, though. HYPE on HyperEVM does not show up on Elysium until you bridge it, and tokens bought on Elysium stay on Elysium. Always check which network your wallet is connected to before you send funds.
+
+**Why does leaving Elysium take longer than entering it?**
+Elysium is an optimistic Layer 2. Deposits from HyperEVM arrive within seconds to a few minutes. Withdrawals through the official bridge must wait for a challenge period, currently about 5.5 days on mainnet, so that any invalid result can be disputed before funds are released on HyperEVM.
+
+**Are tokens on HyperEVM automatically available on Elysium?**
+No. Each chain has its own contracts and balances. A token deployed on HyperEVM does not appear on Elysium by itself, and a token launched on Elysium lives only on Elysium. To use HYPE on Elysium, you bridge it through the official Elysium bridge, where it arrives 1:1.
+
+
+# HYPE on Elysium: Gas, Trading and Bridging Explained
+URL: https://arkhampad.com/learn/hype-on-elysium/
+
+On Elysium, HYPE is both the gas token and the main trading currency. It is bridged 1:1 from HyperEVM through the official Elysium bridge, arrives within seconds to a few minutes, and pays for every transaction. Most Elysium tokens trade against HYPE, so HYPE is what you spend to buy and what you receive when you sell.
+
+## What is HYPE and why does Elysium use it?
+
+HYPE is the native token of Hyperliquid. It pays gas on HyperEVM, Hyperliquid's smart contract chain.
+
+Elysium, the Layer 2 built by Kinetiq on top of HyperEVM, uses HYPE as its gas token too. This was a deliberate choice: users do not need a new token just to pay fees. If you already hold HYPE, you already hold what Elysium needs.
+
+HYPE plays two roles on Elysium:
+
+- **Gas.** Every transaction pays a small network fee in HYPE.
+- **Trading currency.** Most tokens on Elysium are paired with HYPE, so prices and market caps are measured in HYPE.
+
+## How do you get HYPE onto Elysium?
+
+The standard route is the official Elysium bridge. You deposit HYPE on HyperEVM and the same amount becomes available on Elysium. It is a 1:1 bridge with no conversion. Deposits arrive within seconds to a few minutes.
+
+On ArkhamPad you can start this from the [Bridge page](https://arkhampad.com/bridge/). Each step is shown in [bridge HYPE to Elysium](https://arkhampad.com/learn/bridge-hype-to-elysium/).
+
+If you do not hold HYPE yet, there is a second route. ArkhamPad accepts USDC from Base and converts it to HYPE on the way in through a cross-chain route, so you arrive on Elysium holding HYPE. That process is covered in [buy Elysium tokens with USDC](https://arkhampad.com/learn/buy-elysium-tokens-with-usdc/).
+
+## How does HYPE pay for gas on Elysium?
+
+Every action on Elysium is a transaction: buying a token, selling, approving, creating a coin or bridging out. Each one pays a network fee in HYPE, taken from your balance.
+
+Gas costs on Elysium are very low, so this fee is usually a tiny part of a trade. It still matters in one situation. If you spend all your HYPE on a token, you will have nothing left to pay gas when you want to sell. Always leave a small reserve of HYPE in your wallet after each buy.
+
+At launch, one sequencer orders Elysium transactions by priority fee. In practice this means a higher priority fee can place a transaction earlier in the queue. For a full cost breakdown, see [Elysium gas fees](https://arkhampad.com/learn/elysium-gas-fees/).
+
+## Why do Elysium tokens trade against HYPE?
+
+Most tokens on Elysium are paired with HYPE. The Discover page on ArkhamPad lists every HYPE-paired token on Elysium, from every launchpad, with market cap, 24h change, volume and holders shown in HYPE terms.
+
+Under the hood, pools hold wrapped HYPE. Wrapped HYPE is a token-standard version of HYPE that smart contracts and pools can hold like any other token. When you trade through ArkhamPad you do not need to wrap anything yourself: you pay HYPE and receive tokens, or sell tokens and receive HYPE. The ArkhamPad router is a single smart contract that trades both Uniswap v3 style and v4 style pools, so one buy box works for any Elysium token.
+
+Pricing in HYPE has a side effect worth knowing. A token's dollar value depends on two things: its price in HYPE and the price of HYPE itself. If HYPE moves, the dollar value of your tokens moves too, even if the token's HYPE price stays flat.
+
+For step-by-step trading, read [how to buy Elysium tokens](https://arkhampad.com/learn/how-to-buy-elysium-tokens/).
+
+## Can you earn HYPE on Elysium?
+
+Creators on ArkhamPad can. Every ArkhamPad coin trades in a pool with a 1% fee on every trade. 30% of those trading fees go to the coin's creator, and 70% go to ArkhamPad. Fees are collected from the pool and paid out in HYPE and in the coin itself.
+
+How much a creator earns depends entirely on trading volume, and many coins see little volume after launch. There is no guaranteed income. The details are in [creator fees](https://arkhampad.com/learn/earn-creator-fees/).
+
+## Can you use HYPE on Elysium without a browser wallet?
+
+Yes. ArkhamPad lets you log in with email or Google. An embedded wallet is created for you, so there is no seed phrase to write down to get started. Trades from the embedded wallet are signed without pop-ups.
+
+The wallet still holds real HYPE on Elysium and still needs HYPE for gas. You fund it the same ways: bridge HYPE from HyperEVM or bring USDC from Base. More on this in [trade with an email login](https://arkhampad.com/learn/trade-crypto-with-email-login/).
+
+## How do you move HYPE back to HyperEVM?
+
+You withdraw through the same official Elysium bridge. Withdrawals are optimistic, which means they finalize only after a challenge period. On Elysium mainnet that period is currently about 5.5 days, or around 132 hours.
+
+Your HYPE is not lost during that time. It is waiting for the challenge window to close before it is released on HyperEVM. A faster exit route is being worked on at ArkhamPad, but there is no date yet. If you might need your HYPE on HyperEVM soon, bridge only what you plan to use on Elysium.
+
+## FAQ
+
+**Is HYPE on Elysium the same as HYPE on HyperEVM?**
+It is the same asset, moved 1:1 through the official Elysium bridge. HYPE you deposit on HyperEVM becomes available on Elysium in the same amount. You can send it back to HyperEVM through the same bridge, although withdrawals take about 5.5 days because of the optimistic challenge period.
+
+**How much HYPE do I need for gas on Elysium?**
+Only a small amount. Gas costs on Elysium are very low, but every transaction needs some HYPE, including selling a token or bridging out. A good habit is to keep a small HYPE reserve in your wallet after every buy, so you are never stuck holding tokens you cannot sell for lack of gas.
+
+**Can I pay with USDC instead of HYPE?**
+On ArkhamPad, yes. You can bring USDC from Base, and it is converted to HYPE on the way in through a cross-chain route. You arrive on Elysium holding HYPE, which you then use for gas and trading. Tokens on Elysium are still priced and traded against HYPE.
+
+**What is wrapped HYPE?**
+Wrapped HYPE is a token-standard version of HYPE that smart contracts and liquidity pools can hold like any other token. Pools on Elysium hold wrapped HYPE. When you trade through ArkhamPad, you pay plain HYPE and receive tokens, or sell tokens and receive plain HYPE, so you do not need to wrap or unwrap it yourself.
+
+**Why are Elysium token prices shown in HYPE?**
+Most Elysium tokens are paired with HYPE in their pools, so HYPE is the natural unit for price and market cap. For example, ArkhamPad coins start at a market cap of 60 HYPE. The dollar value of any token also depends on the price of HYPE, so it can change even when the token's HYPE price does not.
+
+
+# Elysium Mainnet Launch: What Traders Should Know
+URL: https://arkhampad.com/learn/elysium-mainnet-launch/
+
+Kinetiq announced November 9, 2026 as the public mainnet launch date for Elysium, its Layer 2 for Hyperliquid (chain ID 99901). At launch, gas is paid in HYPE, one sequencer orders transactions, and official bridge withdrawals take about 5.5 days. An upgrade that connects Elysium contracts to HyperCore market data is planned for about a month later.
+
+## When does Elysium mainnet launch?
+
+Kinetiq, the team behind kHYPE and the builder of Elysium, announced November 9, 2026 as the public mainnet launch date. Elysium is a Layer 2 that settles to HyperEVM, Hyperliquid's smart contract chain. If you are new to it, start with [what is Elysium](https://arkhampad.com/learn/what-is-elysium/).
+
+The core mainnet details:
+
+- Chain ID: 99901
+- Gas token: HYPE, bridged 1:1 from HyperEVM
+- Settles to: HyperEVM (chain ID 999)
+- Compatibility: full EVM, so standard wallets and Solidity contracts work
+
+## What is live at launch, and what comes later?
+
+Live at launch:
+
+- Fast blocks, with a design target of 100 to 200 milliseconds, and much more block space than HyperEVM.
+- HYPE as gas, with very low gas costs.
+- The official Elysium bridge. Deposits arrive within seconds to a few minutes. Withdrawals take about 5.5 days.
+- A single sequencer that orders transactions by priority fee, with no public mempool.
+- The delayed inbox on HyperEVM, which lets users force-include a transaction if the sequencer censors it.
+
+Planned for later:
+
+- An ArbOS upgrade about a month after mainnet that would let smart contracts read live HyperCore market data and route orders to HyperCore.
+- Permissionless fraud proofs through Arbitrum's BoLD system. Validators are permissioned at launch.
+
+Treat planned items as plans. Build your expectations around what is live.
+
+## Is there an Elysium airdrop or token?
+
+No. There is no Elysium token and no official points program at this time. Gas is paid in HYPE.
+
+Launches attract scammers. Expect fake "Elysium token" sales, fake claim pages and messages asking you to connect a wallet for an airdrop. Do not sign anything from a link you did not find through official channels.
+
+One fee detail is public: half of Elysium sequencer fees are earmarked for open-market buybacks of KNTQ, the Kinetiq token.
+
+## How should traders prepare for Elysium mainnet?
+
+1. **Fund your wallet early.** Deposits arrive quickly, but you do not want to be bridging while prices move. On ArkhamPad you can bridge HYPE from HyperEVM or bring USDC from Base.
+2. **Keep HYPE for gas.** Never spend your full balance on a token. You need gas to sell.
+3. **Plan your exit.** Withdrawals to HyperEVM through the official bridge take about 5.5 days. Only bridge what you are ready to keep on Elysium for a while.
+4. **Pick a slippage setting on purpose.** ArkhamPad offers 1%, 3%, 5% (the default) or 10%. The minimum received amount protects you if the price moves before your trade lands.
+5. **Check contract addresses.** Many tokens can share the same name. On the [Discover page](https://arkhampad.com/) you can search by name or contract address, and each token page shows the address and creator.
+
+## What happens to new tokens around launch?
+
+Expect a lot of new tokens in a short time, and most of them will be memecoins. Memecoins are highly speculative. Prices can rise and collapse within minutes, and many end close to zero. No launch period guarantees profits.
+
+ArkhamPad's Discover page lists every HYPE-paired token on Elysium from every launchpad, with market cap, 24h change, volume, buys and sells, holders and top-10 holder share. That helps you compare tokens in one place, but data is not a recommendation.
+
+Before you buy, check a few things:
+
+- **Holder concentration.** If a handful of wallets hold most of the supply, they can push the price down fast. See [top 10 holders](https://arkhampad.com/learn/token-holders-top-10/).
+- **Liquidity.** ArkhamPad coins show an "LP locked" label because their pool liquidity can never be withdrawn. [Locked liquidity explained](https://arkhampad.com/learn/locked-liquidity-explained/) covers why that matters.
+- **Red flags.** Learn the common warning signs in [how to spot a rug pull](https://arkhampad.com/learn/spot-a-rug-pull/).
+
+For a broader overview, read the [Elysium memecoins guide](https://arkhampad.com/learn/elysium-memecoins-guide/).
+
+## Can you launch a coin on day one?
+
+Yes. On ArkhamPad you can [create a coin](https://arkhampad.com/create/) in about 30 seconds with a name, ticker, image and optional description and links.
+
+Every ArkhamPad coin has a total supply of 1,000,000,000 tokens. All of it goes into the pool at launch, with no team allocation and no presale. The starting market cap is 60 HYPE for the whole supply. The pool is a Uniswap v3 style concentrated-liquidity pool against wrapped HYPE with a 1% fee on every trade, and 30% of those fees go to the creator. The liquidity is locked forever.
+
+You can make an optional first buy in the same transaction. A launch day is busy, so plan the first hours before you start. The [memecoin launch checklist](https://arkhampad.com/learn/memecoin-launch-checklist/) walks through it.
+
+## What trust assumptions apply at launch?
+
+Early mainnet has more trust in the operators than it will later. One sequencer orders transactions, and validators are permissioned. Data is held by an AnyTrust-style committee that posts compact certificates to HyperEVM, with a fallback to posting full data there.
+
+Two safeguards help. You can force-include a transaction through the delayed inbox on HyperEVM if the sequencer censors you, and withdrawals wait through a challenge period of about 5.5 days so invalid results can be disputed. Size your positions with these facts in mind.
+
+## FAQ
+
+**What is the Elysium mainnet launch date?**
+Kinetiq announced November 9, 2026 as the public mainnet launch date for Elysium. Elysium is a Layer 2 for the Hyperliquid ecosystem that settles to HyperEVM and uses HYPE for gas. Follow Kinetiq's official channels for any change to the schedule, and be wary of unofficial posts claiming early access.
+
+**What is the Elysium mainnet chain ID?**
+The Elysium mainnet chain ID is 99901. HyperEVM, which Elysium settles to, uses chain ID 999. When adding the network to a wallet by hand, double-check the chain ID and take network details only from official sources, so you do not connect to a fake or wrong network.
+
+**Will there be an Elysium airdrop?**
+There is no Elysium token and no official points program at this time. Gas is paid in HYPE, and half of sequencer fees are earmarked for open-market KNTQ buybacks. Any site offering an Elysium token, presale or airdrop claim should be treated as a likely scam unless Kinetiq announces it officially.
+
+**Can I withdraw from Elysium right after launch?**
+Yes, through the official Elysium bridge. Withdrawals are optimistic, so they finalize only after a challenge period, currently about 5.5 days (around 132 hours) on mainnet. Deposits from HyperEVM, by contrast, arrive within seconds to a few minutes. ArkhamPad is working on a faster exit route, without a date yet.
+
+**What is the HyperCore upgrade planned for Elysium?**
+Kinetiq plans an ArbOS upgrade about a month after mainnet. It would let smart contracts on Elysium read live HyperCore market data and route orders to HyperCore, Hyperliquid's trading engine. It is not live at launch, so apps that depend on it will only work once the upgrade ships.
+
+
+# Elysium Gas Fees: What a Trade Really Costs
+URL: https://arkhampad.com/learn/elysium-gas-fees/
+
+Elysium gas fees are paid in HYPE and are very low, so the network fee is rarely the biggest cost of a trade. The larger costs are usually the pool fee (1% on ArkhamPad coins), any router fee (0.5% for tokens launched elsewhere, none for ArkhamPad coins) and price impact. Always keep a little HYPE for gas.
+
+## How do gas fees work on Elysium?
+
+Gas is the fee you pay the network to process a transaction. On Elysium, gas is paid in HYPE, the same token used for gas on HyperEVM. It is taken from your wallet balance each time you buy, sell, approve a token, create a coin or bridge.
+
+Elysium is an Arbitrum Orbit chain, so gas works the way it does on other EVM networks. A simple transfer uses less gas than a swap through a pool, and a busy network can push fees up a little. At launch, one sequencer orders transactions by priority fee, so a higher priority fee can place your transaction earlier.
+
+You do not need a separate token for gas. If you hold HYPE on Elysium, you can pay fees. For how HYPE gets onto Elysium, read [HYPE on Elysium](https://arkhampad.com/learn/hype-on-elysium/).
+
+## Why are Elysium gas fees so low?
+
+Two design choices keep costs down.
+
+- **More block space.** Hyperliquid keeps HyperEVM blocks small on purpose. Elysium was built to give trading apps, launchpads and AMMs much more room, with fast blocks and high throughput. More room means less competition for each slot.
+- **Compact settlement.** Elysium does not post all its data to HyperEVM in normal operation. An AnyTrust-style committee stores the full data and posts compact certificates to HyperEVM, which keeps settlement costs small.
+
+The result is that gas costs on Elysium are very low. Exact numbers change with demand, so check the estimate in your wallet before you confirm.
+
+## What else do you pay when you trade on Elysium?
+
+Gas is only one line. A full trade can include:
+
+- **Network fee (gas).** Very low, paid in HYPE.
+- **Pool fee.** Charged by the liquidity pool on every trade. ArkhamPad coins use a 1% pool fee. Tokens from other launchpads trade in pools with their own fee settings.
+- **Router fee.** Trades through the ArkhamPad router of tokens launched elsewhere carry a small 0.5% fee. ArkhamPad coins pay no router fee.
+- **Price impact.** The price moves against you as your trade eats into the pool. Larger trades in smaller pools pay more.
+- **Token tax.** Some tokens charge their own transfer tax. Those may not be sellable through the router at all.
+
+On ArkhamPad coins, the 1% pool fee is shared: 30% goes to the coin's creator and 70% to ArkhamPad, paid out in HYPE and in the coin.
+
+## Example: what does a trade really cost?
+
+Say you buy an ArkhamPad coin with 10 HYPE.
+
+- Pool fee: 1% of the trade, about 0.1 HYPE.
+- Router fee: none, because it is an ArkhamPad coin.
+- Gas: a very small amount of HYPE.
+- Price impact: depends on your trade size compared with the pool.
+
+Now say you buy a token launched elsewhere with the same 10 HYPE through the ArkhamPad router. You pay the 0.5% router fee, about 0.05 HYPE, plus whatever fee that token's pool charges, plus gas and price impact.
+
+Remember that fees apply on the way out too. A buy followed by a sell pays the pool fee twice. Before confirming, check the quote and the minimum received amount shown in the buy or sell box.
+
+## Price impact and slippage: the costs people miss
+
+Price impact is the move your own trade causes. Small memecoins often have thin liquidity near the current price, so a large buy can push the price up noticeably before your order completes. Comparing your trade size with the token's market cap and volume helps you judge this. [Market cap vs price](https://arkhampad.com/learn/market-cap-vs-price/) explains why market cap is the better number to watch.
+
+Slippage tolerance is different. It is the maximum extra price change you accept between the quote and the moment your trade lands. ArkhamPad lets you choose 1%, 3%, 5% (the default) or 10%. If the price moves beyond your setting, the trade fails instead of filling at a worse price. A failed transaction still uses a little gas. [Slippage explained](https://arkhampad.com/learn/slippage-explained/) covers which setting to use and when.
+
+## How can you keep trading costs down?
+
+- **Size trades to the pool.** Check volume and recent candles before buying. [How to read a memecoin chart](https://arkhampad.com/learn/how-to-read-a-memecoin-chart/) shows what to look for.
+- **Trade less often.** Every round trip pays pool fees twice. Frequent small flips add up.
+- **Use a sensible slippage setting.** Too low and trades fail. Too high and you may fill at a poor price.
+- **Watch for token taxes.** A token with its own transfer tax can cost far more than the fees above, and may be impossible to sell through the router.
+- **Keep a HYPE reserve.** Running out of gas can leave you holding a token you cannot sell until you add HYPE.
+
+For the full buy and sell flow on ArkhamPad, see [how to buy Elysium tokens](https://arkhampad.com/learn/how-to-buy-elysium-tokens/).
+
+## Do bridging and withdrawals cost gas?
+
+Yes. Bridging HYPE from HyperEVM to Elysium involves a transaction on HyperEVM, which pays gas in HYPE there. Withdrawing back through the official bridge involves transactions too, and the funds finalize after a challenge period of about 5.5 days.
+
+If you bring USDC from Base through ArkhamPad, it is converted to HYPE on the way in through a cross-chain route. The route has its own costs, so review what you will receive before you confirm.
+
+## FAQ
+
+**What token pays gas on Elysium?**
+HYPE, Hyperliquid's native token. It is bridged 1:1 from HyperEVM through the official Elysium bridge, so you do not need a separate gas token. Gas is taken from your HYPE balance for every transaction, including buying, selling, approving tokens, creating a coin and bridging out.
+
+**Why did my Elysium transaction fail if gas is so cheap?**
+Common reasons are running out of HYPE for gas, the price moving beyond your slippage setting, or a token with its own transfer tax that the router cannot sell. Add a small amount of HYPE, try a slightly higher slippage setting, or check the token page for unusual behavior before trying again.
+
+**Do ArkhamPad coins pay a router fee?**
+No. ArkhamPad coins pay no router fee. Tokens launched elsewhere and traded through the ArkhamPad router carry a small 0.5% router fee. ArkhamPad coins do pay their 1% pool fee on every trade, which is split 30% to the coin's creator and 70% to ArkhamPad.
+
+**Who receives the 1% pool fee on ArkhamPad coins?**
+The 1% pool fee on every ArkhamPad coin trade is split between the coin's creator and ArkhamPad. The creator receives 30% and ArkhamPad receives 70%. Fees are collected from the pool and paid out in HYPE and in the coin itself, so creator earnings depend on how much the coin is traded.
+
+**Are Elysium gas fees lower than HyperEVM gas fees?**
+Elysium was built to give trading apps much more block space than HyperEVM, which keeps its blocks small on purpose, and gas costs on Elysium are very low. Exact fees on either chain change with demand, so compare the estimate your wallet shows at the time you trade rather than relying on fixed numbers.
+
+
+# How to Bridge HYPE to Elysium from HyperEVM
+URL: https://arkhampad.com/learn/bridge-hype-to-elysium/
+
+To bridge HYPE to Elysium, hold HYPE on HyperEVM, open the official Elysium bridge (on ArkhamPad it is the Bridge page), choose HYPE, enter an amount and confirm. HYPE moves 1:1 and deposits usually arrive within seconds to a few minutes. Keep a little HYPE on Elysium afterwards, because it is also the gas token.
+
+## What does bridging HYPE to Elysium mean?
+
+Elysium is a Layer 2 for the Hyperliquid ecosystem, built by Kinetiq. It is a separate chain that settles to HyperEVM, so tokens do not appear on it automatically. Bridging is the process of moving HYPE from HyperEVM onto Elysium so you can use it there.
+
+The official bridge works by locking your HYPE on HyperEVM and crediting the same amount on Elysium. The rate is 1:1: bridge 10 HYPE and you receive 10 HYPE on Elysium, minus only the small network fee for the transaction itself. No new token is created and there is nothing to swap.
+
+If you are new to the chain, [What is Elysium?](https://arkhampad.com/learn/what-is-elysium/) covers the basics in a few minutes.
+
+## What you need before you bridge
+
+Check three things before you start:
+
+- **HYPE on HyperEVM.** HyperEVM is Hyperliquid's EVM chain (chain ID 999). The bridge moves HYPE from there. If your HYPE is somewhere else, move it to your HyperEVM address first.
+- **A wallet.** Any normal EVM wallet such as MetaMask works, because Elysium is fully EVM compatible. On ArkhamPad you can also log in with email or Google and get an embedded wallet created for you.
+- **A little extra HYPE for gas.** The deposit transaction on HyperEVM costs a small fee in HYPE, so do not try to bridge your exact full balance.
+
+If you do not hold HYPE at all but have USDC on Base, you can skip this guide. ArkhamPad can take USDC and convert it to HYPE on the way in, which is explained in [How to buy Elysium tokens with USDC](https://arkhampad.com/learn/buy-elysium-tokens-with-usdc/).
+
+## How to bridge HYPE to Elysium on ArkhamPad
+
+ArkhamPad's [Bridge page](https://arkhampad.com/bridge/) uses the official Elysium bridge, so you do not need a separate site. The flow is:
+
+1. Log in to ArkhamPad with email, Google or your existing wallet.
+2. Open the Bridge page.
+3. Choose HYPE as the asset you want to add.
+4. Enter the amount you want to move, leaving some HYPE behind on HyperEVM for the transaction fee.
+5. Review the details and confirm. If you use your own wallet, approve the transaction when it asks.
+
+That is all. Once the deposit lands, your HYPE balance on Elysium updates and you can start trading or create a coin. If you would rather see where your HYPE can go first, the [Discover page](https://arkhampad.com/) lists every HYPE-paired token on Elysium.
+
+## How long does an Elysium deposit take?
+
+Deposits from HyperEVM to Elysium usually arrive within seconds to a few minutes. The bridge has to see your transaction confirmed on HyperEVM and then credit it on Elysium, so it is not literally instant, but it is quick.
+
+If your balance has not updated after a few minutes, check these before doing anything else:
+
+- Confirm that the transaction actually succeeded on HyperEVM in your wallet history.
+- Make sure you are looking at the same address on Elysium that sent the deposit.
+- Refresh the page or reconnect your wallet so the balance is read again.
+
+Do not send the same deposit twice just because the balance looks slow. That only moves twice the amount.
+
+## Adding the Elysium network to your wallet
+
+If you log in to ArkhamPad with email or Google, the embedded wallet already knows the network and you can skip this step.
+
+If you use your own wallet, it needs the Elysium network. The mainnet chain ID is **99901**. Many apps prompt your wallet to add or switch networks automatically when you connect. If yours does not, add the network through your wallet's network settings using the details published by the Elysium team, and double-check the chain ID before you approve anything.
+
+Because Elysium runs the standard Arbitrum Nitro stack, the wallet experience is the same as on any other EVM chain. Addresses are the same format, and your HyperEVM address is also your address on Elysium. There is no separate account to create.
+
+## How much HYPE should you bridge?
+
+There is no minimum that fits everyone, but two points help you decide.
+
+First, HYPE does two jobs on Elysium. It pays for gas, and it is the currency you trade with, since tokens on ArkhamPad are paired with HYPE. When you buy a token you pay HYPE, and when you sell you receive HYPE. So bridge enough to cover the trades you plan, plus a small buffer for network fees. Gas on Elysium is very low, but a wallet with zero HYPE cannot send any transaction at all. [Elysium gas fees](https://arkhampad.com/learn/elysium-gas-fees/) explains what a trade costs in practice.
+
+Second, think about the way back before you bridge. Deposits are fast, but withdrawals through the official bridge are optimistic and take about 5.5 days to finalize. Bridge only what you are comfortable keeping on Elysium for at least that long. The reasons are covered in [Elysium withdrawal time](https://arkhampad.com/learn/elysium-withdrawal-time/).
+
+Memecoins are risky and prices can fall to near zero quickly. Only bridge an amount you can afford to lose.
+
+## What to do after your HYPE arrives
+
+With HYPE on Elysium you can:
+
+- Browse every HYPE-paired token on the [Discover page](https://arkhampad.com/), with market cap, volume, holders and live trades.
+- Buy or sell any Elysium token from its token page, following [How to buy and sell Elysium tokens](https://arkhampad.com/learn/how-to-buy-elysium-tokens/).
+- Launch your own coin from the [create page](https://arkhampad.com/create/) in about 30 seconds.
+
+To understand the many roles HYPE plays on the chain, read [HYPE on Elysium](https://arkhampad.com/learn/hype-on-elysium/).
+
+## FAQ
+
+**Is bridging HYPE to Elysium 1:1?**
+Yes. The official bridge locks HYPE on HyperEVM and credits the same amount of HYPE on Elysium. You only pay the small network fee for the deposit transaction. There is no conversion, no new token and no exchange rate to worry about, because HYPE is the native gas token on both sides.
+
+**How long does it take to bridge HYPE to Elysium?**
+Deposits from HyperEVM to Elysium usually arrive within seconds to a few minutes. If your balance has not updated after that, check that the HyperEVM transaction succeeded, that you are viewing the same address on Elysium, and refresh the page before trying anything else.
+
+**Can I bridge HYPE back from Elysium to HyperEVM quickly?**
+Not through the official bridge. Withdrawals are optimistic and finalize after a challenge period of about 5.5 days, roughly 132 hours. ArkhamPad is working on a faster exit route, but there is no date for it yet, so plan for the standard withdrawal time.
+
+**Do I need a new wallet for Elysium?**
+No. Elysium is a full EVM chain, so wallets such as MetaMask work unchanged and your address is the same as on HyperEVM. You only need to add the Elysium network, chain ID 99901. If you log in to ArkhamPad with email or Google, an embedded wallet is created for you.
+
+**What is the Elysium chain ID?**
+The Elysium mainnet chain ID is 99901. HyperEVM, the chain Elysium settles to, uses chain ID 999. Always check the chain ID in your wallet before approving a network change or a bridge transaction.
+
+
+# How to Buy Elysium Tokens with USDC from Base
+URL: https://arkhampad.com/learn/buy-elysium-tokens-with-usdc/
+
+You can buy Elysium tokens with USDC by sending USDC from Base through ArkhamPad's Bridge page. The USDC is converted to HYPE on the way in through a cross-chain route, so you arrive on Elysium holding HYPE, which you then use to buy any token. You do not need to own HYPE beforehand.
+
+## Can you buy Elysium tokens with USDC?
+
+Yes, with one detail worth understanding. Tokens on Elysium trade against HYPE, Hyperliquid's native token. On ArkhamPad you pay HYPE to buy a token and receive HYPE when you sell. HYPE is also the gas token that pays network fees on Elysium.
+
+So USDC is not used directly inside a trade. Instead, ArkhamPad lets you start with USDC on Base and converts it to HYPE as it travels to Elysium. You arrive with HYPE, ready to trade, without having to buy HYPE on another platform first.
+
+This makes USDC the easiest starting point if your stablecoins already sit on Base and you have never held HYPE.
+
+## How the USDC route works
+
+When you choose USDC on the Bridge page, three things happen in one flow:
+
+- Your USDC leaves your address on Base.
+- A cross-chain route carries the value over and converts it to HYPE along the way.
+- HYPE lands at your address on Elysium.
+
+You do not manage the conversion yourself and you do not need a separate account somewhere else. The result is the same as if you had bridged HYPE, which the [HYPE bridging guide](https://arkhampad.com/learn/bridge-hype-to-elysium/) describes, just with a different starting asset.
+
+Because a conversion is involved, the amount of HYPE you receive depends on the HYPE price at that moment and on the cost of the route. Review what you will receive before you confirm.
+
+## Step by step: from USDC on Base to your first token
+
+1. Log in to ArkhamPad with email, Google or an existing wallet. Email and Google logins get an embedded wallet automatically, as explained in [Trade Elysium coins with just an email](https://arkhampad.com/learn/trade-crypto-with-email-login/).
+2. Make sure the USDC you want to use is on Base, at the address you are using.
+3. Open the [Bridge page](https://arkhampad.com/bridge/) and choose USDC.
+4. Enter the amount, review what you will receive in HYPE, and confirm.
+5. Wait for HYPE to arrive on Elysium and your balance to update.
+6. Find a token on the [Discover page](https://arkhampad.com/) and buy it from its token page using the Buy/Sell box.
+
+The last step is the same for everyone, whichever way they funded their wallet: open the token page, enter an amount, set slippage and confirm.
+
+## What does it cost to use USDC?
+
+There are a few separate costs, and it helps to keep them apart:
+
+- **The route itself.** Moving value from Base and converting it to HYPE has a cost, which is reflected in the HYPE amount you are shown before confirming.
+- **Network fees.** A transaction on Base needs a small amount of ETH for gas there. On Elysium, fees are paid in HYPE and are very low.
+- **Trading fees.** Once you trade, ArkhamPad coins have a 1% pool fee and no router fee. Tokens launched elsewhere carry a small 0.5% router fee on top of their own pool fee.
+- **Slippage.** The price can move between the quote and the moment your trade executes. You choose a tolerance of 1%, 3%, 5% or 10%. See [Slippage explained](https://arkhampad.com/learn/slippage-explained/).
+
+Look at the received amount at each step rather than estimating, since it already reflects the current conditions.
+
+## USDC or HYPE: which should you start with?
+
+Both end in the same place: HYPE on Elysium. The choice depends on what you already hold.
+
+- **Start with HYPE** if you already have HYPE on HyperEVM. The official bridge is 1:1 and deposits arrive within seconds to a few minutes.
+- **Start with USDC** if your funds are stablecoins on Base and you do not want to buy HYPE somewhere else first.
+
+One practical point applies either way. Since you hold HYPE once you arrive, your balance moves with the HYPE price even when you are not in any trade. If you want to stay in stablecoins, that exposure is worth knowing about before you bridge. [HYPE on Elysium](https://arkhampad.com/learn/hype-on-elysium/) explains its roles on the chain.
+
+## Getting your funds back out
+
+Money comes back the way it is designed to: through the official Elysium bridge to HyperEVM. Withdrawals through that bridge are optimistic and take about 5.5 days to finalize. ArkhamPad is working on a faster exit route, but there is no date for it yet.
+
+This matters for how much you bring in. Fund your wallet with an amount you are comfortable leaving on Elysium for at least a week, and read [Elysium withdrawal time](https://arkhampad.com/learn/elysium-withdrawal-time/) before you move larger sums.
+
+## A plain word on risk
+
+Starting with a stablecoin does not make memecoins any safer. Most memecoins lose value, some quickly. Prices can move tens of percent within minutes, and thin pools make that worse.
+
+Before buying, check the token's holders, its top-10 holder share and whether its liquidity is locked. ArkhamPad coins show an LP locked label, because their liquidity can never be withdrawn by anyone. For the bigger picture, read [Elysium memecoins: the complete guide](https://arkhampad.com/learn/elysium-memecoins-guide/). Only spend what you can afford to lose.
+
+## FAQ
+
+**Do I need HYPE to buy tokens on Elysium?**
+You need HYPE in your Elysium wallet to trade and pay gas, but you do not need to own it beforehand. On ArkhamPad you can send USDC from Base and it is converted to HYPE on the way in, so you arrive holding HYPE and can trade straight away.
+
+**Which network does the USDC need to be on?**
+ArkhamPad's USDC option takes USDC from Base. Check that your USDC is on Base and at the address you are using before you start. You will also need a small amount of ETH on Base to pay the network fee for sending it.
+
+**Will I receive USDC on Elysium?**
+No. The USDC is converted to HYPE during the transfer, so you receive HYPE on Elysium. That is what you need, because tokens on ArkhamPad trade against HYPE and network fees on Elysium are paid in HYPE.
+
+**How much HYPE will I get for my USDC?**
+It depends on the HYPE price at the time and on the cost of the cross-chain route. ArkhamPad shows the amount before you confirm, so review it at that point rather than estimating in advance. Prices move, so the figure can change between quotes.
+
+**Can I withdraw back to USDC?**
+Withdrawals from Elysium go through the official bridge to HyperEVM and take about 5.5 days to finalize. What you do with your HYPE after that is up to you. A faster exit route is being worked on, but there is no confirmed date yet.
+
+
+# Elysium Withdrawal Time: Why the Bridge Takes 5.5 Days
+URL: https://arkhampad.com/learn/elysium-withdrawal-time/
+
+Withdrawals from Elysium to HyperEVM through the official bridge take about 5.5 days, around 132 hours. Elysium is an optimistic Layer 2, so every withdrawal waits out a challenge period during which anyone allowed to check the chain can dispute an invalid state. Deposits in the other direction arrive within seconds to a few minutes.
+
+## How long does an Elysium withdrawal take?
+
+On Elysium mainnet, a withdrawal through the official bridge back to HyperEVM currently takes about **5.5 days**, roughly 132 hours, before it can be finalized.
+
+Deposits are very different. Moving HYPE from HyperEVM to Elysium usually takes seconds to a few minutes. The gap between the two directions surprises many people, so it is worth knowing the reason before you bridge funds in. The deposit flow is covered in [How to bridge HYPE to Elysium](https://arkhampad.com/learn/bridge-hype-to-elysium/).
+
+## Why do Elysium withdrawals take so long?
+
+Elysium is an Arbitrum Orbit chain, which makes it an optimistic Layer 2. Optimistic means the chain does not prove every block is correct as it goes. Instead, it posts its results to HyperEVM and assumes they are correct unless someone shows otherwise.
+
+To make that safe, there is a waiting window called the **challenge period**. During it, a validator that spots an invalid result can dispute it, and the dispute is settled on HyperEVM. Only after the window closes without a successful challenge is the result treated as final.
+
+A withdrawal is a claim that you own funds on Elysium and want them released on HyperEVM. That claim can only be honored once the state it depends on is final. So every withdrawal through the official bridge waits for the challenge period, whatever its size.
+
+Deposits do not need this wait. They start on HyperEVM, which is already final, so Elysium can credit them almost right away. [Elysium vs HyperEVM](https://arkhampad.com/learn/elysium-vs-hyperevm/) explains how the two chains relate.
+
+## Who checks the chain during the challenge period?
+
+At launch, Elysium's validators are permissioned, meaning a known set of parties run them. Permissionless fraud proofs, using Arbitrum's BoLD system, are planned for later. With BoLD, anyone would be able to challenge an invalid state, which strengthens the security model the waiting period is there to support.
+
+Elysium also has one sequencer at launch. The sequencer orders transactions by priority fee, and there is no public mempool. If the sequencer ever refused to include your transaction, you can force-include it through the delayed inbox on HyperEVM. That path matters for withdrawals in particular, because it means a withdrawal cannot simply be blocked forever by the sequencer.
+
+For more on how the chain is built and run, read [What is Elysium?](https://arkhampad.com/learn/what-is-elysium/).
+
+## What happens during a withdrawal, step by step
+
+In broad terms, an official bridge withdrawal goes through these stages:
+
+1. You start the withdrawal on Elysium. Your HYPE leaves your Elysium balance.
+2. The withdrawal is included in a batch that is posted to HyperEVM.
+3. The challenge period runs, currently about 5.5 days.
+4. Once it ends, the withdrawal can be finalized and the HYPE is released on HyperEVM.
+
+During the wait, the funds are in neither balance you can spend from. They are not lost, they are in transit. Keep a record of the transaction so you can follow it.
+
+## Is there a faster way to withdraw from Elysium?
+
+Not through the official bridge. The challenge period is part of how an optimistic Layer 2 stays secure, so it is not something an app can switch off.
+
+ArkhamPad is working on a faster exit route for its users. There is no release date yet, so do not plan around it. Until it is live, treat 5.5 days as the time it takes to get funds back to HyperEVM.
+
+Be careful with anyone offering instant withdrawals through unknown sites or direct messages. Scams often target people who are waiting for funds. Only use bridges you have verified, and never share a seed phrase.
+
+## How to plan around the withdrawal time
+
+A few habits make the waiting period much less of a problem:
+
+- **Bridge in what you are comfortable leaving on Elysium for at least a week.** Fast deposits make it easy to forget the exit takes days.
+- **Do not count on exiting fast in a hurry.** If you need funds by a specific date, start the withdrawal well before it.
+- **Keep some HYPE on Elysium.** HYPE pays gas, and starting a withdrawal is itself a transaction.
+- **Stay on-chain if you are still trading.** Selling a token for HYPE on Elysium is quick. Only the bridge back to HyperEVM is slow.
+
+The timing is also one reason why liquidity locks matter on Elysium. On ArkhamPad coins, liquidity is held by the launcher contract and cannot be withdrawn by anyone, as explained in [Locked liquidity explained](https://arkhampad.com/learn/locked-liquidity-explained/).
+
+## Will the withdrawal time change after mainnet?
+
+The 5.5 day figure is the current challenge period on Elysium mainnet. Kinetiq has announced the public mainnet launch for November 9, 2026, and further upgrades are planned, including permissionless fraud proofs later on. Any change to the withdrawal window would be announced by the Elysium team, so treat 5.5 days as the working number until then. [Elysium mainnet launch](https://arkhampad.com/learn/elysium-mainnet-launch/) covers what else traders should know about the launch.
+
+## FAQ
+
+**How long does it take to withdraw from Elysium to HyperEVM?**
+About 5.5 days, roughly 132 hours, through the official bridge. Elysium is an optimistic Layer 2, so every withdrawal waits out a challenge period before it is finalized on HyperEVM. The wait is the same regardless of the amount you withdraw.
+
+**Why are deposits to Elysium fast but withdrawals slow?**
+Deposits start on HyperEVM, which is already final, so Elysium can credit them within seconds to a few minutes. Withdrawals depend on Elysium's state, which only becomes final on HyperEVM after the challenge period ends without a successful dispute. That waiting window is what makes optimistic rollups secure.
+
+**Can I cancel or speed up an Elysium withdrawal?**
+Through the official bridge, the challenge period cannot be skipped. ArkhamPad is working on a faster exit route for its users, but it has no release date yet. Be cautious of anyone offering instant withdrawals through unverified sites or private messages.
+
+**Are my funds safe during the withdrawal period?**
+Your funds are in transit, not lost. If the sequencer ever refused to include a transaction, users can force-include it through the delayed inbox on HyperEVM. Validators are permissioned at launch, with permissionless fraud proofs planned for later. As with any bridge, some technical risk always remains.
+
+**Can I still trade while a withdrawal is pending?**
+Yes, with the HYPE that remains in your Elysium wallet. The amount being withdrawn has already left your Elysium balance, so it cannot be used for trades. Keep some HYPE on Elysium for gas and any trades you still plan to make.
+
+
+# Trade Crypto with Email Login: Elysium Coins Made Simple
+URL: https://arkhampad.com/learn/trade-crypto-with-email-login/
+
+On ArkhamPad you can trade Elysium coins by logging in with just an email address or a Google account. An embedded wallet is created for you, so there is no seed phrase to write down to get started, and trades are signed without wallet pop-ups. You fund it with HYPE or USDC and trade like any other user.
+
+## Can you really trade crypto with just an email?
+
+Yes. On ArkhamPad, logging in with an email address or a Google account creates an **embedded wallet** for you. It is a real on-chain wallet with its own address on Elysium. It simply lives inside the app instead of in a browser extension you had to install yourself.
+
+From there, everything works the same as with any wallet: you fund it, buy and sell tokens, and launch coins. People who already use a wallet such as MetaMask can still connect it instead. Both options reach the same tokens and the same prices.
+
+## How the embedded wallet works
+
+Traditional crypto wallets ask you to install software, write down a seed phrase (a list of recovery words) and approve every action in a pop-up. That is a lot of steps before a first trade.
+
+With an email or Google login on ArkhamPad:
+
+- The wallet is created automatically when you log in.
+- There is no seed phrase to write down to get started.
+- Trades from the embedded wallet are signed without pop-ups, so a buy or sell goes through after you confirm in the app.
+
+The wallet has a normal address, so you can receive funds to it and see its activity on-chain like any other.
+
+## Funding an email wallet
+
+A new wallet starts empty. You add funds from the [Bridge page](https://arkhampad.com/bridge/) in one of two ways:
+
+- **HYPE from HyperEVM.** The official Elysium bridge moves HYPE 1:1 and deposits usually arrive within seconds to a few minutes. See [How to bridge HYPE to Elysium](https://arkhampad.com/learn/bridge-hype-to-elysium/).
+- **USDC from Base.** USDC is converted to HYPE on the way in, so you arrive holding HYPE. See [How to buy Elysium tokens with USDC](https://arkhampad.com/learn/buy-elysium-tokens-with-usdc/).
+
+Either way you end up with HYPE on Elysium. HYPE is the currency tokens trade against on ArkhamPad and also pays the network fee, so keep a little spare for gas.
+
+## Making your first trade
+
+Once funded, trading takes a few steps:
+
+1. Find a token on the [Discover page](https://arkhampad.com/), which lists every HYPE-paired token on Elysium. Search by name or contract address.
+2. Open the token page and check its chart, holders and recent trades.
+3. In the Buy/Sell box, enter how much HYPE to spend.
+4. Choose a slippage tolerance, then confirm.
+
+Because the embedded wallet signs without pop-ups, confirming in the app is the final step. That speed is useful on fast-moving tokens, but it also means you should read the quote carefully before you confirm. The full flow, including selling, is in [How to buy and sell Elysium tokens](https://arkhampad.com/learn/how-to-buy-elysium-tokens/).
+
+## Launching a coin with an email login
+
+The same login also works for creating a coin. You choose a name, ticker and image, add an optional description and links, and can make an optional first buy. The whole process takes about 30 seconds on the [create page](https://arkhampad.com/create/), and [How to create a token on Elysium](https://arkhampad.com/learn/create-a-token-on-elysium/) walks through each field.
+
+Every ArkhamPad coin launches with a total supply of 1,000,000,000 tokens, all of it placed in the pool, and its liquidity is locked forever. As the creator, you receive 30% of the trading fees on your coin, paid to your wallet in HYPE and in the coin. [Earn creator fees](https://arkhampad.com/learn/earn-creator-fees/) explains how that works, and the [memecoin launch checklist](https://arkhampad.com/learn/memecoin-launch-checklist/) covers your first day after launch.
+
+## Email wallet or your own wallet: which to use?
+
+Both are valid. The difference is mostly about convenience and how you prefer to manage keys.
+
+- **Email or Google login** suits people who are new to crypto, want to try Elysium quickly, or trade often and do not want a pop-up for every action.
+- **An existing wallet** suits people who already hold funds in it, use it across many apps, or prefer to control their keys through software they chose themselves.
+
+Some people use both: a familiar wallet for long-term holdings and an email login for quick trading with a smaller balance.
+
+## Keeping an email wallet safe
+
+An email login is only as secure as the email or Google account behind it. A few simple habits go a long way:
+
+- Turn on two-factor authentication for that email or Google account.
+- Use a strong, unique password that you do not reuse elsewhere.
+- Never share login codes with anyone, including people claiming to be support.
+- Keep only the amount you are actively trading in a hot wallet like this.
+
+Remember too that memecoins are risky whatever wallet you use. Most lose value, and prices can drop sharply within minutes. Only trade with money you can afford to lose.
+
+## FAQ
+
+**Do I need MetaMask to trade on Elysium?**
+No. On ArkhamPad you can log in with an email address or a Google account and an embedded wallet is created for you. If you already use MetaMask or another EVM wallet, you can connect it instead. Both options trade the same tokens at the same prices.
+
+**Is there a seed phrase with an email login?**
+There is no seed phrase to write down to get started. The embedded wallet is created when you log in, and you access it through your email or Google account. That is why securing that account with a strong password and two-factor authentication matters.
+
+**Why are there no wallet pop-ups when I trade?**
+Trades from ArkhamPad's embedded wallet are signed without pop-ups. You review the quote and confirm in the app, and the transaction is sent. This makes trading faster, so read the amount, slippage and minimum received carefully before you confirm.
+
+**How do I add money to an email wallet?**
+Use the Bridge page. You can bridge HYPE from HyperEVM through the official Elysium bridge, or send USDC from Base, which is converted to HYPE on the way in. Either way you arrive holding HYPE, which you use for trades and gas.
+
+**Can I create a coin with an email login?**
+Yes. The same login works on the create page. Choose a name, ticker and image, add optional details and an optional first buy. It takes about 30 seconds, and as the creator you receive 30% of the trading fees on your coin.
+
+
+# How to Buy Elysium Tokens and Sell Them (Step by Step)
+URL: https://arkhampad.com/learn/how-to-buy-elysium-tokens/
+
+To buy an Elysium token, fund your wallet with HYPE, open the token's page on ArkhamPad, enter how much HYPE to spend in the Buy/Sell box, choose a slippage tolerance and confirm. Selling is the same in reverse: you enter the token amount and receive HYPE. ArkhamPad's router can trade any Elysium token from one page.
+
+## What you need before you buy
+
+Every token on ArkhamPad trades against HYPE, Hyperliquid's native token. You pay HYPE to buy and receive HYPE when you sell. HYPE also pays the network fee on Elysium. So the one thing you need is HYPE in your Elysium wallet.
+
+- Log in with email, Google or an existing wallet. Email and Google logins get an embedded wallet automatically.
+- Add HYPE through the [Bridge page](https://arkhampad.com/bridge/), either by bridging HYPE from HyperEVM or by sending USDC from Base, which arrives as HYPE.
+- Keep a little HYPE aside for gas so you can still sell later.
+
+## Finding the right token
+
+The [Discover page](https://arkhampad.com/) lists every HYPE-paired token on Elysium, from every launchpad. For each token you can see market cap, 24h change, volume, buys and sells, holders, top-10 holder share and live trades.
+
+If you know which token you want, search by its name or contract address. Names and tickers can be copied by anyone, so the **contract address** is the reliable way to be sure you have the right token. Get it from a source you trust and compare it to the one shown on the token page.
+
+On the token page, look at the chart, the holders list and the recent trades before you buy. [How to read a memecoin chart](https://arkhampad.com/learn/how-to-read-a-memecoin-chart/) and [Market cap vs price](https://arkhampad.com/learn/market-cap-vs-price/) explain what those numbers tell you.
+
+## How to buy an Elysium token step by step
+
+1. Open the token page.
+2. In the Buy/Sell box, choose Buy.
+3. Enter the amount of HYPE you want to spend.
+4. Read the quote: how many tokens you are expected to receive and the minimum you will accept.
+5. Choose your slippage tolerance: 1%, 3%, 5% (the default) or 10%.
+6. Confirm. With your own wallet, approve the transaction when it asks. With an embedded wallet, it is signed without a pop-up.
+
+When the trade completes, the tokens appear in your wallet and your trade shows in the live trades list.
+
+## How to sell an Elysium token
+
+Selling uses the same box:
+
+1. Open the token page.
+2. In the Buy/Sell box, choose Sell.
+3. Enter how many tokens you want to sell.
+4. Check the quote for the HYPE you will receive and the minimum received.
+5. Choose slippage and confirm.
+
+The HYPE lands in your Elysium wallet. From there you can buy another token, or bridge back to HyperEVM, which takes about 5.5 days through the official bridge.
+
+## How ArkhamPad routes your trade
+
+Tokens on Elysium do not all live in the same kind of pool. Some use Uniswap v3 style pools and some use v4 style pools. ArkhamPad's router is a single smart contract that can trade both, so you can buy or sell any Elysium token from one page without looking up where its liquidity sits.
+
+Fees work like this:
+
+- **ArkhamPad coins** pay the 1% pool fee on each trade and **no router fee**.
+- **Tokens launched elsewhere** carry a small 0.5% router fee, in addition to whatever fee their own pool charges.
+- **Network fees** are paid in HYPE and are very low on Elysium.
+
+One exception to know about: some tokens charge their own transfer tax, taking a cut every time they move. Those tokens may not be sellable through the router. If a sell keeps failing, a transfer tax is one possible reason, and it is a good reason to check a token's details before you buy.
+
+## Choosing slippage and reading minimum received
+
+Slippage is the difference between the price you are quoted and the price you actually get. On a busy memecoin, other trades can land just before yours and move the price.
+
+Your slippage setting is the most you will accept. The quote turns it into a **minimum received**: if the trade would give you less than that, it fails instead of filling at a worse price. A failed trade still uses a small amount of gas, but your HYPE or tokens stay in your wallet.
+
+- **1% to 3%** suits calmer tokens with deeper pools.
+- **5%**, the default, is a reasonable middle for most memecoins.
+- **10%** may be needed in very fast markets, but you accept a worse fill.
+
+[Slippage explained](https://arkhampad.com/learn/slippage-explained/) goes deeper on what to set and why trades fail.
+
+## Checks before you press confirm
+
+Memecoins are risky. Most lose value, and prices can fall sharply in minutes. A quick check before buying helps you avoid the worst cases:
+
+- **Liquidity.** ArkhamPad coins show an LP locked label, meaning the pool can never be withdrawn by anyone. Tokens from elsewhere may not offer that. See [Locked liquidity explained](https://arkhampad.com/learn/locked-liquidity-explained/).
+- **Holder concentration.** A very high top-10 holder share means a few wallets could sell heavily. See [Token holders and top-10 concentration](https://arkhampad.com/learn/token-holders-top-10/).
+- **Trading pattern.** Look at buys versus sells and the live trades list for unusual activity.
+
+[How to spot a rug pull](https://arkhampad.com/learn/spot-a-rug-pull/) lists more warning signs. Nothing here is financial advice. Only spend what you can afford to lose.
+
+## FAQ
+
+**What do I pay with when buying Elysium tokens?**
+You pay with HYPE. Every token on ArkhamPad trades against HYPE, and HYPE also pays the network fee. If you only hold USDC on Base, you can send it through the Bridge page and it is converted to HYPE on the way in.
+
+**Can I buy tokens that were not launched on ArkhamPad?**
+Yes. ArkhamPad's router trades both Uniswap v3 style and v4 style pools, so you can buy or sell any HYPE-paired Elysium token from its token page. Tokens launched elsewhere carry a small 0.5% router fee. ArkhamPad coins pay no router fee.
+
+**What slippage should I use?**
+The default is 5%, a reasonable middle for most memecoins. Use 1% to 3% for calmer tokens with deeper pools, and 10% only in very fast markets where trades keep failing. Higher slippage makes a fill more likely but can give you a worse price.
+
+**Why did my trade fail?**
+Usually the price moved beyond your slippage setting, so the trade would have returned less than your minimum received and was cancelled. Try again or raise slippage slightly. Other causes include not enough HYPE for gas, or a token with its own transfer tax.
+
+**Why can't I sell a token?**
+Some tokens charge their own transfer tax on every transfer, and those may not be sellable through the ArkhamPad router. Also check that you have a little HYPE left for gas. If a sell keeps failing, check the token's details or contact its creator.
+
+**How do I make sure I am buying the right token?**
+Search by contract address rather than name, since names and tickers can be copied. Get the address from a source you trust and compare it with the one shown on the token page before you buy.
+
+
+# Elysium Memecoins: The Complete Guide
+URL: https://arkhampad.com/learn/elysium-memecoins-guide/
+
+Elysium memecoins are community tokens launched on Elysium, Kinetiq's Layer 2 for the Hyperliquid ecosystem, and traded against HYPE. You can find every HYPE-paired Elysium token on ArkhamPad's Discover page and buy or sell it from one token page. Memecoins are highly speculative, so only trade money you can afford to lose.
+
+## What are Elysium memecoins?
+
+A memecoin is a token whose value comes mostly from attention, community and culture rather than from cash flows or a product. Most start as a joke, a mascot or a running theme on social media. Their prices can rise or fall by large amounts in minutes.
+
+Elysium memecoins are memecoins that live on [Elysium](https://arkhampad.com/learn/what-is-elysium/), a Layer 2 network for the Hyperliquid ecosystem built by Kinetiq. Almost all of them trade in pools paired with HYPE, Hyperliquid's native token. You buy them with HYPE and receive HYPE when you sell.
+
+Because Elysium is a full EVM chain, these are standard EVM tokens that work with normal EVM wallets and tools.
+
+## Why are memecoins launching on Elysium?
+
+Memecoin trading creates a lot of small, fast transactions. Hyperliquid deliberately keeps HyperEVM blocks small, so busy trading apps compete for limited space there. Elysium was built to give trading apps, launchpads and AMMs (automated market makers, the pools that let you swap tokens without an order book) much more block space.
+
+A few design choices matter for traders:
+
+- **Fast blocks.** Elysium targets blocks of roughly 100 to 200 milliseconds, so trades confirm quickly.
+- **HYPE for gas.** Network fees are paid in HYPE bridged 1:1 from HyperEVM. There is no separate gas token to buy.
+- **Low fees.** Gas costs are very low, which matters when you make many small trades.
+- **Settlement to HyperEVM.** Elysium is an Arbitrum Orbit chain that settles to HyperEVM, so it stays connected to the wider Hyperliquid ecosystem.
+
+Kinetiq has announced November 9, 2026 as the public mainnet launch date. For more on how HYPE moves between the two networks, see [HYPE on Elysium](https://arkhampad.com/learn/hype-on-elysium/).
+
+## Where can you find every Elysium memecoin?
+
+New tokens appear on Elysium from several launchpads. ArkhamPad's [Discover page](https://arkhampad.com/) lists every HYPE-paired token on Elysium from every launchpad in one place. That is hundreds of tokens, not only those launched on ArkhamPad.
+
+For each token, Discover shows:
+
+- Market cap and 24-hour price change
+- Trading volume and the number of buys and sells
+- Holder count and the share of supply held by the top 10 wallets
+- Live trades as they happen
+
+You can search by name or paste a contract address. Searching by address is the safest way to find a specific coin, because anyone can create a token with the same name or ticker as a popular one.
+
+## How does a coin launched on ArkhamPad work?
+
+Coins created on ArkhamPad follow one fixed setup, which makes them easier to compare:
+
+- **Supply:** 1,000,000,000 tokens per coin.
+- **Fair start:** the entire supply goes into the trading pool at launch. There is no team allocation and no presale. The creator may make an optional first buy in the same transaction, paid through the pool like any other buy.
+- **Starting market cap:** 60 HYPE for the whole supply.
+- **Pool:** a Uniswap v3 style concentrated-liquidity pool against wrapped HYPE, with a 1% pool fee on every trade.
+- **Fees:** 30% of trading fees go to the coin's creator and 70% to ArkhamPad.
+- **Locked liquidity:** the pool position is held by the launcher contract and cannot be withdrawn by anyone, including the creator and ArkhamPad.
+
+A common way people lose money on memecoins is a liquidity rug pull, where the creator removes the pool's funds and leaves holders with tokens they cannot sell. That is not possible on ArkhamPad coins, which carry an LP locked label on Discover. [Locked liquidity explained](https://arkhampad.com/learn/locked-liquidity-explained/) covers how this works. Locked liquidity does not stop the price from falling, though. Holders can still sell, and the price can still drop sharply.
+
+## How do you buy an Elysium memecoin?
+
+You can trade any Elysium token from its ArkhamPad token page, including tokens launched elsewhere.
+
+1. Log in with email, Google or an existing wallet. Email and Google users get an embedded wallet created automatically.
+2. Add funds. Bridge HYPE from HyperEVM on the [Bridge page](https://arkhampad.com/bridge/), or send USDC from Base, which arrives as HYPE on Elysium.
+3. Open the token from Discover and check its contract address.
+4. Enter an amount of HYPE, review the quote and the minimum you will receive, and confirm.
+
+Keep a little HYPE in your balance for network fees. Tokens launched on other launchpads carry a 0.5% router fee; ArkhamPad coins pay no router fee. The full walkthrough is in [how to buy and sell Elysium tokens](https://arkhampad.com/learn/how-to-buy-elysium-tokens/).
+
+## What should you check before buying a memecoin?
+
+A minute of checking can save you from the most common mistakes:
+
+- **Contract address.** Confirm it matches the one the project shares. Copycat tokens are common.
+- **Liquidity status.** Look for the LP locked label, or find out how the pool is held for tokens from elsewhere.
+- **Top-10 holder share.** If a handful of wallets hold most of the supply, a few sellers can crash the price.
+- **Buys versus sells and volume.** Real activity from many traders is a better sign than a few large trades.
+- **Age.** Very new tokens move fastest and carry the most risk.
+- **Transfer tax.** Some tokens charge their own tax on transfers, and these may not be sellable through the router.
+
+For a longer list of warning signs, read [how to spot a rug pull](https://arkhampad.com/learn/spot-a-rug-pull/).
+
+## What are the risks of Elysium memecoins?
+
+Memecoins are among the riskiest assets in crypto. Most lose most of their value, and many go to zero. Treat any money you put into memecoins as money you are prepared to lose entirely.
+
+There are also risks specific to a new network. Elysium mainnet is new. At launch, one sequencer orders transactions and validators are permissioned, with permissionless fraud proofs planned for later. Withdrawals through the official bridge back to HyperEVM take about 5.5 days, so you cannot move funds out instantly. Plan for that before you deposit.
+
+Nothing on ArkhamPad is financial advice. A locked pool, a high holder count or a rising chart does not mean a coin will go up.
+
+## Can you launch your own Elysium memecoin?
+
+Yes. On ArkhamPad you can [create a coin](https://arkhampad.com/create/) with a name, ticker, image and an optional description and links. It takes about 30 seconds, and you can add an optional first buy in the same transaction. As the creator, you earn 30% of the trading fees your coin generates, paid out in HYPE and in the coin. Step-by-step instructions are in [how to create a token on Elysium](https://arkhampad.com/learn/create-a-token-on-elysium/).
+
+## FAQ
+
+**Do I need HYPE to buy Elysium memecoins?**
+Yes, in practice. Elysium memecoins trade in pools paired with HYPE, and network fees on Elysium are paid in HYPE. On ArkhamPad you can bridge HYPE from HyperEVM, or send USDC from Base, which is converted to HYPE on the way in. Keep a small amount of HYPE aside for gas so you can still sell later.
+
+**Is there an Elysium token or airdrop?**
+There is no Elysium token and no official points program at this time. Be careful with anyone claiming to sell or airdrop an Elysium token. Half of Elysium sequencer fees are earmarked for open-market buybacks of KNTQ, the Kinetiq token, but that is separate from any memecoin you trade on the network.
+
+**Can I trade Elysium tokens that were not launched on ArkhamPad?**
+Yes. ArkhamPad's Discover page lists every HYPE-paired token on Elysium from every launchpad, and you can trade any of them from its token page through the ArkhamPad router. Those trades carry a 0.5% router fee. Tokens that charge their own transfer tax may not be sellable through the router, so check before you buy.
+
+**What does LP locked mean on an Elysium memecoin?**
+It means the coin's trading pool cannot be withdrawn. On ArkhamPad coins, the pool position is held by the launcher contract forever, so neither the creator nor ArkhamPad can pull the liquidity. This rules out a liquidity rug pull. It does not protect the price, which can still fall if holders sell.
+
+**How fast are trades on Elysium?**
+Elysium is designed for very fast blocks, with a target of roughly 100 to 200 milliseconds, and high throughput. In practice, trades usually confirm quickly. Deposits from HyperEVM arrive within seconds to a few minutes, while withdrawals through the official bridge back to HyperEVM take about 5.5 days.
+
+
+# How to Read a Memecoin Chart: Candles, Volume, Market Cap
+URL: https://arkhampad.com/learn/how-to-read-a-memecoin-chart/
+
+A memecoin chart shows how a token's price or market cap moved over time, using candles that record the open, high, low and close for each period. Read it together with volume, buys and sells, and holder data, because a chart alone cannot tell you whether a move came from many traders or a few wallets.
+
+## What does each candle on a memecoin chart show?
+
+A candlestick chart splits time into equal periods. Each candle summarises trading in one period with four values:
+
+- **Open:** the price at the start of the period.
+- **Close:** the price at the end of the period.
+- **High:** the highest price traded during the period.
+- **Low:** the lowest price traded during the period.
+
+The thick part of the candle, called the body, runs from the open to the close. The thin lines above and below, called wicks or shadows, reach the high and the low. On most charts a green candle means the close was above the open, and a red candle means it closed lower.
+
+Wicks carry useful information. A long upper wick means buyers pushed the price up during the period, but sellers pushed it back down before the close. A long lower wick means the opposite: the price dropped, then buyers stepped in. On memecoins, long wicks are common because a single large trade can move the price a lot in a pool with modest liquidity.
+
+## Which timeframe should you use on a memecoin chart?
+
+The timeframe sets how much time each candle covers. ArkhamPad token pages offer 1-minute, 5-minute, 15-minute, 1-hour and 4-hour candles.
+
+- **1m and 5m** show every burst of activity. They are useful in the first hours after a coin launches, when the whole history may be only a few dozen candles long.
+- **15m and 1h** smooth out noise and make the overall direction easier to see over a day or two.
+- **4h** works best for coins that have traded for several days or longer.
+
+A useful habit is to check two timeframes. A sharp green run on the 1-minute chart may look very different on the 1-hour chart, where it might be a small bounce inside a longer decline. On a new network, most tokens also have short histories. In the first weeks after the [Elysium mainnet launch](https://arkhampad.com/learn/elysium-mainnet-launch/), longer timeframes may show only a handful of candles.
+
+## Should you view the chart in market cap or price?
+
+ArkhamPad charts can show either market cap or price. The shape of the chart is the same in both views, because for a fixed supply, market cap is simply price multiplied by the number of tokens. Only the numbers on the axis change.
+
+Memecoin prices are often tiny. A coin launched on ArkhamPad starts at a market cap of 60 HYPE for a supply of 1,000,000,000 tokens, which works out to a starting price of 0.00000006 HYPE per token. Numbers with that many zeros are hard to read and easy to misjudge.
+
+Market cap is usually easier. Saying a coin went from 60 HYPE to 600 HYPE in market cap is clearer than comparing two prices with seven zeros after the decimal point. It also lets you compare coins with different supplies fairly. The difference is explained in detail in [market cap vs price](https://arkhampad.com/learn/market-cap-vs-price/).
+
+## How do you read volume, buys and sells?
+
+Price shows where a token traded. Volume shows how much traded. A price move on high volume, with many separate trades, says more than the same move on a few trades.
+
+On ArkhamPad, the [Discover page](https://arkhampad.com/) shows each token's 24-hour volume and the number of buys and sells, and every token page has a live trades list. Use them together with the chart:
+
+- **Rising price, rising volume, many buys:** demand is broad. That does not guarantee it continues.
+- **Rising price on a few large buys:** one or two wallets may be driving the move, and they can sell just as quickly.
+- **Falling price with sells outnumbering buys:** holders are taking profit or leaving.
+- **Flat price, very low volume:** interest has faded, and even a small sell may move the price.
+
+If the live trades list shows most volume coming from a few large trades, the chart reflects those traders more than the wider market.
+
+## What do common memecoin chart patterns mean?
+
+Charts do not predict the future, but some shapes appear again and again on new tokens. Recognising them explains what already happened.
+
+- **Launch spike:** a run of tall green candles right after launch, often followed by a sharp pullback as early buyers sell.
+- **Long upper wicks near a top:** buyers keep pushing higher, but sellers take the price back each time.
+- **Staircase:** a series of higher lows, where each dip is bought at a higher level than the last.
+- **Slow bleed:** many small red candles on falling volume. Attention is moving elsewhere.
+- **One giant red candle:** a large holder sold into the pool. Check the holders list to see whether other large holders remain.
+
+None of these patterns is a reliable signal on its own. Memecoins can ignore every pattern when news or a single social post shifts attention.
+
+## What can a memecoin chart not tell you?
+
+A chart only shows trades that already happened. It does not show who holds the supply or whether the pool can be drained. Before you buy, also check:
+
+- **Holder concentration.** The top-10 holder share on Discover and the holders list on the token page show how much supply a few wallets control. See [token holders and top-10 concentration](https://arkhampad.com/learn/token-holders-top-10/).
+- **Liquidity.** ArkhamPad coins have liquidity locked forever and show an LP locked label. For tokens from elsewhere, find out how the pool is held.
+- **Contract and creator.** The token page shows the contract address, creator, pool type, supply and age.
+
+A clean-looking chart on a token where one wallet holds half the supply is far riskier than the chart suggests.
+
+## A simple routine for reading a memecoin chart
+
+1. Open the token from Discover and confirm the contract address.
+2. Switch the chart to market cap view so the numbers are easy to compare.
+3. Look at the 1-hour or 4-hour chart for the overall direction, then the 1-minute or 5-minute chart for recent action.
+4. Check 24-hour volume and buys versus sells.
+5. Scan the live trades list for unusually large trades.
+6. Check the holders list and the top-10 share.
+7. If you trade, size your order so it does not move the price too much, and set slippage with care. See [slippage explained](https://arkhampad.com/learn/slippage-explained/).
+
+If you launched the coin yourself, the same routine shows you how people are trading it. The [memecoin launch checklist](https://arkhampad.com/learn/memecoin-launch-checklist/) covers what to watch in the first 24 hours. Whatever the chart shows, memecoins stay high risk.
+
+## FAQ
+
+**What do green and red candles mean on a crypto chart?**
+On most charts, a green candle means the price closed higher than it opened during that period, and a red candle means it closed lower. The body shows the open-to-close range, and the wicks show the highest and lowest prices traded. Colour alone does not tell you how much volume was behind the move.
+
+**What is the best timeframe for trading memecoins?**
+There is no single best timeframe. Short timeframes such as 1-minute and 5-minute candles suit brand-new coins with little history. Longer timeframes such as 1-hour and 4-hour candles show the broader trend for coins that have traded for days. Checking one short and one long timeframe gives a more balanced view.
+
+**Why does a memecoin chart have such long wicks?**
+Memecoin pools often hold modest liquidity, so one large buy or sell can move the price far within a single candle. If the price then returns before the candle closes, a long wick remains. Frequent long wicks usually mean the price is easy to move, which also means your own trades may have more price impact.
+
+**Is a market cap chart the same as a price chart?**
+For a token with a fixed supply, yes in shape. Market cap equals price multiplied by supply, so both lines move by the same percentage. Only the numbers differ. Market cap view is often easier to read for memecoins, whose prices can have many zeros after the decimal point.
+
+**Can a chart show if a memecoin is a rug pull?**
+Not on its own. A chart shows past trades, not who holds the supply or whether liquidity can be removed. Check holder concentration, liquidity status, the contract address and the creator as well. On ArkhamPad coins, liquidity is locked forever, so a liquidity rug pull is not possible, though the price can still fall.
+
+
+# Market Cap vs Price: What Memecoin Traders Should Watch
+URL: https://arkhampad.com/learn/market-cap-vs-price/
+
+Price is what one token costs; market cap is that price multiplied by the token supply, so it shows the value of the whole token. For memecoins, market cap is usually the more useful number, because supplies differ enormously and a low price per token does not mean a coin is cheap.
+
+## What is the difference between market cap and price?
+
+**Price** is what one token costs right now, based on the most recent trade. **Market cap** (market capitalisation) is the price multiplied by the number of tokens in supply. It is the value the market is currently placing on the whole token.
+
+Market cap = price × supply
+
+Say a coin has a supply of 1,000,000,000 tokens and the last trade was at 0.000001 HYPE per token. Its market cap is 1,000 HYPE. If the price doubles to 0.000002 HYPE, the market cap doubles to 2,000 HYPE. Price and market cap move by the same percentage, as long as the supply does not change.
+
+Price describes one token. Market cap describes the whole coin.
+
+## Why a low token price does not mean a coin is cheap
+
+Many new traders look for coins with a very low price, expecting that a token worth a tiny fraction of a cent has more room to grow. This is called unit bias, and it is one of the most common mistakes in memecoin trading.
+
+Price alone tells you nothing about value, because supplies vary enormously. Consider two hypothetical coins:
+
+- Coin A has 1,000,000 tokens at 1 HYPE each. Market cap: 1,000,000 HYPE.
+- Coin B has 1,000,000,000,000 tokens at 0.000001 HYPE each. Market cap: 1,000,000 HYPE.
+
+Coin B's price looks a million times cheaper, yet both coins are valued the same. For either one to double, the market has to add another 1,000,000 HYPE of value. The low price of Coin B gives it no advantage.
+
+When you compare coins, compare market caps. Ask how large a market cap the coin would need to reach for the return you have in mind, and whether that is realistic for a memecoin.
+
+## Circulating supply, total supply and fully diluted value
+
+Not every token has its whole supply in the market. Many crypto projects reserve tokens for a team, investors or future releases. That is why you will see several related terms:
+
+- **Total supply:** every token that exists.
+- **Circulating supply:** tokens that are actually in the market and can be traded.
+- **Fully diluted value (FDV):** price multiplied by total supply, including tokens not yet circulating.
+
+When a large share of supply is reserved, market cap based on circulating supply can look small while FDV is much larger. When those reserved tokens are released later, they can add heavy selling pressure.
+
+Coins launched on ArkhamPad avoid this gap. The total supply of 1,000,000,000 tokens goes into the pool at launch, with no team allocation and no presale. Circulating supply and total supply are the same from the start, so market cap and FDV match. For tokens launched elsewhere, check the supply details and the holders list before relying on any market cap figure.
+
+## How does buying change a memecoin's market cap?
+
+On Elysium, memecoins trade in automated pools rather than on an order book. When you buy, you add HYPE to the pool and take tokens out. Fewer tokens remain in the pool, so the pool's price rises. Selling does the reverse.
+
+A coin launched on ArkhamPad starts at a market cap of 60 HYPE. Every buy moves that number up and every sell moves it down. Because the pool is small early on, even modest buys can move the market cap a long way. That is why young memecoins can multiply in value within minutes, and fall just as fast.
+
+This also explains price impact: the bigger your trade compared with the pool, the further it moves the price against you. A large order in a thin pool gets a worse average price than a small one.
+
+## Is market cap the money you could actually cash out?
+
+No. Market cap is the last trade price multiplied by the supply. It assumes every token could be sold at that price, which is never true.
+
+If holders tried to sell a large share of the supply, each sale would push the price lower, and the HYPE they received would be far less than the market cap suggested. How much HYPE can actually come out depends on the liquidity in the pool and how much is sold.
+
+Say a hypothetical coin shows a market cap of 10,000 HYPE. That does not mean 10,000 HYPE is sitting in the pool waiting to be withdrawn. Selling even a modest fraction of the supply could drop the price sharply. Treat market cap as a measure of how the market values a coin at this moment, not as money that exists.
+
+## How do you use market cap when trading Elysium memecoins?
+
+ArkhamPad's [Discover page](https://arkhampad.com/) shows market cap, 24-hour change, volume, buys and sells, and holders for every HYPE-paired token on Elysium. To trade, you can [log in with just an email](https://arkhampad.com/learn/trade-crypto-with-email-login/).
+
+A few practical habits:
+
+- **Use the launch as a reference point.** ArkhamPad coins all start at 60 HYPE. A coin at 600 HYPE has grown about 10 times since launch.
+- **Read charts in market cap view.** Token pages let you switch the chart between market cap and price. See [how to read a memecoin chart](https://arkhampad.com/learn/how-to-read-a-memecoin-chart/).
+- **Remember the price of HYPE.** These coins trade against HYPE, the same asset used on HyperEVM and bridged 1:1 to Elysium (see [Elysium vs HyperEVM](https://arkhampad.com/learn/elysium-vs-hyperevm/)). A coin's value in dollars moves with both its own HYPE price and the price of HYPE itself.
+- **Compare like with like.** Compare coins by market cap, never by price per token.
+
+For a broader overview of the tokens on the network, see the [Elysium memecoins guide](https://arkhampad.com/learn/elysium-memecoins-guide/).
+
+## Why can volume matter more than market cap?
+
+Market cap tells you how a coin is valued. Volume tells you how actively it trades. A coin with a high market cap and almost no volume can be hard to sell without moving the price. A coin with steady volume relative to its size usually has more active interest.
+
+Volume also drives creator earnings. On ArkhamPad coins, every trade pays a 1% pool fee, and 30% of those fees go to the coin's creator. Creator income depends on how much the coin trades, not on its market cap. See [creator fees](https://arkhampad.com/learn/earn-creator-fees/) for how this works.
+
+Neither number makes a memecoin safe. Market caps on new coins can fall to a fraction of their peak within hours. Only trade amounts you can afford to lose.
+
+## FAQ
+
+**Is it better to buy a coin with a low price?**
+No. A low price per token says nothing about value, because the supply can be huge. A coin priced at a tiny fraction of a cent can have the same market cap as a coin priced at 1 HYPE. Compare market caps instead, and ask how much value the market would need to add for the coin to reach your target.
+
+**How do you calculate market cap in crypto?**
+Multiply the current price per token by the supply. A coin with 1,000,000,000 tokens trading at 0.000001 HYPE has a market cap of 1,000 HYPE. Some sites use circulating supply and show fully diluted value separately using total supply. For ArkhamPad coins the two match, because the whole supply goes into the pool at launch.
+
+**What is the starting market cap of an ArkhamPad coin?**
+Every coin created on ArkhamPad starts at a market cap of 60 HYPE for its full supply of 1,000,000,000 tokens. That equals a starting price of 0.00000006 HYPE per token. Because every coin starts from the same point, you can quickly see how much a coin has grown since launch by comparing its current market cap with 60 HYPE.
+
+**Can a memecoin's market cap go to zero?**
+In practice it can get very close. If buyers disappear and holders keep selling, the price falls toward zero and so does the market cap. Locked liquidity, as on ArkhamPad coins, means the pool cannot be withdrawn, but it does not hold the price up. Many memecoins lose most of their value, so trade with that in mind.
+
+**What is the difference between market cap and liquidity?**
+Market cap is the last price multiplied by the supply. Liquidity is the amount of assets actually available in the pool to trade against. A coin can show a large market cap while its pool holds far less, so selling a big position can push the price well below what the market cap implies.
+
+
+# Slippage Explained: What to Set and Why Trades Fail
+URL: https://arkhampad.com/learn/slippage-explained/
+
+Slippage is the difference between the result you are quoted and the result your trade actually gets, caused mainly by other trades landing before yours. Your slippage setting is the most you will accept; if the price moves further, the trade fails instead of filling at a worse price. On ArkhamPad you can choose 1%, 3%, 5% (the default) or 10%.
+
+## What is slippage in crypto?
+
+When you swap tokens in a pool, you see a quote first: how many tokens you should receive for the HYPE you pay, or how much HYPE you should receive for the tokens you sell. That quote is based on the state of the pool at the moment you looked.
+
+By the time your transaction is processed, the pool may have changed. Other traders may have bought or sold in between. **Slippage** is the difference between the quoted result and the result you actually get.
+
+Slippage can work in either direction. If other traders sold just before your buy, you may receive slightly more tokens than quoted. On busy memecoins, though, it usually works against you, because many people buy into the same moves at the same time.
+
+## What is the difference between slippage and price impact?
+
+The two are related but not the same.
+
+- **Price impact** is how much your own trade moves the price. In a pool, buying takes tokens out and pushes the price up as your order fills. The larger your trade compared with the liquidity in the pool, the bigger the impact. The quote you see already includes it.
+- **Slippage** is any further change between the quote and execution, mostly caused by other trades landing first.
+
+Price impact matters a lot on new memecoins. A coin launched on ArkhamPad starts at a market cap of 60 HYPE, so early on the pool is small and even a modest buy can move the price noticeably. Check the quote before you confirm. If it gives you far fewer tokens than you expected, your order is large for that pool. How price relates to pool size is covered in [market cap vs price](https://arkhampad.com/learn/market-cap-vs-price/).
+
+## How does minimum received protect you?
+
+Your slippage setting turns into a hard limit called **minimum received**. It is the least you will accept from the trade. If the trade would deliver less, it does not go through.
+
+Say you want to buy a coin and the quote shows 1,000,000 tokens. With slippage set to 5%, the minimum received is 950,000 tokens. If the price moves so that your HYPE would buy only 940,000 tokens when the trade executes, the transaction is rejected and your HYPE stays in your wallet. If it would buy 980,000, the trade goes through and you receive 980,000.
+
+The same applies to sells. If you sell tokens with a quote of 10 HYPE and 3% slippage, the minimum received is 9.7 HYPE.
+
+On ArkhamPad, the quote and the minimum received are shown before you trade, so you can see exactly what your setting allows.
+
+## What slippage should you set?
+
+ArkhamPad offers four settings: 1%, 3%, 5% and 10%. The default is 5%. There is no single right answer, but a simple guide helps:
+
+- **1%:** for calm tokens and small orders. Lowest risk of a poor fill, but trades fail more often when the price is moving.
+- **3%:** a reasonable choice for tokens that trade steadily without big swings.
+- **5% (default):** a balance for typical memecoin trading, where prices move quickly.
+- **10%:** for very fast markets, such as the first minutes after a launch, when lower settings keep failing. You accept that you may get a noticeably worse price.
+
+A higher setting does not make your trade more expensive by itself. It only raises how much worse than the quote you are willing to accept. On a fast-moving coin, though, a wide setting means you may actually receive that worse result. Start lower and only raise it when you understand why trades are failing.
+
+## Why do crypto trades fail?
+
+A failed trade is frustrating, but it usually has a clear cause. The most common ones:
+
+1. **Slippage exceeded.** The price moved more than your setting allowed, so the minimum received could not be met. This is the protection working as intended. Get a fresh quote and try again, or raise slippage one step.
+2. **Not enough HYPE for gas.** Network fees on Elysium are paid in HYPE from your balance. If you spend your entire balance on a buy, there may be nothing left for the fee. Keep a little HYPE aside. See [Elysium gas fees](https://arkhampad.com/learn/elysium-gas-fees/).
+3. **Token transfer tax.** Some tokens charge their own tax whenever they are transferred. These may not be sellable through the ArkhamPad router.
+4. **Insufficient balance.** The amount entered is more than your wallet holds, often because a previous trade or fee already used part of it.
+
+On EVM networks, a transaction that fails after reaching the chain can still use some gas. On Elysium that cost is very low, but repeated failures still add up.
+
+## How do you reduce slippage on memecoins?
+
+- **Trade smaller amounts.** A smaller order has less price impact and is less likely to fail. You can split a large buy into a few smaller ones, keeping in mind that each trade pays its own fees.
+- **Avoid the busiest moments.** The first minutes after a launch, or right after a coin is shared widely, are when prices move fastest.
+- **Refresh the quote.** If you waited a while before confirming, get a new quote so the minimum received reflects the current price.
+- **Check the pool before a big trade.** If what you receive drops sharply as you increase the amount, the pool is thin for that size.
+- **Have funds ready.** Bridge HYPE in advance on the [Bridge page](https://arkhampad.com/bridge/) so you are not rushing. The guides to [bridging HYPE to Elysium](https://arkhampad.com/learn/bridge-hype-to-elysium/) and [buying with USDC](https://arkhampad.com/learn/buy-elysium-tokens-with-usdc/) cover both ways in.
+
+For the full buy and sell flow, see [how to buy and sell Elysium tokens](https://arkhampad.com/learn/how-to-buy-elysium-tokens/).
+
+## Does Elysium's design affect slippage?
+
+Partly. Elysium is designed for very fast blocks, with a target of about 100 to 200 milliseconds. A shorter gap between your quote and the block that includes your trade gives the price less time to drift.
+
+At launch, a single sequencer orders transactions by priority fee, and there is no public mempool where pending trades sit in view of everyone. Even so, other trades can still land before yours, especially on popular coins. Your slippage setting and minimum received remain your real protection.
+
+No setting protects you from the price falling after your trade completes. Memecoins are highly volatile, so only trade amounts you can afford to lose.
+
+## FAQ
+
+**What is a good slippage setting for memecoins?**
+On ArkhamPad the default is 5%, which suits most memecoin trades. Use 1% or 3% for calmer tokens and small orders. Use 10% only in very fast markets, such as right after a launch, when lower settings keep failing. Remember that a higher setting means you accept a possibly worse price in exchange for a better chance the trade fills.
+
+**Why did my trade fail with a slippage error?**
+The price moved more than your slippage setting allowed between the quote and execution, so the trade could not deliver your minimum received and was rejected. Your funds stay in your wallet. Refresh the quote and try again, trade a smaller amount, or raise slippage one step if you accept a possibly worse price.
+
+**Does high slippage mean I pay more?**
+Not automatically. Slippage tolerance is a limit, not a fee. With 10% slippage you may still receive close to the quote if the price barely moves. But you allow the trade to fill up to 10% worse, and on fast-moving coins that can happen. Fees, such as the 1% pool fee on ArkhamPad coins, are separate from slippage.
+
+**What is minimum received in crypto?**
+Minimum received is the smallest amount your trade will accept, calculated from the quote and your slippage setting. For example, a quote of 1,000,000 tokens with 5% slippage gives a minimum of 950,000 tokens. If the trade would deliver less, it fails instead of filling. ArkhamPad shows the minimum received before you confirm.
+
+**Why can't I sell a token through the router?**
+Some tokens charge their own tax whenever they are transferred. The amount that arrives is then less than a normal swap expects, so these tokens may not be sellable through the ArkhamPad router. Check whether a token has a transfer tax before you buy, because being unable to sell easily is a serious risk.
+
+
+# Top 10 Holders in Crypto: What Concentration Tells You
+URL: https://arkhampad.com/learn/token-holders-top-10/
+
+Top-10 holder concentration is the share of a token's supply held by its ten largest wallets. A high share means a few wallets can push the price down sharply by selling, so it is one of the first things to check before buying a memecoin. On ArkhamPad, Discover shows each token's top-10 share and every token page lists holders with their percentage of supply.
+
+## What does top-10 holder concentration mean?
+
+Every token balance sits in a wallet address, and anyone can see which addresses hold how much. **Holder concentration** describes how that supply is spread out. The most common way to measure it is the **top-10 holder share**: the percentage of total supply held by the ten largest addresses combined.
+
+Say a coin has a supply of 1,000,000,000 tokens and its ten largest wallets hold 400,000,000 between them. Its top-10 share is 40%. The other 60% is spread across every remaining holder.
+
+It is a simple number, but it answers an important question: how few people would need to sell to move the price a lot?
+
+## Why do top 10 holders matter for memecoins?
+
+Memecoins trade in pools. When a holder sells, they put tokens into the pool and take HYPE out, which pushes the price down. The bigger the sale compared with the pool, the bigger the drop.
+
+If supply is spread across many small holders, no single seller can do much damage. If a few wallets hold a large share, any one of them can cause a sharp fall by selling, and others often follow when they see it happen. Large holders are often called whales.
+
+High concentration also makes charts less trustworthy. A steady climb may simply reflect one or two wallets buying, and those wallets can reverse at any time. That is why holder data should be read alongside the chart, as covered in [how to read a memecoin chart](https://arkhampad.com/learn/how-to-read-a-memecoin-chart/).
+
+## Which addresses in a holder list are not real holders?
+
+Not every large address is a person who can sell. Before you judge a top-10 share, look at who the largest addresses are.
+
+- **The liquidity pool.** The pool contract holds the tokens available to trade, and it often appears as the largest holder. Those tokens are not held by a trader; they are what buyers purchase from.
+- **Burn addresses.** Tokens sent to an address nobody controls are effectively destroyed.
+- **Other contracts.** Some addresses belong to smart contracts rather than individuals.
+
+This matters most for brand-new coins. On ArkhamPad, the whole supply of 1,000,000,000 tokens goes into the pool at launch, so at first almost everything sits in the pool. As people buy, tokens move from the pool into wallets. A very high top-10 share on a coin that is minutes old may simply mean the pool still holds most of the supply. Check whether the largest holder is the pool before drawing conclusions.
+
+## What top-10 holder percentage is safe?
+
+There is no universal safe number. What counts as risky depends on the token's age, how much of the supply is still in the pool and who the large wallets belong to. A few guidelines help:
+
+- **Look at individual wallets, not only the total.** Ten wallets holding 3% each is very different from one wallet holding 25% and nine holding 0.5% each.
+- **Set aside the pool and burn addresses** when you think about how much supply traders control.
+- **Check the creator.** The token page shows the creator's address. If the creator's wallet is among the largest holders, they can sell into anyone who buys after them. On ArkhamPad, a creator can make an optional first buy at launch, and those tokens appear in the holders list like any other.
+- **Watch for linked wallets.** Several mid-sized wallets that all bought at the same moment may belong to the same person.
+- **Watch the trend.** Concentration falling over time as more people buy is generally healthier than concentration rising.
+
+Low concentration does not make a coin safe. It only reduces one specific risk.
+
+## How do you check token holders on ArkhamPad?
+
+1. Open [Discover](https://arkhampad.com/). Every HYPE-paired token on Elysium is listed with its holder count and top-10 holder share.
+2. Use the top-10 share to decide which coins deserve a closer look.
+3. Open the token page and go to the holders list. Each address is shown with its percentage of supply.
+4. Note the creator address shown on the token page and look for it in the list.
+5. Watch the live trades list for unusually large sells.
+6. Check again later. Concentration changes as people buy and sell.
+
+## Does a high holder count mean a coin is safe?
+
+Not by itself. Holder count only tells you how many addresses hold at least some of the token. It says nothing about how the supply is divided.
+
+A coin can have thousands of holders and still have most of its supply in five wallets. Holder counts can also be inflated by sending tiny amounts to many new addresses. Read holder count and top-10 share together. A growing number of holders with a falling top-10 share is a better sign than either number alone.
+
+## How does holder concentration relate to rug pulls?
+
+A classic rug pull happens when a creator removes the pool's liquidity, leaving holders unable to sell. On ArkhamPad coins this is not possible, because the pool position is held by the launcher contract forever and nobody can withdraw it. [Locked liquidity explained](https://arkhampad.com/learn/locked-liquidity-explained/) covers how this works.
+
+Concentration creates a different risk, sometimes called a dump or soft rug: a large holder sells a big position into the pool. Locked liquidity means there is always a pool to sell into, but it does not stop the price falling when a whale sells. That is why top-10 share is worth checking even on coins with locked liquidity. Other warning signs are listed in [how to spot a rug pull](https://arkhampad.com/learn/spot-a-rug-pull/).
+
+When a large sell hits, prices can drop within seconds. If you are selling at the same time, a tight [slippage setting](https://arkhampad.com/learn/slippage-explained/) may cause your trade to fail, while a wide one may fill at a much lower price. Selling into the pool is quick, but moving HYPE back to HyperEVM through the official bridge takes about 5.5 days, as explained in [Elysium withdrawal time](https://arkhampad.com/learn/elysium-withdrawal-time/). Memecoins are high risk, so size positions with that in mind.
+
+## FAQ
+
+**What does top 10 holders mean in crypto?**
+It is the share of a token's total supply held by its ten largest wallet addresses combined. If the ten biggest wallets hold 400 million tokens of a 1 billion supply, the top-10 share is 40%. A high share means a small group can move the price sharply by selling, so traders use it as a quick concentration check.
+
+**Is it bad if one wallet holds a lot of a token?**
+It depends whose wallet it is. If it is the liquidity pool or a burn address, those tokens are not held by a trader. If it is the creator or another individual, that wallet can sell a large amount at once and push the price down sharply. Check the address before you judge the number.
+
+**Why does a new ArkhamPad coin show such high concentration?**
+At launch, the entire supply of 1,000,000,000 tokens goes into the pool, so the pool holds nearly everything. As people buy, tokens move from the pool into their wallets and the supply spreads out. Early on, a high top-10 share often reflects the pool rather than a few traders, so check the largest address first.
+
+**Where can I see token holders on Elysium?**
+On ArkhamPad, the Discover page shows the holder count and top-10 holder share for every HYPE-paired token on Elysium. Each token page has a holders list with every address and its percentage of supply, alongside the contract address, creator, pool type, supply and age of the token.
+
+**Can whales dump a token with locked liquidity?**
+Yes. Locked liquidity only means the pool itself cannot be withdrawn. Any holder, including a large one, can still sell tokens into the pool. A big sale pushes the price down, sometimes sharply. Locked liquidity prevents a liquidity rug pull, but it does not protect the price from falling.
+
+
+# How to Create a Token on Elysium in 30 Seconds
+URL: https://arkhampad.com/learn/create-a-token-on-elysium/
+
+You can create a token on Elysium with ArkhamPad in about 30 seconds: enter a name, ticker and image, optionally add a description, links and a first buy, then confirm one transaction. Every coin has 1,000,000,000 tokens, all placed in a locked Uniswap v3 style pool against HYPE at a starting market cap of 60 HYPE, and the creator earns 30% of trading fees.
+
+## What does it mean to create a token on Elysium?
+
+Creating a token means deploying a new smart contract that defines a coin, and then giving it a market so people can buy and sell it. On Elysium, a Layer 2 for the Hyperliquid ecosystem built by Kinetiq, this works like on any EVM chain, because Elysium runs standard Arbitrum Nitro. If you are new to the chain, start with [what Elysium is](https://arkhampad.com/learn/what-is-elysium/).
+
+Doing this by hand takes code, testing and a separate step to add liquidity. A launchpad bundles all of it into one form and one transaction. On ArkhamPad you do not write code, choose a supply or set up a pool yourself. The launcher contract does that for you, the same way for every coin.
+
+## What you need before you start
+
+The list is short:
+
+- **An account.** Log in with email, Google or an existing wallet. Email and Google users get an embedded wallet created automatically, with no seed phrase to write down to get started. See [trading with just an email](https://arkhampad.com/learn/trade-crypto-with-email-login/).
+- **A little HYPE.** Elysium uses HYPE for gas, so you need some in your balance to pay the network fee. If you plan a first buy, you need HYPE for that too. You can add HYPE or USDC on the [Bridge page](https://arkhampad.com/bridge/), or follow the guide to [bridge HYPE to Elysium](https://arkhampad.com/learn/bridge-hype-to-elysium/).
+- **A name, a ticker and an image.** Pick these before you open the form. They cannot be an afterthought, because they are what people see first on Discover.
+
+Optional: a short description and links (website, X, Telegram). Coins with a clear story and working links are easier for buyers to trust.
+
+## How to create a token on ArkhamPad, step by step
+
+1. Open [Create](https://arkhampad.com/create/) and log in.
+2. Enter the coin name and ticker. Keep the ticker short and easy to type.
+3. Upload the image. A square image reads best in lists and on the token page.
+4. Add a description and links if you have them.
+5. Decide whether to make a first buy, and how much HYPE to spend on it.
+6. Review and confirm. The coin is deployed, the pool is created and your first buy, if any, happens in the same transaction.
+
+The whole process takes about 30 seconds. When it finishes, your coin has its own token page with a chart, a buy and sell box, live trades and a holders list, and it appears on Discover with the rest of the Elysium market.
+
+## What happens at launch: supply, pool and starting market cap
+
+Every ArkhamPad coin follows the same rules, which makes them easy to compare:
+
+- **Total supply:** 1,000,000,000 tokens.
+- **Distribution:** the entire supply goes into the pool at launch. There is no team allocation and no presale.
+- **Pool:** a Uniswap v3 style concentrated-liquidity pool paired against wrapped HYPE, with a 1% fee on every trade.
+- **Starting market cap:** 60 HYPE for the whole supply.
+- **Liquidity:** locked forever inside the launcher contract.
+
+Because nobody receives tokens for free, everyone, including the creator, gets tokens the same way: by buying from the pool. The price then moves with demand. Buys push it up and sells push it down.
+
+## Should you make a first buy?
+
+The first buy is optional. It lets the creator buy tokens in the same transaction that creates the coin, before anyone else can trade. Some creators like it because it shows they have something at stake. Others skip it so they hold nothing and the chart starts clean.
+
+Things to weigh:
+
+- A large first buy gives you a big share of supply. Traders check [top-10 holder concentration](https://arkhampad.com/learn/token-holders-top-10/), and a creator holding a large share can make buyers cautious.
+- Only spend what you can afford to lose. Memecoins are risky, and most new coins never get much trading.
+- If you sell your first buy later, everyone can see it in the live trades list.
+
+## How creators earn from their coin
+
+Every trade pays the 1% pool fee. ArkhamPad sends 30% of those trading fees to the coin's creator and keeps 70%. Fees are collected from the pool and paid out in HYPE and in the coin. In other words, the creator earns about 0.3% of the coin's trading volume.
+
+The full breakdown has worked examples. The short version: fees depend on volume, not on price, so a coin that keeps trading keeps paying its creator.
+
+## Why locked liquidity makes launches safer
+
+On many chains, the person who adds liquidity can later pull it out and leave holders with a coin nobody can sell. On ArkhamPad that is not possible. The pool position is held by the launcher contract and cannot be withdrawn by anyone, not the creator and not ArkhamPad. These coins show an "LP locked" label on Discover. Read more in [locked liquidity explained](https://arkhampad.com/learn/locked-liquidity-explained/).
+
+Locked liquidity removes one type of scam. It does not guarantee a price. Holders can still sell, and the price can still fall a long way.
+
+## After you launch
+
+Launching is the easy part. Getting people to notice the coin is the real work. Share the token page to X from the token page itself, post the contract address so people do not buy copies, and be present where your community talks. For a plan covering the first day, use the [memecoin launch checklist](https://arkhampad.com/learn/memecoin-launch-checklist/).
+
+## FAQ
+
+**How long does it take to create a token on Elysium?**
+On ArkhamPad it takes about 30 seconds. You fill in a name, ticker and image, add optional details and an optional first buy, and confirm one transaction. The contract, the pool and your first buy are created together, and the coin appears on Discover with its own token page.
+
+**Do I need to know how to code to launch a token?**
+No. ArkhamPad handles the token contract, the supply and the pool for you. You only provide the name, ticker, image and optional description and links. Because Elysium is a full EVM chain, developers can also deploy their own contracts with normal tools, but that is not needed to launch a coin.
+
+**What does it cost to create a token on ArkhamPad?**
+You pay the Elysium network fee in HYPE, which is very low, plus whatever you choose to spend on an optional first buy. Keep a little HYPE in your balance so the transaction can go through. You can add HYPE or USDC on the Bridge page.
+
+**How many tokens does a new coin have?**
+Every ArkhamPad coin has a total supply of 1,000,000,000 tokens. All of it goes into the pool at launch, with no team allocation and no presale. The starting market cap is 60 HYPE for the whole supply, and the price moves as people buy and sell.
+
+**Can I change my coin's name or ticker after launch?**
+Plan as if you cannot. The name and ticker are part of the token itself and are what traders search for on Discover and see in their wallets. Check spelling and the image before you confirm, because launching a second coin to fix a typo splits attention and confuses buyers.
+
+
+# Creator Fees: Earn 30% of Trading Fees on Your Coin
+URL: https://arkhampad.com/learn/earn-creator-fees/
+
+On ArkhamPad, every trade of a coin pays a 1% pool fee, and 30% of those fees go to the coin's creator. That works out to about 0.3% of trading volume: for example, $100,000 of volume creates $1,000 in pool fees, of which $300 goes to the creator. Fees are paid out in HYPE and in the coin.
+
+## What are memecoin creator fees?
+
+Creator fees are a share of trading fees paid to the person who launched a coin. They reward creators for building activity around their coin instead of for selling their own tokens. On ArkhamPad, the creator is whoever launched the coin from the [Create](https://arkhampad.com/create/) page, and the share is fixed for every coin: 30% of trading fees.
+
+This matters because it changes incentives. Without fees, the only way a creator makes money is by buying early and selling later, which pushes the price down for everyone else. With fees, a creator can earn from steady trading while holding nothing at all.
+
+## Where the fee comes from: the 1% pool fee
+
+Every ArkhamPad coin trades in a Uniswap v3 style concentrated-liquidity pool against wrapped HYPE. That pool charges a 1% fee on every trade, buys and sells alike. The fee is taken from the trade itself, so the trader pays it as part of the swap.
+
+The fees are then split:
+
+- **30%** to the coin's creator.
+- **70%** to ArkhamPad.
+
+So the creator's share equals 30% of 1%, which is **0.3% of trading volume**. This is separate from the Elysium network fee, which is paid in HYPE to the chain and is not shared with anyone on the launchpad. See [Elysium gas fees](https://arkhampad.com/learn/elysium-gas-fees/) for how network costs work.
+
+## How much can a creator earn? Worked examples
+
+The examples below are hypothetical. They show the math, not what any coin will do. Most coins see little volume.
+
+- **$10,000 of volume:** pool fees are $100. The creator's 30% is **$30**.
+- **$100,000 of volume:** pool fees are $1,000. The creator's 30% is **$300**.
+- **$1,000,000 of volume:** pool fees are $10,000. The creator's 30% is **$3,000**.
+
+The same math works in HYPE. If a coin trades 1,000 HYPE of volume, the pool collects 10 HYPE in fees and the creator's share is 3 HYPE.
+
+A quick rule: multiply volume by 0.003 to estimate the creator's share. Volume counts both buys and sells. A trader who buys 50 HYPE worth and later sells 50 HYPE worth adds 100 HYPE of volume, which pays 1 HYPE in pool fees and 0.3 HYPE to the creator.
+
+## Why creator fees follow volume, not price
+
+A common mistake is to think a higher market cap means higher fees. It does not, at least not directly. Fees are a percentage of what is traded, so a coin that stays at a modest market cap but trades actively can pay its creator more than a coin that spikes once and goes quiet.
+
+If you want to understand the difference between those numbers, read [market cap vs price](https://arkhampad.com/learn/market-cap-vs-price/). For creators, the takeaway is simple: activity over time is what pays. One busy hour after launch is worth less than a coin people keep trading for weeks.
+
+## Are creator fees paid in HYPE or in the coin?
+
+Both. Fees are collected from the pool and paid out in HYPE and in the coin. In a Uniswap v3 style pool, the fee is charged in the token the trader puts in. That generally means fees on buys accrue in HYPE, and fees on sells accrue in the coin.
+
+What this means for you:
+
+- The HYPE part is a fixed amount of HYPE. Its dollar value moves with the HYPE price.
+- The coin part is worth whatever your coin is worth. If you sell those tokens, that sale goes through the pool like any other trade and affects the price.
+- Some creators keep the coin portion to show commitment. That choice is yours, and buyers can see creator wallet activity on the token page.
+
+## Moving your earnings
+
+Creator fees are paid on Elysium, so you can use the HYPE to trade other coins right away. Keep a little HYPE for gas, since every transaction on Elysium pays its network fee in HYPE. To learn what else HYPE does on the chain, see [HYPE on Elysium](https://arkhampad.com/learn/hype-on-elysium/).
+
+If you want to move HYPE back to HyperEVM, the official bridge takes about 5.5 days because withdrawals finalize after a challenge period. The reasons are explained in [Elysium withdrawal time](https://arkhampad.com/learn/elysium-withdrawal-time/). A faster exit route is being worked on, but there is no date yet.
+
+## How to grow fees without hurting holders
+
+Fees reward creators who keep their coin alive. Practical habits that help:
+
+- Keep links and the description accurate, and post the contract address so buyers do not get copies.
+- Share updates, not price promises. Promising returns damages trust and can cause legal problems.
+- Avoid holding a huge share of supply. A concentrated holder list scares traders away.
+- Be visible. Coins with an active creator tend to keep conversations, and trading, going.
+
+Fees are never guaranteed. A coin with no trading pays nothing. To get started, see [how to create a token on Elysium](https://arkhampad.com/learn/create-a-token-on-elysium/).
+
+## FAQ
+
+**How much do memecoin creators earn on ArkhamPad?**
+Creators get 30% of the 1% pool fee, which equals about 0.3% of their coin's trading volume. As a hypothetical example, $100,000 of volume produces $1,000 in pool fees and $300 for the creator. Earnings depend entirely on how much the coin trades, and many coins trade very little.
+
+**Do creators earn fees when people sell?**
+Yes. The 1% pool fee applies to every trade, buys and sells. Both count toward volume, and the creator receives 30% of the fees from each. In a Uniswap v3 style pool the fee is charged in the token being sold into the pool, so sell fees generally accrue in the coin.
+
+**Do I need to hold my own coin to earn creator fees?**
+No. Creator fees come from trading volume, not from the creator's holdings. You can launch without a first buy and still earn 30% of trading fees. Holding some tokens is a personal choice, and buyers often look at how much the creator holds before deciding.
+
+**Who gets the other 70% of trading fees?**
+The other 70% of the pool fees goes to ArkhamPad. The split is the same for every coin launched on ArkhamPad. The Elysium network fee, paid in HYPE for each transaction, is separate and goes to the chain, not to the creator or ArkhamPad.
+
+**Is the 0.5% router fee shared with creators?**
+No. The 0.5% router fee applies only when you trade tokens launched elsewhere through the ArkhamPad router. ArkhamPad coins pay no router fee at all. Creator fees come only from the 1% pool fee charged on trades of ArkhamPad coins, and the creator receives 30% of that pool fee.
+
+
+# Locked Liquidity Explained: Why It Matters
+URL: https://arkhampad.com/learn/locked-liquidity-explained/
+
+Locked liquidity means the tokens and HYPE in a coin's trading pool cannot be withdrawn by the person who added them. It prevents a liquidity rug pull, where the creator removes the pool and leaves holders unable to sell. On ArkhamPad, every coin's pool position is held by the launcher contract forever and cannot be withdrawn by anyone, not the creator and not ArkhamPad.
+
+## What is liquidity in crypto?
+
+Liquidity is how easily you can buy or sell something without moving its price much. For a new token, liquidity usually lives in a liquidity pool: a smart contract that holds two assets, such as a memecoin and wrapped HYPE, and trades them against each other using a formula. When you buy, you put HYPE in and take tokens out. When you sell, you do the reverse.
+
+The pool is what makes trading possible at all. No pool, no market. A deeper pool also means smaller price moves per trade, which is why [slippage](https://arkhampad.com/learn/slippage-explained/) is lower on coins with more liquidity.
+
+## What is an LP position?
+
+Whoever adds assets to a pool receives an LP position, short for liquidity provider position. In Uniswap v3 style pools this is usually an NFT that records how much was deposited and in which price range. The holder of that position can normally withdraw the assets at any time and collect the fees the position has earned.
+
+That control is the key point. If one wallet owns the entire LP position of a new coin, that wallet effectively owns the market for that coin.
+
+## How a liquidity rug pull works
+
+A liquidity rug pull is the classic memecoin scam:
+
+1. Someone launches a token and adds it to a pool with some HYPE.
+2. Buyers arrive and add more HYPE to the pool by buying.
+3. The creator withdraws the LP position, taking out the HYPE and the tokens.
+4. The pool is now empty or nearly empty. Holders still have tokens, but there is nothing to sell them into.
+
+It can happen in seconds and cannot be undone. This is why experienced traders check liquidity before anything else. For the full list of warning signs, see [how to spot a rug pull](https://arkhampad.com/learn/spot-a-rug-pull/).
+
+## What does LP locked mean?
+
+"LP locked" means the LP position cannot be withdrawn by its creator, either for a set time or permanently. There are a few common ways this is done:
+
+- **Time lock:** the position goes into a locking contract that releases it after a date. Safe until that date, then not.
+- **Burned:** the position is sent to an address nobody controls. Permanent, but the fees it earns are usually lost too.
+- **Held by a contract:** the position stays inside a contract that has no function to withdraw it, while still collecting trading fees.
+
+The details matter. A lock that ends next week is very different from a permanent one, so always check which kind you are looking at.
+
+## How ArkhamPad locks liquidity
+
+Every coin created on ArkhamPad uses the third approach. When a coin launches, its entire 1,000,000,000 token supply goes into a Uniswap v3 style pool against wrapped HYPE. The pool position is held by the launcher contract and cannot be withdrawn by anyone, not the creator and not ArkhamPad. There is no unlock date.
+
+The position still collects the 1% pool fee on every trade. Those fees are collected from the pool and split 30% to the creator and 70% to ArkhamPad, paid in HYPE and in the coin. So the creator has a reason to keep the coin active, but no way to remove the market.
+
+On Discover, ArkhamPad coins show an **LP locked** label, so you can tell them apart from tokens launched elsewhere at a glance.
+
+## What locked liquidity does not protect you from
+
+Locked liquidity removes one specific risk. It is not a safety guarantee. Other ways to lose money remain:
+
+- **Holders selling.** Anyone who bought can sell. If large holders sell, the price drops, even though the pool is still there. Check [top-10 holder concentration](https://arkhampad.com/learn/token-holders-top-10/) before buying.
+- **Demand fading.** Most memecoins lose interest quickly. A locked pool still lets you sell, but maybe at a much lower price.
+- **Copycats.** Someone can launch a coin with the same name. Always check the contract address.
+- **Tokens from elsewhere.** On Discover you can see every HYPE-paired token on Elysium, from every launchpad. Only ArkhamPad coins carry the LP locked label. Other tokens may have different rules, and some charge transfer taxes that stop them from being sold through the router.
+
+Memecoins are high risk. Only use money you can afford to lose. For a wider overview, read the [Elysium memecoins guide](https://arkhampad.com/learn/elysium-memecoins-guide/).
+
+## How to check liquidity before you buy
+
+A quick routine before every buy:
+
+1. Look for the LP locked label on Discover, or check the pool type on the token page.
+2. Look at the holders list and the share held by the top 10 wallets.
+3. Read the live trades list. A steady mix of buyers and sellers is healthier than a few big wallets.
+4. Check the quote before you confirm. If a small buy moves the price a lot, liquidity is thin.
+
+When you are ready, the steps to trade are in [how to buy Elysium tokens](https://arkhampad.com/learn/how-to-buy-elysium-tokens/).
+
+## FAQ
+
+**What is locked liquidity in simple terms?**
+Locked liquidity means the money and tokens in a coin's trading pool cannot be taken out by the person who put them there. Because the pool stays in place, holders can always sell into it. It protects against the creator emptying the pool, which is the most common memecoin scam.
+
+**Can the creator of an ArkhamPad coin remove liquidity?**
+No. The pool position of every ArkhamPad coin is held by the launcher contract and cannot be withdrawn by anyone, including the creator and ArkhamPad. The lock has no end date, so a liquidity rug pull is not possible on ArkhamPad coins.
+
+**Does locked liquidity mean a token is safe?**
+No. It removes the risk of the pool being withdrawn, but the price can still fall sharply if holders sell or interest fades. Check holder concentration, trading activity and the contract address, and treat every memecoin as high risk, even one with a permanent lock.
+
+**What is the difference between locked and burned liquidity?**
+Burned liquidity is sent to an address nobody controls, so it is gone for good, along with any fees it earns. Locked liquidity is held by a contract that prevents withdrawal, either until a date or forever. A permanent contract lock, like ArkhamPad's, keeps the pool in place while still collecting trading fees.
+
+**How do I know if a token on Elysium has locked liquidity?**
+On ArkhamPad's Discover page, coins launched on ArkhamPad show an LP locked label. Tokens launched elsewhere do not carry that label, so you need to check their own terms. The token page also shows the pool type, creator and contract address, so you can confirm you are looking at the right coin before you buy.
+
+
+# Memecoin Launch Checklist: Your First 24 Hours
+URL: https://arkhampad.com/learn/memecoin-launch-checklist/
+
+A good memecoin launch is mostly preparation: have the name, ticker, image, description, links and a little HYPE ready before you open the create form. After launch, share the token page and contract address right away, stay active in your community for the first hours, and avoid price promises. Launching on ArkhamPad takes about 30 seconds, with liquidity locked and 30% of trading fees going to the creator.
+
+## Before launch: prepare the basics
+
+Most failed launches fail before the coin exists. Prepare these first:
+
+- **Name and ticker.** Short, easy to spell and easy to search. Check Discover for existing coins with the same name so yours is not mistaken for a copy.
+- **Image.** Square, clear at small sizes, recognisable in a list of hundreds of tokens.
+- **One-sentence idea.** What is the coin about? If you cannot say it in one line, buyers will not repeat it.
+- **Description and links.** An X account and a community chat set up before launch, so the links work on day one.
+- **A launch post.** Written in advance, with a space for the contract address.
+
+None of this guarantees interest. It just removes the reasons people skip a coin.
+
+## Before launch: fund your wallet
+
+You need HYPE on Elysium to pay the network fee, and more if you plan a first buy. If you are starting from USDC on Base, you can deposit it on the [Bridge page](https://arkhampad.com/bridge/) and it arrives as HYPE on Elysium. The steps are in [buy Elysium tokens with USDC](https://arkhampad.com/learn/buy-elysium-tokens-with-usdc/).
+
+Decide your first buy amount in advance, not in the moment. A large first buy means you hold a large share of supply, and traders read that as risk. Keep a small amount of HYPE aside for gas after launch, because every transaction on Elysium pays its network fee in HYPE.
+
+## Launch: the 30-second part
+
+On ArkhamPad the launch itself is quick:
+
+1. Open [Create](https://arkhampad.com/create/).
+2. Enter name, ticker, image, description and links.
+3. Set your optional first buy.
+4. Confirm the transaction.
+
+Your coin goes live with 1,000,000,000 tokens in a Uniswap v3 style pool against HYPE, a starting market cap of 60 HYPE, and liquidity locked forever. The full walkthrough is in [how to create a token on Elysium](https://arkhampad.com/learn/create-a-token-on-elysium/).
+
+Before confirming, check spelling one more time. A typo in the ticker is permanent.
+
+## The first hour: what to do right after launch
+
+The first hour sets the tone. A practical order:
+
+1. Open your token page and copy the contract address.
+2. Post your launch message on X with the token page link and the contract address. You can share to X directly from the token page.
+3. Pin the contract address in your community chat.
+4. Watch the live trades list and answer questions quickly.
+5. Do not panic at early sells. Some buyers take quick profits. That is normal.
+
+Posting the contract address early matters more than it seems. Copies of new coins can appear quickly, and buyers who cannot find the official address may buy the wrong one.
+
+## Hours 2 to 24: keep the coin active
+
+After the first rush, attention fades fast. What helps in the rest of the day:
+
+- **Post updates, not promises.** Share milestones like new holders, community posts and memes. Never promise price targets or profits.
+- **Read the chart with your community.** If people ask what a big candle means, explain it plainly. Our guide to [reading a memecoin chart](https://arkhampad.com/learn/how-to-read-a-memecoin-chart/) is a good link to share.
+- **Watch holder concentration.** If a few wallets hold a large share, say so openly rather than hiding it. Traders check [top-10 holders](https://arkhampad.com/learn/token-holders-top-10/) anyway.
+- **Stay reachable.** A creator who disappears in the first day is the fastest way to lose a community.
+
+## How creator fees fit into your plan
+
+On ArkhamPad, creators get 30% of the 1% pool fee, which is about 0.3% of trading volume. As a hypothetical example, $100,000 of volume creates $1,000 in pool fees and $300 for the creator. Fees come from activity, so a coin that keeps trading keeps paying, even if you never sell a token.
+
+That changes the goal of the first 24 hours. The aim is not one big spike. It is a coin people want to keep trading and talking about. More on the math in [creator fees explained](https://arkhampad.com/learn/earn-creator-fees/).
+
+## Common memecoin launch mistakes
+
+Avoid these:
+
+- Launching without working links, then adding them hours later.
+- Spending most of your budget on the first buy and having nothing left for gas.
+- Selling a large first buy in the first hour. Everyone sees it in live trades.
+- Copying another coin's name or image. It confuses buyers and damages trust.
+- Promising returns or listings you cannot deliver.
+- Launching at a time when you cannot be online for the next few hours.
+
+If you are planning around the chain itself, check [what traders should know about the Elysium mainnet launch](https://arkhampad.com/learn/elysium-mainnet-launch/).
+
+## A realistic view
+
+Most memecoins do not take off, however good the preparation. That is the nature of the market. Treat a launch as an experiment, spend only what you can afford to lose, and judge success by whether a community forms, not by one day of price action.
+
+## FAQ
+
+**What should I prepare before launching a memecoin?**
+Have the name, ticker, square image, a one-line idea, a short description and working links ready. Set up your X account and community chat first. Fund your wallet with HYPE for gas and any first buy, and write your launch post in advance with a space for the contract address.
+
+**What should I do right after launching my token?**
+Copy the contract address from the token page, post it on X with the token link, and pin it in your community chat. Then stay online, answer questions and watch the live trades list. Posting the official address early helps buyers avoid copycat coins.
+
+**How much should my first buy be?**
+There is no right number. Spend only what you can afford to lose, and remember that a large first buy gives you a large share of supply, which many traders treat as a warning sign. Some creators skip the first buy entirely and rely on creator fees instead.
+
+**How do I get holders for a new memecoin?**
+There is no shortcut. Clear branding, working links, an active creator and regular updates help people find the coin and stay. Sharing the token page and contract address widely, and replying to people who ask questions, does more than any single post.
+
+**Can my memecoin launch fail even if I do everything right?**
+Yes. Most memecoins never get much trading, regardless of preparation. A checklist removes avoidable mistakes, but it cannot create demand or interest. Treat a launch as a risky experiment, judge it by whether a community forms, and never spend money you cannot afford to lose.
+
+
+# How to Spot a Rug Pull on Elysium: 9 Red Flags
+URL: https://arkhampad.com/learn/spot-a-rug-pull/
+
+A rug pull is when the people behind a token take buyers' money and leave the token worthless, usually by removing liquidity or dumping a large hidden supply. To spot one, check whether liquidity is locked, how much the top 10 holders own, whether you can actually sell, and whether the contract address is the official one. On ArkhamPad, coins launched there show an LP locked label, so a liquidity rug pull is not possible on them.
+
+## What is a rug pull in crypto?
+
+A rug pull is a scam where a token's creators or insiders pull value out of a project and leave buyers holding something they cannot sell for much. There are two broad types:
+
+- **Hard rug:** the creator removes the liquidity pool, or uses hidden contract powers, so the token becomes unsellable or worthless in one move.
+- **Soft rug:** insiders quietly hold a large share of supply, build hype, and sell into buyers over hours or days until the price collapses.
+
+Elysium is a normal EVM chain, the same as other networks in that respect. See [Elysium vs HyperEVM](https://arkhampad.com/learn/elysium-vs-hyperevm/) for how the two chains differ. Any open chain where anyone can launch a token also has scams. The checks below work on any token you see on Discover.
+
+## Red flags 1 to 3: liquidity and ownership
+
+**1. Liquidity is not locked.** If one wallet can withdraw the pool, it can empty it. This is the most direct rug. On ArkhamPad, coins launched there show an LP locked label on Discover, because the pool position is held by the launcher contract and cannot be withdrawn by anyone. Tokens from other launchpads may follow different rules. Learn more in [locked liquidity explained](https://arkhampad.com/learn/locked-liquidity-explained/).
+
+**2. A few wallets hold most of the supply.** If the top 10 holders own a large share, they can sell into you. Open the holders list on the token page and check the top-10 share shown on Discover. Remember that the pool itself often appears as a holder. Our guide to [top-10 holder concentration](https://arkhampad.com/learn/token-holders-top-10/) explains how to read it.
+
+**3. The creator holds a big chunk.** Check the creator address on the token page and look for it in the holders list. A creator with a large bag and no visible community is a classic soft rug setup.
+
+## Red flags 4 to 6: the contract and selling
+
+**4. You may not be able to sell.** Some tokens charge their own transfer tax, or block sells entirely. On ArkhamPad, tokens that charge a transfer tax may not be sellable through the router. Before buying a large amount, look at the live trades list for successful sells by other wallets. A chart with only buys is a warning sign.
+
+**5. It is a copy.** Scammers launch tokens with the same name and image as a coin that is getting attention. Always check the contract address against the one the real project posted. You can search Discover by address, not just by name.
+
+**6. The pool is thin.** If a small buy moves the price a lot, liquidity is low and anyone selling will crash it. The quote and minimum received before you trade tell you a lot. Learn how in [slippage explained](https://arkhampad.com/learn/slippage-explained/).
+
+## Red flags 7 to 9: behaviour and promises
+
+**7. Volume comes from a handful of wallets.** Look at the live trades list. If the same few addresses trade back and forth, the activity may be staged to look popular. Buys and sells counts on Discover help here too.
+
+**8. The chart only goes one way, then suddenly not.** A perfect straight climb with no sells, followed by one giant red candle, is often an insider exit. Our guide to [reading a memecoin chart](https://arkhampad.com/learn/how-to-read-a-memecoin-chart/) shows how to read candles and volume together.
+
+**9. Promises and pressure.** Guaranteed returns, "last chance to buy", fake partnerships, or claims of listings that cannot be checked. Real projects do not need to rush you. Anyone promising profit on a memecoin is either mistaken or lying.
+
+## A two-minute safety routine before you buy
+
+1. Find the token on Discover and confirm the contract address.
+2. Check for the LP locked label, or the pool type on the token page.
+3. Check the top-10 holder share and the creator's holdings.
+4. Scroll the live trades list for real sells from different wallets.
+5. Look at the age of the token and its chart history.
+6. Read the quote. If a small trade has a big price impact, size down.
+7. Buy a small amount first if you are unsure, and confirm you can sell.
+
+None of this makes a memecoin safe. It removes the most obvious traps.
+
+## What ArkhamPad coins rule out, and what they do not
+
+Coins launched on ArkhamPad follow fixed rules: 1,000,000,000 tokens, all placed in the pool at launch, no team allocation, no presale, and liquidity locked forever. That rules out a liquidity rug pull and hidden insider allocations at launch.
+
+It does not rule out a soft rug. The creator can make a first buy, and early buyers can accumulate a large share and sell later. Price can fall fast for many reasons. Check holders and trades on every coin, including ArkhamPad coins. For a broader view of the market, read the [Elysium memecoins guide](https://arkhampad.com/learn/elysium-memecoins-guide/).
+
+## If you think you have been rugged
+
+Act calmly. Check whether you can still sell part of your position, and use a higher slippage setting only if you understand the risk of a worse price. Do not follow links from strangers offering to recover funds. Those offers are almost always a second scam. Share the contract address with your community so others can avoid it.
+
+## FAQ
+
+**What is a rug pull in crypto?**
+A rug pull is a scam where a token's creators or insiders take buyers' money and leave the token worthless. It usually happens by removing the liquidity pool, blocking sells, or dumping a large hidden supply. It is one of the most common risks with new memecoins.
+
+**Can ArkhamPad coins be rug pulled?**
+A liquidity rug pull is not possible on ArkhamPad coins, because the pool position is held by the launcher contract and cannot be withdrawn by anyone. There is also no team allocation or presale. The price can still drop sharply if holders sell, so a soft rug remains possible.
+
+**Why can't I sell a token I bought?**
+The token may charge its own transfer tax or restrict sells. On ArkhamPad, tokens with a transfer tax may not be sellable through the router. It can also be a slippage issue in a fast-moving or thin market. Check the live trades list for other wallets selling successfully before buying.
+
+**How do I check if a token is a copy?**
+Compare the contract address with the one posted by the real project on its official channels. Names, tickers and images can be copied, but the contract address cannot. On ArkhamPad you can search Discover by address to find the exact token.
+
+**What is the difference between a soft rug and a hard rug?**
+A hard rug is a single move that makes a token unsellable or worthless, like removing liquidity. A soft rug is slower: insiders holding a large share sell into buyers over time until the price collapses. Locked liquidity prevents hard rugs of the first kind but not soft rugs.

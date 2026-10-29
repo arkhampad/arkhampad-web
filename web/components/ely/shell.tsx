@@ -116,6 +116,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="e-links" aria-label="Main">
             {NAV.map((n) => <Link key={n.href} href={n.href} className={`e-link ${on(n.href) ? "on" : ""}`}>{n.label}</Link>)}
+            <Link href="/learn/" className={`e-link ${on("/learn/") ? "on" : ""}`}>Learn</Link>
           </nav>
           <Search />
           <ThemeButton />
@@ -124,6 +125,20 @@ function Frame({ children }: { children: React.ReactNode }) {
       </header>
       <Ticker />
       {children}
+      <footer className="e-foot">
+        <div className="e-in">
+          <span>ArkhamPad · the Elysium launchpad</span>
+          <nav aria-label="Footer">
+            <Link href="/learn/">Learn</Link>
+            <Link href="/learn/what-is-elysium/">What is Elysium</Link>
+            <Link href="/learn/create-a-token-on-elysium/">Create a token</Link>
+            <Link href="/learn/bridge-hype-to-elysium/">Bridge HYPE</Link>
+            <Link href="/terms/">Terms</Link>
+            <Link href="/privacy/">Privacy</Link>
+            <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer">X</a>
+          </nav>
+        </div>
+      </footer>
       <nav className="e-bottom" aria-label="Main">
         {NAV.map((n) => (
           <Link key={n.href} href={n.href} className={`e-tabnav ${on(n.href) ? "on" : ""}`}>

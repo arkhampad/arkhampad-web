@@ -1,27 +1,46 @@
 # ArkhamPad
 
-> ArkhamPad is an AI-powered token launchpad and trading platform on Robinhood Chain and Base. Create a token by describing it in one sentence, trade with a single dollar balance (no gas token needed), and see who really holds every token through AI safety checks and a live holder map of linked wallets.
+> ArkhamPad is the launchpad and trading site for Elysium, Kinetiq's Layer 2 for the Hyperliquid ecosystem. Browse every token on Elysium in one place, buy and sell any of them with HYPE, and launch your own coin in about 30 seconds with liquidity locked forever and 30% of trading fees paid to the creator. Log in with email, Google or a wallet; pay with HYPE or USDC.
 
 ## Key pages
-- [Markets](https://arkhampad.com/): live tokens on Robinhood Chain, Base and BNB, with trending, new and graduating lists
-- [Create a token](https://arkhampad.com/create/): AI writes the name, ticker, story and logo from one sentence
-- [Terminal](https://arkhampad.com/terminal/): fast trading view with charts, orders and live trades
-- [Learn](https://arkhampad.com/learn/): guides on launching, trading and staying safe
-
-## Guides
-- [Robinhood Chain memecoins: the complete guide](https://arkhampad.com/learn/robinhood-chain-memecoins/)
-- [How to read a holder map](https://arkhampad.com/learn/how-to-read-a-holder-map/)
-- [Anatomy of a rug pull: 5 patterns](https://arkhampad.com/learn/rug-pull-patterns/)
-- [From launch to graduation: how a bonding curve token grows](https://arkhampad.com/learn/bonding-curve-to-graduation/)
-- [Why we built ArkhamPad](https://arkhampad.com/learn/why-we-built-arkhampad/)
-- [What is Robinhood Chain?](https://arkhampad.com/learn/what-is-robinhood-chain/)
-- [How to spot a rug pull](https://arkhampad.com/learn/spot-a-rug-pull/)
-- [Security: how ArkhamPad protects your funds](https://arkhampad.com/security/)
-- [Token list: every coin launched on ArkhamPad (tokenlists.org format)](https://arkhampad.com/tokens.json)
-- [Create a coin with AI](https://arkhampad.com/learn/create-a-coin-with-ai/)
+- [Discover](https://arkhampad.com/): every token on Elysium with market cap, volume, holders and live trades
+- [Create a coin](https://arkhampad.com/create/): launch a coin on Elysium; 1B supply, all in a locked pool, 60 HYPE start market cap
+- [Bridge](https://arkhampad.com/bridge/): add HYPE from HyperEVM through the official Elysium bridge, or USDC from Base
+- [Learn](https://arkhampad.com/learn/): guides to Elysium, trading and creating coins
 
 ## Facts
-- Chains: Robinhood Chain (Ethereum L2 on Arbitrum, mainnet since July 1, 2026) and Base
-- Balance and prices in dollars; network fees are taken from the balance
-- Login: Google, email, X or a wallet
-- Contact: team@arkhampad.com
+- Network: Elysium mainnet (chain ID 99901), an Arbitrum Orbit chain by Kinetiq that settles to HyperEVM; gas paid in HYPE
+- Trading: any HYPE-paired Elysium token from one page; pay HYPE, receive tokens (or the reverse)
+- New coins: 1,000,000,000 supply, all in the pool, no team allocation; 1% pool fee; 30% of fees to the creator; liquidity locked forever
+- Deposits through the official bridge arrive in about a minute; withdrawals to HyperEVM take about 5.5 days (optimistic rollup challenge period)
+- X: https://x.com/Arkhampad
+
+## Elysium basics
+- [What Is Elysium? Kinetiq's Hyperliquid Layer 2 Explained](https://arkhampad.com/learn/what-is-elysium/): What is Elysium? A plain guide to Kinetiq's Layer 2 for Hyperliquid: how it works, why it exists, HYPE as gas, chain ID 99901 and how to get started.
+- [Elysium vs HyperEVM: What's the Difference?](https://arkhampad.com/learn/elysium-vs-hyperevm/): Elysium vs HyperEVM compared: block space, speed, security model, gas, chain IDs and bridging. Learn when to use each chain in the Hyperliquid ecosystem.
+- [HYPE on Elysium: Gas, Trading and Bridging Explained](https://arkhampad.com/learn/hype-on-elysium/): HYPE on Elysium explained: how it is bridged 1:1 from HyperEVM, why it pays gas, how tokens trade against it, and how to move it back. A plain guide.
+- [Elysium Mainnet Launch: What Traders Should Know](https://arkhampad.com/learn/elysium-mainnet-launch/): Elysium mainnet launch guide for traders: the November 9, 2026 date, chain ID 99901, what is live at launch, what comes later, and how to prepare safely.
+- [Elysium Gas Fees: What a Trade Really Costs](https://arkhampad.com/learn/elysium-gas-fees/): Elysium gas fees are paid in HYPE and are very low. See what a trade really costs: network fee, pool fee, router fee, price impact and slippage explained.
+
+## Deposits and withdrawals
+- [How to Bridge HYPE to Elysium from HyperEVM](https://arkhampad.com/learn/bridge-hype-to-elysium/): Bridge HYPE to Elysium from HyperEVM step by step: what you need first, how the official bridge works, how long deposits take and how much HYPE to keep for gas.
+- [How to Buy Elysium Tokens with USDC from Base](https://arkhampad.com/learn/buy-elysium-tokens-with-usdc/): Buy Elysium tokens with USDC from Base on ArkhamPad. USDC is converted to HYPE on the way in, so you arrive ready to trade. Steps, costs and risks explained.
+- [Elysium Withdrawal Time: Why the Bridge Takes 5.5 Days](https://arkhampad.com/learn/elysium-withdrawal-time/): Elysium withdrawal time explained: why the official bridge takes about 5.5 days to HyperEVM, what the challenge period protects, and how to plan your exits.
+- [Trade Crypto with Email Login: Elysium Coins Made Simple](https://arkhampad.com/learn/trade-crypto-with-email-login/): Trade crypto with email login on ArkhamPad: sign in with email or Google, get an embedded wallet with no seed phrase, fund it with HYPE or USDC and trade.
+
+## Trading
+- [How to Buy Elysium Tokens and Sell Them (Step by Step)](https://arkhampad.com/learn/how-to-buy-elysium-tokens/): How to buy Elysium tokens and sell them on ArkhamPad: fund with HYPE, find a token, read the quote, set slippage and confirm. Fees and safety checks included.
+- [Elysium Memecoins: The Complete Guide](https://arkhampad.com/learn/elysium-memecoins-guide/): Elysium memecoins explained: where to find every HYPE-paired token, how ArkhamPad coins work, how to buy one and what to check before you trade.
+- [How to Read a Memecoin Chart: Candles, Volume, Market Cap](https://arkhampad.com/learn/how-to-read-a-memecoin-chart/): How to read a memecoin chart: what candles and wicks mean, which timeframe to use, market cap vs price view, and what the chart cannot tell you.
+- [Market Cap vs Price: What Memecoin Traders Should Watch](https://arkhampad.com/learn/market-cap-vs-price/): Market cap vs price in crypto: how market cap is calculated, why a low token price is not cheap, and why market cap is not money you can cash out.
+- [Slippage Explained: What to Set and Why Trades Fail](https://arkhampad.com/learn/slippage-explained/): What is slippage in crypto? How slippage and price impact differ, which setting to choose (1%, 3%, 5% or 10%) and the common reasons trades fail.
+- [Top 10 Holders in Crypto: What Concentration Tells You](https://arkhampad.com/learn/token-holders-top-10/): Top 10 holders in crypto explained: what holder concentration means, which addresses to ignore, how to check holders on Elysium and why it matters.
+
+## Create a coin
+- [How to Create a Token on Elysium in 30 Seconds](https://arkhampad.com/learn/create-a-token-on-elysium/): Create a token on Elysium in about 30 seconds: what to prepare, how the launch works, the 1B supply, locked liquidity and how ArkhamPad creator fees work.
+- [Creator Fees: Earn 30% of Trading Fees on Your Coin](https://arkhampad.com/learn/earn-creator-fees/): How memecoin creator fees work on ArkhamPad: 30% of the 1% pool fee goes to the creator, about 0.3% of volume, paid in HYPE and the coin. Examples inside.
+- [Locked Liquidity Explained: Why It Matters](https://arkhampad.com/learn/locked-liquidity-explained/): What is locked liquidity? How liquidity pools work, why unlocked LP enables rug pulls, how ArkhamPad locks liquidity forever, and what risks still remain.
+- [Memecoin Launch Checklist: Your First 24 Hours](https://arkhampad.com/learn/memecoin-launch-checklist/): A memecoin launch checklist for your first 24 hours: what to prepare, launch steps, the first hour, sharing the contract address and mistakes to avoid.
+
+## Safety
+- [How to Spot a Rug Pull on Elysium: 9 Red Flags](https://arkhampad.com/learn/spot-a-rug-pull/): How to spot a rug pull on Elysium: 9 red flags to check before you buy, from unlocked liquidity and top-10 holders to sell taxes, copycats and thin pools.

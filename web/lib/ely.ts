@@ -158,3 +158,27 @@ export function tokenColors(address: string): [string, string] {
   const a = h % 360;
   return [`hsl(${a} 70% 58%)`, `hsl(${(a + 48) % 360} 75% 42%)`];
 }
+
+// ---------------------------------------------------------------- one wallet ("You" page)
+export type EHolding = { token: string; amount: string };
+export async function fetchHoldings(holder: string): Promise<EHolding[]> {
+  if (MOCK) return [];
+  const { data } = await db().from("ely_balances").select("token,amount").eq("holder", holder.toLowerCase()).gt("amount", 0).limit(500);
+  return (data ?? []) as EHolding[];
+}
+export async function fetchTokensByAddress(addrs: string[]): Promise<EToken[]> {
+  if (!addrs.length) return [];
+  if (MOCK) return (await mock()).tokens.filter((t: EToken) => addrs.includes(t.address));
+  const { data } = await db().from("ely_tokens").select(TOKEN_COLS).in("address", addrs.slice(0, 300));
+  return (data ?? []) as unknown as EToken[];
+}
+export async function fetchCreated(creator: string): Promise<EToken[]> {
+  if (MOCK) return [];
+  const { data } = await db().from("ely_tokens").select(TOKEN_COLS).eq("creator", creator.toLowerCase()).eq("ours", true).order("created_at", { ascending: false }).limit(100);
+  return (data ?? []) as unknown as EToken[];
+}
+export async function fetchMyTrades(trader: string, limit = 40): Promise<ETrade[]> {
+  if (MOCK) return [];
+  const { data } = await db().from("ely_trades").select("id,token,tx,log_index,at,side,hype,amount,price_hype,trader").eq("trader", trader.toLowerCase()).order("at", { ascending: false }).limit(limit);
+  return (data ?? []) as ETrade[];
+}

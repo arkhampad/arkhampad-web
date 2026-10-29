@@ -1,11 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./ely.css";
-import { Soon } from "@/components/soon";
-import { ElyShell } from "@/components/ely/shell";
+import { Gate } from "@/components/ely/gate";
 
-/** Elysium site live (set NEXT_PUBLIC_ELY_LIVE=1 in Cloudflare); until then every page shows "Opening soon". */
-const LIVE = process.env.NEXT_PUBLIC_ELY_LIVE === "1";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://arkhampad.com"),
@@ -26,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Light mode unless the visitor chose dark; pages open at the top (no flash). */}
         <script dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('ap_theme');document.documentElement.dataset.theme=(t==='dark')?'dark':'light';if('scrollRestoration' in history)history.scrollRestoration='manual';}catch(e){document.documentElement.dataset.theme='light';}" }} />
       </head>
-      <body>{LIVE ? <ElyShell>{children}</ElyShell> : <Soon />}</body>
+      <body><Gate>{children}</Gate></body>
     </html>
   );
 }

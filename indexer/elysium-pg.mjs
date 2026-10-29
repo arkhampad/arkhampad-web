@@ -1,7 +1,7 @@
 // Postgres store for the Elysium indexer (./elysium.mjs): tables from db/025_elysium.sql.
 // Tokens are also kept in memory (the indexer looks pools up on every swap).
 
-const COLS = ["address", "name", "symbol", "decimals", "supply", "uri", "venue", "pool", "manager", "whype", "token_is0", "fee", "tick_spacing", "hooks", "maker", "creator", "launchpad", "ours", "created_block", "created_at", "price_hype"];
+const COLS = ["address", "name", "symbol", "decimals", "supply", "uri", "image", "description", "venue", "pool", "manager", "whype", "token_is0", "fee", "tick_spacing", "hooks", "maker", "creator", "launchpad", "ours", "created_block", "created_at", "price_hype"];
 
 export async function makePgStore(pool) {
   const tokens = new Map();

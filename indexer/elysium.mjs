@@ -149,6 +149,32 @@ export function makeElysium(cfg, store) {
     return blockTime.get(b);
   }
 
+  /** Picture and description from a token's metadata URI (data: JSON, https or ipfs). Never throws. */
+  async function readMeta(uri) {
+    if (!uri) return {};
+    try {
+      let j;
+      if (uri.startsWith("data:application/json")) {
+        const body = uri.slice(uri.indexOf(",") + 1);
+        j = JSON.parse(uri.includes(";base64,") ? Buffer.from(body, "base64").toString("utf8") : decodeURIComponent(body));
+      } else if (/^(https?|ipfs):\/\//.test(uri)) {
+        const url = uri.replace(/^ipfs:\/\//, "https://ipfs.io/ipfs/");
+        const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        if (!r.ok || Number(r.headers.get("content-length") || 0) > 300_000) return {};
+        const type = r.headers.get("content-type") || "";
+        if (type.startsWith("image/")) return { image: url };
+        j = await r.json();
+      } else return {};
+      let image = typeof j?.image === "string" ? j.image.replace(/^ipfs:\/\//, "https://ipfs.io/ipfs/") : null;
+      if (image && !/^(https:\/\/|data:image\/(png|jpe?g|webp|gif);base64,)/.test(image)) image = null;
+      if (image && image.length > 120_000) image = null;
+      const description = typeof j?.description === "string" ? j.description.slice(0, 600) : null;
+      return { image, description };
+    } catch {
+      return {};
+    }
+  }
+
   async function tokenInfo(a) {
     const [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), call(a, SEL.tokenURI)]);
     return {
@@ -157,7 +183,21 @@ export function makeElysium(cfg, store) {
       decimals: dec && dec !== "0x" ? Number(BigInt(dec)) : 18,
       supply: sup && sup !== "0x" ? BigInt(sup).toString() : "0",
       uri: decodeString(uri) || null,
+      ...(await readMeta(decodeString(uri) || null)),
     };
+  }
+
+  /** Once per start: pictures for tokens indexed before metadata was read. */
+  let metaDone = false;
+  async function backfillMeta() {
+    if (metaDone) return;
+    metaDone = true;
+    const todo = [...store.tokens().values()].filter((t) => t.uri && t.image == null && !t.metaTried);
+    await pool(todo.map((t) => async () => {
+      t.metaTried = true;
+      const m = await readMeta(t.uri);
+      if (m.image || m.description) await store.upsertToken({ ...t, ...m });
+    }), 6);
   }
 
   function launchpadFor(maker, venue) {
@@ -344,6 +384,7 @@ export function makeElysium(cfg, store) {
     for (;;) {
       try {
         const n = await syncOnce();
+        backfillMeta().catch(() => {});
         if (Date.now() - statsAt > 30_000) {
           statsAt = Date.now();
           await hypeUsd();
