@@ -270,5 +270,223 @@
   "multicall3": true,
   "permit2": true,
   "create2Deployer": true
+ },
+ "bridge": {
+  "elysiumRpc": "https://rpc-live.boxa.club",
+  "hyperEvmRpc": "https://rpc.hyperliquid.xyz/evm",
+  "at": "2026-10-29T17:49:24.319Z",
+  "elysiumBlocksLooked": 37,
+  "deposits": [
+   {
+    "block": 55108,
+    "ts": 1793296004,
+    "type": "0x69",
+    "hash": "0xf6239d48251acd46dde5647b45a999f797788f85b94a96c6bf7030861873e2cf",
+    "from": "0xdb22bde05977b3631167028862be2a173976db22",
+    "to": "0x000000000000000000000000000000000000006e",
+    "value": "0x0",
+    "l1BlockNumber": 49856598
+   },
+   {
+    "block": 55108,
+    "ts": 1793296004,
+    "type": "0x68",
+    "hash": "0xdf6bc24bd76e03e2ce24bc1f712e5f55bd54af6d9baae9ba9d216d6f9b4a6856",
+    "from": "0xdb22bde05977b3631167028862be2a173976db22",
+    "to": "0x4b950809e4cd17f1a7ad58506a2ccd226b16e762",
+    "value": "0x5866c940133d0000",
+    "l1BlockNumber": 49856598
+   },
+   {
+    "block": 55101,
+    "ts": 1793295977,
+    "type": "0x69",
+    "hash": "0x64702c186d6585eaceccddf5275927fdcee92941240d5939a540e10db8f6709b",
+    "from": "0xdb22bde05977b3631167028862be2a173976db22",
+    "to": "0x000000000000000000000000000000000000006e",
+    "value": "0x0",
+    "l1BlockNumber": 49856571
+   },
+   {
+    "block": 55101,
+    "ts": 1793295977,
+    "type": "0x68",
+    "hash": "0x7ee10497eacf4c3b8481794d05b160af6c70958e5582b492fdc29d4d5452a86b",
+    "from": "0xdb22bde05977b3631167028862be2a173976db22",
+    "to": "0xedc2052d72eb738f1a5311521f176c35555de35b",
+    "value": "0x313b9b676d2d0000",
+    "l1BlockNumber": 49856571
+   },
+   {
+    "block": 55082,
+    "ts": 1793295929,
+    "type": "0x69",
+    "hash": "0x9ddbce662fe1c661140124abfba929021656256a2cb9f4cda91c175aff827d10",
+    "from": "0xdb22bde05977b3631167028862be2a173976db22",
+    "to": "0x000000000000000000000000000000000000006e",
+    "value": "0x0",
+    "l1BlockNumber": 49856522
+   },
+   {
+    "block": 55082,
+    "ts": 1793295929,
+    "type": "0x68",
+    "hash": "0x2d9684f7db2f80945b9693c41adb4f414096a64d6a34a2a257cbb3f938e7b629",
+    "from": "0xdb22bde05977b3631167028862be2a173976db22",
+    "to": "0x8b5f8e27d155eb1e7d7d2cef76bd2918ecd14d35",
+    "value": "0x11ae284003d90000",
+    "l1BlockNumber": 49856522
+   },
+   {
+    "block": 55081,
+    "ts": 1793295928,
+    "type": "0x64",
+    "hash": "0x13f931cd9b7f9b18f1f60da6de25868dabfd426dc6bc1ed827bb43d95804e3a3",
+    "from": "0xa439d3474b1ea098b0434da16f9ee98dfa9b982b",
+    "to": "0x9328d3474b1ea098b0434da16f9ee98dfa9b871a",
+    "value": "0x45f0a123b9c422f",
+    "l1BlockNumber": 49856521
+   },
+   {
+    "block": 55079,
+    "ts": 1793295925,
+    "type": "0x69",
+    "hash": "0x3aac3b08780c695f5ec8fb66028502fbc0dd8708f60b1d231f6b34db51f9631c",
+    "from": "0xdb22bde05977b3631167028862be2a173976db22",
+    "to": "0x000000000000000000000000000000000000006e",
+    "value": "0x0",
+    "l1BlockNumber": 49856518
+   }
+  ],
+  "checked": [
+   {
+    "deposit": "0xf6239d48251acd46dde5647b45a999f797788f85b94a96c6bf7030861873e2cf",
+    "anchor": 49856598,
+    "events": 388
+   },
+   {
+    "deposit": "0xdf6bc24bd76e03e2ce24bc1f712e5f55bd54af6d9baae9ba9d216d6f9b4a6856",
+    "anchor": 49856598,
+    "events": 388
+   },
+   {
+    "deposit": "0x64702c186d6585eaceccddf5275927fdcee92941240d5939a540e10db8f6709b",
+    "anchor": 49856571,
+    "events": 376
+   },
+   {
+    "deposit": "0x7ee10497eacf4c3b8481794d05b160af6c70958e5582b492fdc29d4d5452a86b",
+    "anchor": 49856571,
+    "events": 298
+   },
+   {
+    "deposit": "0x9ddbce662fe1c661140124abfba929021656256a2cb9f4cda91c175aff827d10",
+    "anchor": 49856522,
+    "events": 396
+   }
+  ],
+  "emitters": [
+   [
+    "inboxMessageDelivered:0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    934
+   ],
+   [
+    "bridgeMessageDelivered:0x503d572157113faaad4dbed2647bb10b949216b6",
+    910
+   ],
+   [
+    "inboxMessageDelivered:0x7f3ff53aecb87261206ad3bdc27a88b6d8420fa6",
+    2
+   ]
+  ],
+  "sampleEvents": [
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0xe9b524e37fd953323dab2d72d12f78fbc8148fac3eca46e8bb93fad1f9427c0e",
+    "block": 49856198
+   },
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0x56288787e281e33572fa3405a4e8a64d837a06a1f11963564eff506546cafdcf",
+    "block": 49856203
+   },
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0x08cfb73850881778978ee63e2987cbb8b71d2d1d1540cfc1ffa3c556f81e8abb",
+    "block": 49856206
+   },
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0x406917645da049947c6c4f1103cb8186b7be56e37ccf7fa4952fc43c51f5cd31",
+    "block": 49856207
+   },
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0x604c3936ea6c1274c8fb411bee51c74e35ef1ebaa0b47ffcc579c71d95bd1ac1",
+    "block": 49856209
+   },
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0x8db1a599fae0e1e54034854b8050a1bb2c192e5eff00758e57e9bf73b6c620f0",
+    "block": 49856209
+   },
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0x0c0db7035503140bd6df70f641eca80c24b215bcb862b360f681e88061cb9a19",
+    "block": 49856209
+   },
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0x42c8fc644e154a1c5d95b5d5c807253b6106b3451fc261b898bb2c1f5a7c660d",
+    "block": 49856211
+   },
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0xf7e4982bb4e243208cd9a3645d1315337a2c8ad345dfa260b87deb81bcfc6102",
+    "block": 49856211
+   },
+   {
+    "address": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "topic": "inboxMessageDelivered",
+    "tx": "0x2f8c0017cd47b83a7aa1ed9004a2a0a7fde51bedd6a20af4325112bbdd849a2b",
+    "block": 49856215
+   }
+  ],
+  "inboxCalls": [
+   {
+    "to": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "value": "0x0",
+    "input": "0xb75436bb"
+   },
+   {
+    "to": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "value": "0x3a6b80e5867c000",
+    "input": "0x439370b1"
+   },
+   {
+    "to": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "value": "0x31b899b4fb007a2",
+    "input": "0x439370b1"
+   },
+   {
+    "to": "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff",
+    "value": "0x0",
+    "input": "0xb75436bb"
+   },
+   {
+    "to": "0xaef8daea82ce90c6a0b9e5bef428bf667762676f",
+    "value": "0x38b68b6e3230a48",
+    "input": "0xbb2dba95"
+   }
+  ]
  }
 }
