@@ -81,7 +81,7 @@ html:has(.ely), body:has(.ely) { background: var(--e-bg, #f3f5f7); overflow-x: c
 .e-hot-run > * { width: 236px; flex: none; }
 .e-hot-run.on { animation: eHot calc(var(--n, 10) * 6s) linear infinite; }
 .e-hot:hover .e-hot-run.on, .e-hot:focus-within .e-hot-run.on, .e-hot:active .e-hot-run.on { animation-play-state: paused; }
-@keyframes eHot { from { transform: translateX(calc(-50% - 6px)); } to { transform: translateX(0); } }
+@keyframes eHot { from { transform: translateX(0); } to { transform: translateX(calc(-50% - 6px)); } }
 .e-hot::-webkit-scrollbar { display: none; }
 .e-hc { scroll-snap-align: start; display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 16px; background: var(--e-card); border: 1px solid var(--e-line); box-shadow: var(--e-shadow); transition: transform .2s cubic-bezier(.2,.8,.2,1), border-color .2s; }
 .e-hc:hover { transform: translateY(-2px); border-color: var(--e-line2); }

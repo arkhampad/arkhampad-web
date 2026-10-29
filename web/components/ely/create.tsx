@@ -96,17 +96,30 @@ export function CreatePage() {
     setThinking(true);
     setAiMsg(null);
     try {
-      const res = await fetch("/api/ely-idea", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: me ?? "" }) });
-      const j = await res.json().catch(() => ({}));
-      if (typeof j.left === "number") setLeft(j.left);
-      if (!res.ok || !j.name) throw new Error(j.error || "AI is busy right now. Try again in a few seconds.");
-      setName(j.name);
-      setSym(j.ticker);
-      setDesc(j.description);
+      let j: { name?: string; ticker?: string; description?: string; picture?: string; left?: number; error?: string } = {};
+      let limited = false;
+      try {
+        const res = await fetch("/api/ely-idea", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: me ?? "" }) });
+        j = await res.json().catch(() => ({}));
+        limited = res.status === 429;
+        if (typeof j.left === "number") setLeft(j.left);
+      } catch {}
+      if (limited) throw new Error(j.error || "You've used today's AI ideas.");
+      if (!j.name) {
+        // backup: the general idea maker, pointed at Elysium
+        const res = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idea: "a fun meme coin for Elysium, the fast new Hyperliquid chain where everyone trades with HYPE" }) });
+        const k = await res.json().catch(() => ({}));
+        const o = k?.options?.[Math.floor(Math.random() * (k?.options?.length || 1))];
+        if (!o?.name) throw new Error(k.error || j.error || "AI is busy right now. Try again in a few seconds.");
+        j = o;
+      }
+      setName(j.name!);
+      setSym(String(j.ticker || "").toUpperCase());
+      setDesc(j.description || "");
       setPicture(j.picture || "");
       setImg(null);
       setThinking(false);
-      await draw(j.picture || "", j.name, j.description);
+      await draw(j.picture || "", j.name!, j.description || "");
     } catch (e) {
       setAiMsg((e as Error).message);
     } finally {
@@ -189,7 +202,7 @@ export function CreatePage() {
               </button>
               <div className="e-imgbtns">
                 <button type="button" className="e-btn" onClick={() => file.current?.click()}>Upload</button>
-                <button type="button" className="e-btn" onClick={() => draw()} disabled={drawing}>{drawing ? "Drawing…" : "Draw with AI"}</button>
+                <button type="button" className="e-btn" onClick={() => (name.trim() ? draw() : idea())} disabled={drawing || thinking}>{drawing ? "Drawing…" : "Draw with AI"}</button>
                 <span className="e-note">Square works best. PNG, JPG, WebP or GIF.</span>
               </div>
               <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => pick(e.target.files?.[0])} />

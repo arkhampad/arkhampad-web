@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createPublicClient, encodeFunctionData, formatUnits, http, parseAbi, type Address, type Hex } from "viem";
+import { createPublicClient, encodeFunctionData, fallback, formatUnits, http, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { usePoll } from "@/lib/ely";
 import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC, balanceChanged, ely, fromWei, toWei } from "@/lib/elytrade";
@@ -20,7 +20,7 @@ const RELAY = "https://api.relay.link";
 const RELAY_KEY = process.env.NEXT_PUBLIC_RELAY_KEY || "";
 const GAS_KEEP = 10n ** 16n; // 0.01 HYPE stays on HyperEVM for the bridge transaction's gas
 
-const hyperevm = createPublicClient({ chain: { id: HYPEREVM, name: "HyperEVM", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [HYPEREVM_RPC] } } }, transport: http(HYPEREVM_RPC) });
+const hyperevm = createPublicClient({ chain: { id: HYPEREVM, name: "HyperEVM", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [HYPEREVM_RPC] } } }, transport: fallback([http(HYPEREVM_RPC), http("https://hyperliquid.drpc.org"), http("https://rpc.hypurrscan.io")]) });
 const base = createPublicClient({ chain: { id: BASE, name: "Base", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [BASE_RPC] } } }, transport: http(BASE_RPC) });
 const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 const DEPOSIT = encodeFunctionData({ abi: parseAbi(["function depositEth() payable returns (uint256)"]), functionName: "depositEth" });
@@ -99,7 +99,10 @@ function HypeIn({ me, onSent }: { me: Address; onSent: () => void }) {
           <div><b className="num">{fmt(bal)} HYPE</b> arrived on HyperEVM</div>
         </div>
       ) : (
-        <div className="e-waiting"><span className="e-spin" />Waiting for your HYPE on HyperEVM… this updates by itself.</div>
+        <div className="e-waiting">
+          <span className="e-spin" />
+          <span>{bal === undefined ? "Checking your HyperEVM balance…" : <>Nothing on HyperEVM yet (<b className="num">{fmt(bal)} HYPE</b>). As soon as your HYPE arrives, the button below turns on. No need to refresh.</>}</span>
+        </div>
       )}
       {custom && (
         <label className="e-amt">
