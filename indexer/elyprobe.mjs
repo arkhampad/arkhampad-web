@@ -1,120 +1,102 @@
-// Elysium mainnet probe: which RPC answers, and which contracts the chain's DEXes and launchpads use
-// (Uniswap v3 factory + position manager + routers, Uniswap v4 pool manager, WHYPE, launchpad
-// factories). Read-only public chain data. Writes indexer/ely-mainnet.json and a summary.
+// Elysium mainnet probe, part 2: find the official (canonical) bridge on HyperEVM.
+// Elysium is an Arbitrum Orbit chain settling on HyperEVM, so HYPE deposits go through an Orbit
+// Inbox/Bridge contract on HyperEVM. We find recent deposits on Elysium, then look on HyperEVM, at
+// those moments, for the Orbit "message delivered" events: whoever emits them is the bridge.
+// Read-only public chain data. Adds a "bridge" section to indexer/ely-mainnet.json.
 //
-//   node elyprobe.mjs [rpc]
+//   node elyprobe.mjs [elysium rpc]
 
-import { writeFileSync, appendFileSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 
-const RPCS = [process.argv[2], process.env.ELY_RPC, "https://rpc.ronspad.fun", "https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc.elysium.kinetiq.xyz", "https://mainnet-rpc.elysium.kinetiq.xyz"].filter(Boolean);
-const T = {
-  v3PoolCreated: "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118",
-  v3IncreaseLiquidity: "0x3067048beee31b25b2f1681f88dac838c8bba36af25bfb2b7cf7473a5847e35f",
-  v3Swap: "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67",
-  v4Initialize: "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438",
-  v2PairCreated: "0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9",
-  deposit: "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c", // WETH-style Deposit
+const ELY = process.argv[2] || process.env.ELY_RPC || "https://rpc-live.boxa.club";
+const HEVM = process.env.HYPEREVM_RPC || "https://rpc.hyperliquid.xyz/evm";
+const TOPICS = {
+  inboxMessageDelivered: "0xff64905f73a67fb594e0f940a8075a860db489ad991e032f48c81123eb52d60b",
+  inboxMessageFromOrigin: "0xab532385be8f1005a4b6ba8fa20a2245facb346134ac739fe9a5198dc1580b9c",
+  bridgeMessageDelivered: "0x5e3c1311ea442664e8b1611bfabef659120ea7a0a2cfc0667700bebc69cbffe1",
 };
-const WELL_KNOWN = {
-  multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11",
-  permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
-  create2Deployer: "0x4e59b44847b379578588920cA78FbF26c0B4956C",
-};
+const DEPOSIT_TYPES = new Set(["0x64", "0x68", "0x69"]); // Arbitrum deposit / retry / submit-retryable
 
-let RPC = null;
 let id = 0;
-async function rpc(method, params = [], url = RPC) {
-  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(20_000) });
-  const j = await r.json();
-  if (j.error) throw new Error(`${method}: ${j.error.message}`);
-  return j.result;
-}
-const hex = (n) => "0x" + n.toString(16);
-const addr = (topic) => "0x" + topic.slice(-40).toLowerCase();
-const count = (arr) => [...arr.reduce((m, a) => m.set(a, (m.get(a) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]);
-
-const out = { rpcs: [], at: new Date().toISOString() };
-for (const u of RPCS) {
-  try {
-    const [chain, block] = await Promise.all([rpc("eth_chainId", [], u), rpc("eth_blockNumber", [], u)]);
-    out.rpcs.push({ url: u, chainId: Number(chain), block: Number(block) });
-    if (!RPC && Number(chain) === 99901) RPC = u;
-  } catch (e) {
-    out.rpcs.push({ url: u, error: e.message.slice(0, 120) });
-  }
-}
-console.log(out.rpcs);
-if (!RPC) {
-  writeFileSync(new URL("./ely-mainnet.json", import.meta.url), JSON.stringify(out, null, 1));
-  throw new Error("no Elysium mainnet RPC answered");
-}
-out.rpc = RPC;
-const tip = Number(await rpc("eth_blockNumber"));
-out.tip = tip;
-
-async function logs(topic0, address) {
-  const all = [];
-  for (let from = 0; from <= tip; from += 5000) {
-    const q = { fromBlock: hex(from), toBlock: hex(Math.min(tip, from + 4999)), topics: [topic0] };
-    if (address) q.address = address;
+async function call(url, method, params = []) {
+  for (let i = 0; i < 4; i++) {
     try {
-      all.push(...(await rpc("eth_getLogs", [q])));
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(20_000) });
+      const j = await r.json();
+      if (j.error) throw new Error(`${method}: ${j.error.message}`);
+      return j.result;
     } catch (e) {
-      // range too big for this node: halve it
-      for (let f = from; f <= Math.min(tip, from + 4999); f += 1000) all.push(...(await rpc("eth_getLogs", [{ ...q, fromBlock: hex(f), toBlock: hex(Math.min(tip, f + 999)) }]).catch(() => [])));
+      if (i === 3) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
     }
   }
-  return all;
 }
+const hex = (n) => "0x" + n.toString(16);
+const count = (arr) => [...arr.reduce((m, a) => m.set(a, (m.get(a) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]);
 
-// Uniswap v3: factory = who emits PoolCreated; WHYPE = the token in most pools
-const created = await logs(T.v3PoolCreated);
-out.v3 = { pools: created.length, factories: count(created.map((l) => l.address.toLowerCase())).slice(0, 5) };
-const tokens = count(created.flatMap((l) => [addr(l.topics[1]), addr(l.topics[2])]));
-out.v3.topTokens = tokens.slice(0, 6);
-const fees = count(created.map((l) => Number(BigInt(l.topics[3]))));
-out.v3.fees = fees;
-// who created the pools (launchpad factories): the tx's "to"
-const creators = [];
-for (const l of created.slice(-150)) {
-  const tx = await rpc("eth_getTransactionByHash", [l.transactionHash]).catch(() => null);
-  if (tx?.to) creators.push(tx.to.toLowerCase());
+const file = new URL("./ely-mainnet.json", import.meta.url);
+let out = {};
+try {
+  out = JSON.parse(readFileSync(file, "utf8"));
+} catch {}
+const bridge = (out.bridge = { elysiumRpc: ELY, hyperEvmRpc: HEVM, at: new Date().toISOString() });
+
+// 1. recent deposits on Elysium (newest first)
+const tip = Number(await call(ELY, "eth_blockNumber"));
+const deposits = [];
+let looked = 0;
+for (let b = tip; b > Math.max(0, tip - 20000) && deposits.length < 8; b--) {
+  const blk = await call(ELY, "eth_getBlockByNumber", [hex(b), true]).catch(() => null);
+  looked++;
+  for (const tx of blk?.transactions || []) {
+    if (DEPOSIT_TYPES.has(tx.type)) deposits.push({ block: b, ts: Number(blk.timestamp), type: tx.type, hash: tx.hash, from: tx.from, to: tx.to, value: tx.value, l1BlockNumber: blk.l1BlockNumber ? Number(blk.l1BlockNumber) : null });
+  }
 }
-out.v3.poolCreatedBy = count(creators).slice(0, 10);
+bridge.elysiumBlocksLooked = looked;
+bridge.deposits = deposits.slice(0, 8);
+console.log(`elysium: looked at ${looked} blocks, ${deposits.length} deposits`);
 
-// position manager = who emits IncreaseLiquidity
-const inc = await logs(T.v3IncreaseLiquidity);
-out.v3.positionManagers = count(inc.map((l) => l.address.toLowerCase())).slice(0, 5);
-
-// routers: the "to" of recent swap transactions
-const swaps = (await logs(T.v3Swap)).slice(-200);
-out.v3.swaps = swaps.length;
-const swapTo = [];
-for (const l of swaps.slice(-80)) {
-  const tx = await rpc("eth_getTransactionByHash", [l.transactionHash]).catch(() => null);
-  if (tx?.to) swapTo.push(tx.to.toLowerCase());
+// 2. on HyperEVM, around each deposit, who emitted the Orbit message events
+async function hevmBlockAt(ts) {
+  let hi = Number(await call(HEVM, "eth_blockNumber"));
+  let lo = Math.max(0, hi - 5_000_000);
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    const t = Number((await call(HEVM, "eth_getBlockByNumber", [hex(mid), false])).timestamp);
+    if (t < ts) lo = mid;
+    else hi = mid;
+  }
+  return hi;
 }
-out.v3.swapsSentTo = count(swapTo).slice(0, 10);
-
-// Uniswap v4 and v2-style
-const init = await logs(T.v4Initialize);
-out.v4 = { pools: init.length, poolManagers: count(init.map((l) => l.address.toLowerCase())).slice(0, 3), hooks: count(init.map((l) => "0x" + l.data.slice(2 + 64 * 2 + 24, 2 + 64 * 3))).slice(0, 8) };
-const pairs = await logs(T.v2PairCreated);
-out.v2 = { pairs: pairs.length, factories: count(pairs.map((l) => l.address.toLowerCase())).slice(0, 3) };
-
-// WHYPE candidate: confirm symbol
-for (const [a] of tokens.slice(0, 3)) {
-  try {
-    const sym = await rpc("eth_call", [{ to: a, data: "0x95d89b41" }, "latest"]);
-    const s = Buffer.from(sym.slice(130), "hex").toString("utf8").replace(/\0/g, "");
-    (out.tokenSymbols ||= {})[a] = s;
-  } catch {}
+const emitters = [];
+const checked = [];
+for (const d of deposits.slice(0, 5)) {
+  // the block's l1BlockNumber (Orbit chains report the parent block) is the best anchor; else time
+  const anchor = d.l1BlockNumber || (await hevmBlockAt(d.ts).catch(() => null));
+  if (!anchor) continue;
+  const from = anchor - 400;
+  const found = [];
+  for (let s = from; s <= anchor + 20; s += 50) {
+    for (const t of Object.values(TOPICS)) {
+      const logs = await call(HEVM, "eth_getLogs", [{ fromBlock: hex(s), toBlock: hex(Math.min(anchor + 20, s + 49)), topics: [t] }]).catch(() => []);
+      for (const l of logs) found.push({ address: l.address.toLowerCase(), topic: Object.keys(TOPICS).find((k) => TOPICS[k] === t), tx: l.transactionHash, block: Number(l.blockNumber) });
+    }
+  }
+  checked.push({ deposit: d.hash, anchor, events: found.length });
+  emitters.push(...found);
 }
-// standard contracts present?
-out.wellKnown = {};
-for (const [k, a] of Object.entries(WELL_KNOWN)) out.wellKnown[k] = ((await rpc("eth_getCode", [a, "latest"]).catch(() => "0x")) || "0x").length > 2;
+bridge.checked = checked;
+bridge.emitters = count(emitters.map((e) => `${e.topic}:${e.address}`)).slice(0, 10);
+bridge.sampleEvents = emitters.slice(0, 10);
+// the HyperEVM tx that called the inbox: its "to" is what users send HYPE to
+const callers = [];
+for (const e of emitters.filter((x) => x.topic === "inboxMessageDelivered").slice(0, 6)) {
+  const tx = await call(HEVM, "eth_getTransactionByHash", [e.tx]).catch(() => null);
+  if (tx) callers.push({ to: tx.to?.toLowerCase(), value: tx.value, input: tx.input?.slice(0, 10) });
+}
+bridge.inboxCalls = callers;
 
-writeFileSync(new URL("./ely-mainnet.json", import.meta.url), JSON.stringify(out, null, 1) + "\n");
-const md = "## Elysium mainnet probe\n\n```json\n" + JSON.stringify(out, null, 1) + "\n```\n";
+writeFileSync(file, JSON.stringify(out, null, 1) + "\n");
+const md = "## Elysium bridge probe\n\n```json\n" + JSON.stringify(bridge, null, 1) + "\n```\n";
 console.log(md);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
