@@ -41,7 +41,8 @@ function sortTokens(list: EToken[], sort: Sort, w: Win) {
     return l.filter((t) => volOf(t, w) > 0).sort((a, b) => volOf(b, w) - volOf(a, w));
   }
   if (sort === "new") return l.sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0"));
-  if (sort === "top") return l.sort((a, b) => (b.mcap_hype || 0) - (a.mcap_hype || 0));
+  // Top: only coins people actually trade (spam tokens with a made-up price and no trades stay out)
+  if (sort === "top") return l.filter((t) => (t.vol24_hype || 0) > 0 && (t.holders || 0) >= 5 && Date.parse(t.created_at || "") > Date.parse("2025-01-01")).sort((a, b) => (b.mcap_hype || 0) - (a.mcap_hype || 0));
   if (sort === "gainers") return l.filter((t) => (t.vol24_hype || 0) >= 5 && (t.change24 ?? 0) > 0).sort((a, b) => (b.change24 ?? -1e9) - (a.change24 ?? -1e9));
   if (sort === "losers") return l.filter((t) => (t.vol24_hype || 0) >= 5 && (t.change24 ?? 0) < 0).sort((a, b) => (a.change24 ?? 1e9) - (b.change24 ?? 1e9));
   return l.filter((t) => (t.vol24_hype || 0) > 0).sort((a, b) => trendScore(b) - trendScore(a));
