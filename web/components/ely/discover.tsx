@@ -91,6 +91,53 @@ function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
   );
 }
 
+
+/** Coins we launched ourselves while testing: real and tradable, but never featured on the board. */
+const HIDE = new Set((process.env.NEXT_PUBLIC_ELY_HIDE || "0x5031015cee9dac6a30ebc63336194d5df13e981a,0xb1493ce70b1436744a90df0e687f05d7cbef21c8").toLowerCase().split(",").map((x) => x.trim()));
+
+/** The ArkhamPad board: the newest coins launched here, first thing on Discover, so fresh launches get seen. */
+function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
+  const tr = useT();
+  const ours = tokens.filter((t) => t.ours && !HIDE.has(t.address.toLowerCase())).sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0")).slice(0, 12);
+  return (
+    <section className="e-board">
+      <div className="e-sec-h">
+        <h2><span className="e-board-dot" />{tr("Fresh on ArkhamPad")}</h2>
+        <Link href="/create/" className="e-board-cta">{tr("Launch yours →")}</Link>
+      </div>
+      <div className="e-board-row">
+        {ours.map((t) => {
+          const fresh = Date.now() - Date.parse(t.created_at || "0") < 3_600_000;
+          return (
+            <Link key={t.address} href={`/t/?a=${t.address}`} className="e-hc e-bc">
+              <div className="e-hc-top">
+                <TokenAvatar t={t} size={40} />
+                <div>
+                  <b>{t.name}</b>
+                  <small>{t.symbol} · {tr("{age} old", { age: ago(t.created_at) })}</small>
+                </div>
+                {fresh && <span className="e-new">{tr("NEW")}</span>}
+              </div>
+              <div className="e-hc-mid">
+                <strong>{money((t.mcap_hype ?? 0) * usd)}</strong>
+                <span className={`e-pill ${upDown(t.change24)}`}>{pct(t.change24)}</span>
+              </div>
+              <small className="dim" style={{ fontSize: 12 }}>{tr("by {who}", { who: short(t.creator) })} · {tr("{n} holders", { n: compact(t.holders || 0) })}</small>
+            </Link>
+          );
+        })}
+        {ours.length < 3 && (
+          <Link href="/create/" className="e-hc e-bc e-bc-empty">
+            <span className="e-spark" aria-hidden="true">✦</span>
+            <b>{tr(ours.length ? "Your coin here next" : "Be the first coin on the board")}</b>
+            <small className="dim">{tr("Launch in 30 seconds. Snipers watch new pools, so first buyers often come within minutes.")}</small>
+          </Link>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function TradeItem({ x, t, usd }: { x: ETrade; t?: EToken; usd: number }) {
   const tr = useT();
   return (
@@ -180,6 +227,7 @@ export function Discover() {
         </div>
       </section>
 
+      <Board tokens={tokens ?? []} usd={usd} />
       <Hot tokens={tokens ?? []} usd={usd} />
 
       <div className="e-wrap">

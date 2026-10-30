@@ -547,3 +547,15 @@ a.e-row:hover { background: var(--e-card2); }
 .e-prev-grid span { display: block; color: var(--e-dim); text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px; font-weight: 700; }
 .e-prev-grid b { font-family: var(--e-mono); font-size: 14px; }
 .e-bstack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* Discover: the ArkhamPad board (newest coins launched here) */
+.e-board-row { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 10px; scrollbar-width: none; }
+.e-board-row::-webkit-scrollbar { display: none; }
+.e-bc { width: 236px; flex: none; border-color: color-mix(in srgb, var(--e-teal) 35%, var(--e-line)); background: linear-gradient(180deg, color-mix(in srgb, var(--e-teal) 7%, var(--e-card)), var(--e-card)); }
+.e-bc-empty { justify-content: center; gap: 8px; border-style: dashed; }
+.e-bc-empty b { font-size: 15px; }
+.e-bc-empty small { font-size: 12.5px; line-height: 1.45; }
+.e-bc-empty .e-spark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--e-tealfill); color: var(--e-tealink); font-size: 16px; }
+.e-new { flex: none; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; padding: 3px 7px; border-radius: 999px; background: var(--e-tealfill); color: var(--e-tealink); }
+.e-board-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--e-teal); margin-right: 8px; vertical-align: middle; box-shadow: 0 0 0 4px var(--e-glow); }
+.ely .e-board-cta { font-size: 13px; font-weight: 700; color: var(--e-teal); }
