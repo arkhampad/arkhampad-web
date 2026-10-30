@@ -23,7 +23,40 @@ export async function onRequestPost({ request, env }) {
     return reply({ jsonrpc: "2.0", id: null, error: { code: -32601, message: "method not allowed" } }, 400);
   }
   const upstreams = (env.ELY_UPSTREAMS ? String(env.ELY_UPSTREAMS).split(",") : DEFAULT).map((u) => u.trim()).filter(Boolean);
+  // Wallets pick the next nonce from eth_getTransactionCount. A node a block behind returns an old count
+  // and the wallet's next transaction is rejected ("wrong nonce"). So for that call we ask every node and
+  // answer with the highest count, and block-number reads also get the newest head.
+  if (!Array.isArray(calls) && (calls.method === "eth_getTransactionCount" || calls.method === "eth_blockNumber")) {
+    const answers = await Promise.all(upstreams.map(async (url) => {
+      try {
+        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(TIMEOUT) });
+        const j = await r.json();
+        return typeof j?.result === "string" ? BigInt(j.result) : -1n;
+      } catch { return -1n; }
+    }));
+    const best = answers.reduce((a, b) => (b > a ? b : a), -1n);
+    if (best >= 0n) return reply({ jsonrpc: "2.0", id: calls.id ?? null, result: `0x${best.toString(16)}` });
+  }
   const sending = list.some((c) => c.method === "eth_sendRawTransaction");
+  // a signed transaction goes to every node at once, so whichever one the wallet reads from next has it
+  if (sending && !Array.isArray(calls)) {
+    const outs = await Promise.all(upstreams.map(async (url) => {
+      try {
+        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(15000) });
+        return await r.text();
+      } catch { return null; }
+    }));
+    const ok = outs.find((o) => o && /"result"\s*:\s*"0x[0-9a-f]{64}"/i.test(o));
+    if (ok) return reply(ok);
+    const known = outs.find((o) => o && /already known|known transaction/i.test(o));
+    if (known) {
+      // another node already has it: answer with its hash so the wallet carries on
+      const hash = outs.map((o) => o?.match(/"result"\s*:\s*"(0x[0-9a-f]{64})"/i)?.[1]).find(Boolean);
+      if (hash) return reply({ jsonrpc: "2.0", id: calls.id ?? null, result: hash });
+    }
+    const first = outs.find(Boolean);
+    if (first) return reply(first);
+  }
   for (const url of upstreams) {
     try {
       const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(sending ? 15000 : TIMEOUT) });

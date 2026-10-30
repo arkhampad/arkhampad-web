@@ -33,7 +33,8 @@ const robinhood = defineChain({
 // Elysium (Kinetiq's chain on Hyperliquid) and HyperEVM, where HYPE is bridged from.
 export const elysium = defineChain({
   id: 99901, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
-  rpcUrls: { default: { http: ELY_RPC_LIST } },
+  // wallets (MetaMask etc.) add Elysium with our own doorway first: it always reports the newest nonce
+  rpcUrls: { default: { http: ["https://arkhampad.com/api/ely-rpc", ...ELY_RPC_LIST.filter((u) => !u.includes("arkhampad.com"))] } },
 });
 const elysiumTestnet = defineChain({
   id: 99801, name: "Elysium Testnet", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
@@ -99,7 +100,17 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
         } catch (e) {
           const m = String((e as Error)?.message ?? e);
           const want = m.match(/expected\s+(\d+)/i)?.[1];
-          if (/nonce/i.test(m)) return send(want ? Number(want) : (await freshNonce(w.address as Address)) ?? undefined);
+          if (/nonce/i.test(m)) {
+            if (w.walletClientType !== "privy") {
+              // MetaMask & co. ignore the nonce we pass and use their own node: point them at our doorway
+              // (it always reports the newest count), then try once more
+              try {
+                const provider = await w.getEthereumProvider();
+                await provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: `0x${ELY_CHAIN_ID.toString(16)}`, chainName: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: ["https://arkhampad.com/api/ely-rpc"] }] });
+              } catch {}
+            }
+            return send(want ? Number(want) : (await freshNonce(w.address as Address)) ?? undefined);
+          }
           throw e;
         }
       },
