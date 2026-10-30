@@ -165,6 +165,10 @@ export function CreatePage() {
       r.push(`/t/?a=${coin.toLowerCase()}&new=1`);
     } catch (e) {
       const m = String((e as Error)?.message ?? "");
+      // keep the real reason in the console and on screen (short), so a failed launch can be diagnosed
+      console.error("launch failed", e);
+      const why = String((e as { shortMessage?: string })?.shortMessage || m).split("\n")[0].slice(0, 140);
+      if (!/insufficient|reject|denied|cancel/i.test(m)) { setMsg(`Launch failed: ${why}`); return; }
       setMsg(/insufficient/i.test(m) ? (buyWei > 0n ? "Not enough HYPE for the first buy and gas." : "You need a little HYPE on Elysium for gas.") : /reject|denied|cancel/i.test(m) ? "Cancelled." : "Launch failed. Nothing was spent except gas. Please try again.");
     } finally {
       setBusy(null);
