@@ -30,7 +30,7 @@ export async function onRequestGet({ request, env, waitUntil }) {
     res = new Response(null, { status: 302, headers: { location: `https://ipfs.io/ipfs/${img.slice(7)}`, "cache-control": "public, max-age=86400, s-maxage=604800" } });
   } else {
     // no picture yet (it may be filled in later): remember that only for a short while
-    res = new Response("no image", { status: 404, headers: { "cache-control": "public, max-age=300, s-maxage=600" } });
+    res = new Response("no image", { status: 404, headers: { "cache-control": "public, max-age=60, s-maxage=60" } });
   }
   waitUntil(cache.put(key, res.clone()));
   return res;

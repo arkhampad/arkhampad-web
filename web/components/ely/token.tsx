@@ -11,7 +11,7 @@ import { useT } from "@/lib/i18n";
 import { EChart } from "./chart";
 import { Burst, Confetti } from "@/components/celebrate";
 import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
-import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, quote, sell, toWei, tokenBalance, TradeFail } from "@/lib/elytrade";
+import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, quote, sell, toWei, tokenBalance, TradeFail, chainToken } from "@/lib/elytrade";
 
 const GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays for gas on "Max"
 const supplyOf = (t: EToken) => Number(BigInt(t.supply || "0")) / 10 ** (t.decimals ?? 18);
@@ -201,7 +201,8 @@ export function TokenPage() {
   const params = useSearchParams();
   const a = (params.get("a") || "").toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(a);
-  const t = usePoll(async () => (valid ? fetchToken(a) : null), 10_000, [a]);
+  // a coin launched a moment ago may not be indexed yet: read it from the chain until it is
+  const t = usePoll(async () => (valid ? ((await fetchToken(a).catch(() => null)) ?? (await chainToken(a))) : null), 10_000, [a]);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const trades = usePoll(async () => (valid ? fetchTrades(a, 1500) : []), 8000, [a]);
   const [tab, setTab] = useState<"trades" | "holders" | "about">("trades");

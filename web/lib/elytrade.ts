@@ -190,3 +190,50 @@ export function recentTokens(): string[] {
 export function balanceChanged() {
   try { window.dispatchEvent(new Event("ap:balance")); } catch {}
 }
+
+// ---------------------------------------------------------------- brand-new coins
+/** ArkhamPad's launcher (from the deploy record). */
+export const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
+const LAUNCHER_READ = parseAbi([
+  "function coins(address) view returns (uint256 tokenId, address pool, address creator, uint16 creatorBps, bool coinIsToken0)",
+  "function wrapped() view returns (address)",
+]);
+const META_READ = parseAbi(["function name() view returns (string)", "function symbol() view returns (string)", "function totalSupply() view returns (uint256)"]);
+const SLOT0_READ = parseAbi(["function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)"]);
+
+/**
+ * A coin from our launcher read straight from the chain, for the minute before the indexer has it
+ * (right after someone launches). Enough to show the page and trade it; null if it isn't ours.
+ */
+export async function chainToken(address: string): Promise<EToken | null> {
+  if (!LAUNCHER) return null;
+  const a = address.toLowerCase() as Address;
+  try {
+    const c = ely();
+    const [info, wrapped] = await Promise.all([
+      c.readContract({ address: LAUNCHER, abi: LAUNCHER_READ, functionName: "coins", args: [a] }),
+      c.readContract({ address: LAUNCHER, abi: LAUNCHER_READ, functionName: "wrapped" }),
+    ]);
+    const [, pool, creator, , tokenIs0] = info as readonly [bigint, Address, Address, number, boolean];
+    if (!pool || /^0x0{40}$/i.test(pool)) return null;
+    const [name, symbol, supply, slot] = await Promise.all([
+      c.readContract({ address: a, abi: META_READ, functionName: "name" }),
+      c.readContract({ address: a, abi: META_READ, functionName: "symbol" }),
+      c.readContract({ address: a, abi: META_READ, functionName: "totalSupply" }),
+      c.readContract({ address: pool, abi: SLOT0_READ, functionName: "slot0" }),
+    ]);
+    const s = Number((slot as readonly [bigint, ...unknown[]])[0]) / 2 ** 96;
+    const p = s * s;
+    const price = tokenIs0 ? p : p > 0 ? 1 / p : 0;
+    const now = new Date().toISOString();
+    return {
+      address: a, name, symbol, decimals: 18, supply: supply.toString(), image: `/api/ely-img/?a=${a}`, description: null,
+      launchpad: "ArkhamPad", venue: "v3", pool: pool.toLowerCase(), manager: null, whype: (wrapped as string).toLowerCase(), token_is0: tokenIs0,
+      fee: 10000, tick_spacing: 200, hooks: null, creator: (creator as string).toLowerCase(), ours: true, created_at: now,
+      price_hype: price, mcap_hype: price * (Number(supply) / 1e18), vol24_hype: 0, buys24: 0, sells24: 0, change24: 0,
+      holders: 1, top10_pct: null, last_trade_at: null,
+    } as unknown as EToken;
+  } catch {
+    return null;
+  }
+}

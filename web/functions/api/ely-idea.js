@@ -13,16 +13,23 @@ const TREND_TTL = 2 * 3600; // seconds
 const CACHE_KEY = "https://arkhampad.com/__cache/ely-trends-v1";
 const LIMIT = 10;
 
+// The database address is public (the site uses the same one); Cloudflare's runtime may not have the
+// NEXT_PUBLIC_* build variables, so fall back to it. Without this the daily limit never counted.
+const SB_URL = "https://yvdudswzmdziwnfurwir.supabase.co";
+const SB_KEY = "sb_publishable_S49UWqqXDzSaRbjBsAfYaA_kjfxyRPB";
+const sbUrl = (env) => env.NEXT_PUBLIC_SUPABASE_URL || SB_URL;
+const sbKey = (env) => env.NEXT_PUBLIC_SUPABASE_KEY || SB_KEY;
+
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
 async function trends(env, waitUntil) {
   const cache = caches.default;
   const hit = await cache.match(CACHE_KEY);
   if (hit) return hit.json();
-  const url = `${env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/ely_tokens?select=name,symbol,description,vol24_hype,change24&ours=eq.false&order=vol24_hype.desc&limit=30`;
+  const url = `${sbUrl(env)}/rest/v1/ely_tokens?select=name,symbol,description,vol24_hype,change24&ours=eq.false&order=vol24_hype.desc&limit=30`;
   let rows = [];
   try {
-    const r = await fetch(url, { headers: { apikey: env.NEXT_PUBLIC_SUPABASE_KEY, authorization: `Bearer ${env.NEXT_PUBLIC_SUPABASE_KEY}` } });
+    const r = await fetch(url, { headers: { apikey: sbKey(env), authorization: `Bearer ${sbKey(env)}` } });
     if (r.ok) rows = await r.json();
   } catch {}
   const list = rows
@@ -35,9 +42,9 @@ async function trends(env, waitUntil) {
 
 async function take(env, key) {
   try {
-    const r = await fetch(`${env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/ely_ai_take`, {
+    const r = await fetch(`${sbUrl(env)}/rest/v1/rpc/ely_ai_take`, {
       method: "POST",
-      headers: { apikey: env.NEXT_PUBLIC_SUPABASE_KEY, authorization: `Bearer ${env.NEXT_PUBLIC_SUPABASE_KEY}`, "content-type": "application/json" },
+      headers: { apikey: sbKey(env), authorization: `Bearer ${sbKey(env)}`, "content-type": "application/json" },
       body: JSON.stringify({ p_key: key }),
     });
     if (!r.ok) return 0; // counting is down: don't block people
