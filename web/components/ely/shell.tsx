@@ -169,6 +169,7 @@ function Frame({ children }: { children: React.ReactNode }) {
             <Link href="/learn/what-is-elysium/">{tr("What is Elysium")}</Link>
             <Link href="/learn/create-a-token-on-elysium/">{tr("Create a token")}</Link>
             <Link href="/learn/bridge-hype-to-elysium/">{tr("Bridge HYPE")}</Link>
+            <Link href="/testnet/">{tr("Testnet")}</Link>
             <Link href="/terms/">{tr("Terms")}</Link>
             <Link href="/privacy/">{tr("Privacy")}</Link>
             <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer">X</a>
