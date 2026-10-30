@@ -176,7 +176,7 @@ export type Signer = {
   address: Address;
   signTypedData: (chainId: number, typed: TypedData) => Promise<Hex>;
   /** Sends a transaction from the user's wallet (only needed for one-time approvals on networks without permit). */
-  sendTx?: (chainId: number, tx: { to: Address; data: Hex; value?: bigint }) => Promise<Hex>;
+  sendTx?: (chainId: number, tx: { to: Address; data: Hex; value?: bigint; gas?: bigint }) => Promise<Hex>;
 };
 export type TypedData = { domain: Record<string, unknown>; types: Record<string, { name: string; type: string }[]>; primaryType: string; message: Record<string, unknown> };
 

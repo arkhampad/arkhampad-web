@@ -59,17 +59,17 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
     if (!address) return null;
     return {
       address,
-      sendTx: async (chainId: number, tx: { to: Address; data: Hex; value?: bigint }) => {
+      sendTx: async (chainId: number, tx: { to: Address; data: Hex; value?: bigint; gas?: bigint }) => {
         const w = walletRef.current;
         if (!w) throw new Error("Wallet not ready. Please try again.");
         if (w.walletClientType === "privy") {
           // embedded wallet: sends silently (gas was topped up by ArkhamPad)
-          const { hash } = await sendRef.current({ to: tx.to, data: tx.data, value: tx.value, chainId }, { address: w.address, uiOptions: { showWalletUIs: false } });
+          const { hash } = await sendRef.current({ to: tx.to, data: tx.data, value: tx.value, chainId, ...(tx.gas ? { gasLimit: tx.gas } : {}) }, { address: w.address, uiOptions: { showWalletUIs: false } });
           return hash as Hex;
         }
         if (Number(String(w.chainId).split(":").pop()) !== chainId) await w.switchChain(chainId);
         const provider = await w.getEthereumProvider();
-        return (await provider.request({ method: "eth_sendTransaction", params: [{ from: w.address, to: tx.to, data: tx.data, ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}) }] })) as Hex;
+        return (await provider.request({ method: "eth_sendTransaction", params: [{ from: w.address, to: tx.to, data: tx.data, ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), ...(tx.gas ? { gas: `0x${tx.gas.toString(16)}` } : {}) }] })) as Hex;
       },
       signTypedData: async (chainId: number, t: TypedData) => {
         const w = walletRef.current;

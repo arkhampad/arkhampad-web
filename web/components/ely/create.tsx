@@ -174,7 +174,7 @@ export function CreatePage() {
       setBusy("Launching…");
       const hash = await w.signer.sendTx(ELY_CHAIN, { to: LAUNCHER, data, value: fee + buyWei });
       setBusy("Confirming…");
-      const rc = await ely().waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
+      const rc = await ely().waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000, pollingInterval: 400 });
       if (rc.status !== "success") throw new Error("failed");
       let coin: string | null = null;
       for (const l of rc.logs) {
