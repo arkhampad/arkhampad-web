@@ -6,7 +6,24 @@ import type { Address, Hex } from "viem";
 import { defineChain } from "viem";
 import { base, baseSepolia, bsc } from "viem/chains";
 import { LIVE, robinhoodTestnet, type Signer, type TypedData } from "@/lib/chain";
-import { ELY_RPC_LIST } from "@/lib/elytrade";
+import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC_LIST } from "@/lib/elytrade";
+
+/** The next nonce for `addr` on Elysium: the highest "pending" count any of our nodes reports. */
+async function freshNonce(addr: Address): Promise<number | null> {
+  const counts = await Promise.all(
+    ELY_RPC_LIST.map(async (url) => {
+      try {
+        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getTransactionCount", params: [addr, "pending"] }), signal: AbortSignal.timeout(2500) });
+        const j = await r.json();
+        return j?.result ? parseInt(j.result, 16) : -1;
+      } catch {
+        return -1;
+      }
+    })
+  );
+  const n = Math.max(...counts);
+  return n >= 0 ? n : null;
+}
 
 // Mainnets the embedded wallet must know, or it can't send a transaction there.
 const robinhood = defineChain({
@@ -62,14 +79,29 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
       sendTx: async (chainId: number, tx: { to: Address; data: Hex; value?: bigint; gas?: bigint }) => {
         const w = walletRef.current;
         if (!w) throw new Error("Wallet not ready. Please try again.");
-        if (w.walletClientType === "privy") {
-          // embedded wallet: sends silently (gas was topped up by ArkhamPad)
-          const { hash } = await sendRef.current({ to: tx.to, data: tx.data, value: tx.value, chainId, ...(tx.gas ? { gasLimit: tx.gas } : {}) }, { address: w.address, uiOptions: { showWalletUIs: false } });
-          return hash as Hex;
+        // On Elysium some nodes run a block behind and hand out an old nonce ("wrong nonce: expected 15,
+        // received 14"). Ask every node and use the highest pending count; on a nonce error retry once
+        // with the count the node said it expected.
+        const elysium = chainId === ELY_CHAIN_ID;
+        const send = async (nonce?: number) => {
+          if (w.walletClientType === "privy") {
+            const { hash } = await sendRef.current({ to: tx.to, data: tx.data, value: tx.value, chainId, ...(tx.gas ? { gasLimit: tx.gas } : {}), ...(nonce != null ? { nonce } : {}) }, { address: w.address, uiOptions: { showWalletUIs: false } });
+            return hash as Hex;
+          }
+          if (Number(String(w.chainId).split(":").pop()) !== chainId) await w.switchChain(chainId);
+          const provider = await w.getEthereumProvider();
+          return (await provider.request({ method: "eth_sendTransaction", params: [{ from: w.address, to: tx.to, data: tx.data, ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), ...(tx.gas ? { gas: `0x${tx.gas.toString(16)}` } : {}), ...(nonce != null ? { nonce: `0x${nonce.toString(16)}` } : {}) }] })) as Hex;
+        };
+        if (!elysium) return send();
+        const nonce = await freshNonce(w.address as Address);
+        try {
+          return await send(nonce ?? undefined);
+        } catch (e) {
+          const m = String((e as Error)?.message ?? e);
+          const want = m.match(/expected\s+(\d+)/i)?.[1];
+          if (/nonce/i.test(m)) return send(want ? Number(want) : (await freshNonce(w.address as Address)) ?? undefined);
+          throw e;
         }
-        if (Number(String(w.chainId).split(":").pop()) !== chainId) await w.switchChain(chainId);
-        const provider = await w.getEthereumProvider();
-        return (await provider.request({ method: "eth_sendTransaction", params: [{ from: w.address, to: tx.to, data: tx.data, ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), ...(tx.gas ? { gas: `0x${tx.gas.toString(16)}` } : {}) }] })) as Hex;
       },
       signTypedData: async (chainId: number, t: TypedData) => {
         const w = walletRef.current;
