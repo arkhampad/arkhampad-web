@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
-import { TokenAvatar, PadTag } from "./shell";
+import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHoldings, fetchHypeUsd, fetchMyTrades, fetchTokensByAddress, money, pct, short, usePoll } from "@/lib/ely";
 import { ELY_CHAIN, ely, fromWei, hypeBalance, recentTokens, tokenBalance } from "@/lib/elytrade";
 
@@ -142,7 +142,7 @@ export function YouPage() {
           <div className="e-rows">
             {holdings.map(({ t, amount, value }) => (
               <Link key={t.address} href={`/t/?a=${t.address}`} className="e-row e-hold">
-                <span className="e-tok"><TokenAvatar t={t} size={36} /><span><span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span></span><small><PadTag t={t} /></small></span></span>
+                <span className="e-tok"><TokenAvatar t={t} size={36} /><span><span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span></span><small>{amount >= 1e6 ? `${(amount / 1e6).toFixed(2)}M` : amount >= 1e3 ? `${(amount / 1e3).toFixed(1)}K` : amount.toFixed(2)} {t.symbol}</small></span></span>
                 <span className="r num e-hide-m">{amount >= 1e6 ? `${(amount / 1e6).toFixed(2)}M` : amount >= 1e3 ? `${(amount / 1e3).toFixed(1)}K` : amount.toFixed(2)}</span>
                 <span className={`r num e-hide-m ${(t.change24 ?? 0) >= 0 ? "up" : "down"}`}>{pct(t.change24)}</span>
                 <span className="r num"><b>{money(value * usd)}</b></span>

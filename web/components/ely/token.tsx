@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { Address } from "viem";
 import { useWallet } from "@/components/wallet";
-import { TokenAvatar, PadTag } from "./shell";
+import { TokenAvatar } from "./shell";
 import { EChart } from "./chart";
 import { Confetti } from "@/components/celebrate";
 import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
@@ -174,7 +174,6 @@ function About({ t }: { t: EToken }) {
       {t.description && <p>{t.description}</p>}
       <dl>
         <div><dt>Contract</dt><dd><Copy text={t.address} /></dd></div>
-        <div><dt>Launchpad</dt><dd><PadTag t={t} /></dd></div>
         <div><dt>Creator</dt><dd>{t.creator ? <Copy text={t.creator} /> : "—"}</dd></div>
         <div><dt>Pool</dt><dd>{t.venue === "v4" ? "Uniswap v4 style" : "Uniswap v3 style"} · {(t.fee ?? 0) / 10000}% fee</dd></div>
         <div><dt>Supply</dt><dd className="num">{compact(supplyOf(t))}</dd></div>
@@ -247,7 +246,7 @@ export function TokenPage() {
             <div className="e-tname">
               <h1>{t.name} <span>{t.symbol}</span></h1>
               <div className="e-tmeta">
-                <PadTag t={t} />
+                <span className="e-chipnet">Elysium</span>
                 {t.ours && <span className="e-lock">LP locked</span>}
                 <Copy text={t.address} />
               </div>

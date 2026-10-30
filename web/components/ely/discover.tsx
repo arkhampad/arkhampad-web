@@ -1,18 +1,19 @@
 "use client";
 // Discover: every token on Elysium, from every launchpad. Hot strip, the full list (Trending / New /
-// Top / Gainers, launchpad filter, search) and live trades (side panel on wide screens, a tab on phones).
+// Top / Gainers / Losers, search) and live trades (side panel on wide screens, a tab on phones).
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { TokenAvatar, PadTag } from "./shell";
-import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchTokens, money, padColor, padOf, pct, short, usePoll, type EToken, type ETrade } from "@/lib/ely";
+import { TokenAvatar } from "./shell";
+import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchTokens, money, pct, short, usePoll, type EToken, type ETrade } from "@/lib/ely";
 
-type Sort = "trending" | "new" | "top" | "gainers" | "live";
+type Sort = "trending" | "new" | "top" | "gainers" | "losers" | "live";
 const SORTS: { id: Sort; label: string; narrow?: boolean }[] = [
   { id: "trending", label: "Trending" },
   { id: "new", label: "New" },
   { id: "top", label: "Top" },
   { id: "gainers", label: "Gainers" },
+  { id: "losers", label: "Losers" },
   { id: "live", label: "Live", narrow: true },
 ];
 
@@ -28,7 +29,8 @@ function sortTokens(list: EToken[], sort: Sort) {
   const l = list.slice();
   if (sort === "new") return l.sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0"));
   if (sort === "top") return l.sort((a, b) => (b.mcap_hype || 0) - (a.mcap_hype || 0));
-  if (sort === "gainers") return l.filter((t) => (t.vol24_hype || 0) >= 5).sort((a, b) => (b.change24 ?? -1e9) - (a.change24 ?? -1e9));
+  if (sort === "gainers") return l.filter((t) => (t.vol24_hype || 0) >= 5 && (t.change24 ?? 0) > 0).sort((a, b) => (b.change24 ?? -1e9) - (a.change24 ?? -1e9));
+  if (sort === "losers") return l.filter((t) => (t.vol24_hype || 0) >= 5 && (t.change24 ?? 0) < 0).sort((a, b) => (a.change24 ?? 1e9) - (b.change24 ?? 1e9));
   return l.filter((t) => (t.vol24_hype || 0) > 0).sort((a, b) => trendScore(b) - trendScore(a));
 }
 const upDown = (v: number | null | undefined) => ((v ?? 0) >= 0 ? "up" : "down");
@@ -52,7 +54,7 @@ function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
                     <TokenAvatar t={t} size={40} />
                     <div>
                       <b>{t.name}</b>
-                      <small><i className="e-side-badge" style={{ background: padColor(padOf(t)) }} />{padOf(t)} · {t.symbol}</small>
+                      <small>{t.symbol} · {ago(t.created_at)} old</small>
                     </div>
                     <span className="e-hc-rank">#{i + 1}</span>
                   </div>
@@ -110,11 +112,10 @@ function Row({ t, i, usd }: { t: EToken; i: number; usd: number }) {
           <span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span>{t.ours && <span className="e-lock">LP locked</span>}</span>
           <small>
             <span className="e-hide-m">by {short(t.creator)} · {ago(t.created_at)} old</span>
-            <span className="e-only-m-inline"><PadTag t={t} /> · {ago(t.created_at)}</span>
+            <span className="e-only-m-inline">{ago(t.created_at)} old · {compact(t.holders || 0)} holders</span>
           </small>
         </span>
       </span>
-      <span className="e-hide-t e-hide-m"><PadTag t={t} /></span>
       <span className={`r num e-hide-m ${upDown(t.change24)}`}>{pct(t.change24)}</span>
       <span className="r num e-hide-m">{money((t.vol24_hype || 0) * usd)}</span>
       <span className="r num e-hide-t e-hide-m"><span className="up">{t.buys24}</span><span className="dim"> / </span><span className="down">{t.sells24}</span></span>
@@ -132,23 +133,16 @@ export function Discover() {
   const tokens = usePoll(fetchTokens, 15_000);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const [sort, setSort] = useState<Sort>("trending");
-  const [pad, setPad] = useState<string>("All");
   const [shown, setShown] = useState(50);
   const q = (params.get("q") || "").trim().toLowerCase();
 
   const list = useMemo(() => {
     let l = tokens ?? [];
-    if (pad !== "All") l = l.filter((t) => padOf(t) === pad);
     if (q) l = l.filter((t) => t.name.toLowerCase().includes(q) || t.symbol.toLowerCase().includes(q) || t.address === q);
     return sortTokens(l, sort);
-  }, [tokens, sort, pad, q]);
+  }, [tokens, sort, q]);
 
   const byAddr = useMemo(() => new Map((tokens ?? []).map((t) => [t.address, t])), [tokens]);
-  const pads = useMemo(() => {
-    const c = new Map<string, number>();
-    for (const t of tokens ?? []) c.set(padOf(t), (c.get(padOf(t)) ?? 0) + 1);
-    return [...c.entries()].sort((a, b) => b[1] - a[1]);
-  }, [tokens]);
   const vol = (tokens ?? []).reduce((s, t) => s + (t.vol24_hype || 0), 0);
 
   return (
@@ -157,7 +151,7 @@ export function Discover() {
         <div>
           <span className="e-eyebrow"><i className="e-dot" />Elysium mainnet · live</span>
           <h1>Discover</h1>
-          <p>Every token on Elysium, from every launchpad. Find it, chart it, trade it.</p>
+          <p>Every token on Elysium in one place. Find it, chart it, trade it.</p>
         </div>
         <div className="e-stats">
           <div className="e-stat"><span>Tokens</span><b>{tokens ? tokens.length.toLocaleString("en-US") : "—"}</b></div>
@@ -178,14 +172,6 @@ export function Discover() {
                 ))}
               </div>
             </div>
-            {sort !== "live" && (
-              <div className="e-scrollx">
-                <button type="button" className={`e-chip ${pad === "All" ? "on" : ""}`} onClick={() => setPad("All")}>All <span className="dim">{tokens ? tokens.length : ""}</span></button>
-                {pads.map(([name, n]) => (
-                  <button key={name} type="button" className={`e-chip ${pad === name ? "on" : ""}`} onClick={() => setPad(name)}><i style={{ background: padColor(name) }} />{name} <span className="dim">{n}</span></button>
-                ))}
-              </div>
-            )}
             {q && sort !== "live" && (
               <div className="e-scrollx" style={{ alignItems: "center" }}>
                 <span className="muted" style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Results for “{q}”</span>
@@ -201,7 +187,6 @@ export function Discover() {
               <div className="e-row h">
                 <span className="e-hide-m">#</span>
                 <span>Token</span>
-                <span className="e-hide-t e-hide-m">Launchpad</span>
                 <span className="r e-hide-m">24h</span>
                 <span className="r e-hide-m">Volume</span>
                 <span className="r e-hide-t e-hide-m">Txns</span>

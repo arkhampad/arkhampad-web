@@ -115,7 +115,7 @@ html:has(.ely), body:has(.ely) { background: var(--e-bg, #f3f5f7); overflow-x: c
 .e-narrow { display: none; }
 
 .e-rows { display: flex; flex-direction: column; }
-.e-row { display: grid; grid-template-columns: 34px minmax(0, 2.2fr) 118px 82px 92px 92px 74px 66px 104px; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--e-line); font-size: 14px; transition: background .12s; }
+.e-row { display: grid; grid-template-columns: 34px minmax(0, 2.4fr) 86px 104px 104px 84px 70px 112px; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--e-line); font-size: 14px; transition: background .12s; }
 .e-row > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .e-row > .r { text-align: right; }
 .e-rows .e-row:first-child { border-top: 0; }
@@ -490,3 +490,4 @@ a.e-row:hover { background: var(--e-card2); }
   .e-tile { padding: 12px; }
   .e-row.e-toprow { grid-template-columns: 22px minmax(0, 1fr) auto; }
 }
+.e-chipnet { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--e-teal); background: var(--e-glow); }
