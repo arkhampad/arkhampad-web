@@ -389,7 +389,8 @@ export function makeElysium(cfg, store) {
       try {
         const n = await syncOnce();
         backfillMeta().catch(() => {});
-        if (Date.now() - statsAt > 30_000) {
+        // list stats once a minute (each run reads the database; keeps Supabase disk use low)
+        if (Date.now() - statsAt > 60_000) {
           statsAt = Date.now();
           await hypeUsd();
           await store.refreshStats();

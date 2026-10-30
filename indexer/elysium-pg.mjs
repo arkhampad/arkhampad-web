@@ -3,6 +3,7 @@
 
 const COLS = ["address", "name", "symbol", "decimals", "supply", "uri", "image", "description", "venue", "pool", "manager", "whype", "token_is0", "fee", "tick_spacing", "hooks", "maker", "creator", "launchpad", "ours", "created_block", "created_at", "price_hype"];
 
+let windowsAt = 0;
 export async function makePgStore(pool) {
   const tokens = new Map();
   const { rows } = await pool.query(`select ${COLS.join(",")} from ely_tokens`);
@@ -61,8 +62,11 @@ export async function makePgStore(pool) {
       const r = await pool.query("select v from ely_meta where k='hype_usd'");
       const usd = Number(r.rows[0]?.v) || 0;
       await pool.query("select ely_refresh_stats($1)", [usd]);
-      // short windows for Discover's 5m / 1h / 6h filter (db/027); skipped until that file is run
-      await pool.query("select ely_refresh_windows()").catch(() => {});
+      // short windows for Discover's 5m / 1h / 6h filter (db/027), every 2 minutes
+      if (Date.now() - windowsAt > 120_000) {
+        windowsAt = Date.now();
+        await pool.query("select ely_refresh_windows()").catch(() => {});
+      }
     },
   };
 }
