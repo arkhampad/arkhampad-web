@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { WalletProvider, useWallet } from "@/components/wallet";
+import { I18nProvider, LANGS, useI18n, useT } from "@/lib/i18n";
 import { fetchTokens, fetchHypeUsd, money, pct, padColor, padOf, PADS, tokenColors, usePoll, type EToken } from "@/lib/ely";
 
 const NAV = [
@@ -54,9 +55,39 @@ function ThemeButton() {
   );
 }
 
+function LangButton() {
+  const { lang, setLang } = useI18n();
+  const [open, setOpen] = useState(false);
+  const cur = LANGS.find((l) => l.id === lang) ?? LANGS[0];
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const t = setTimeout(() => document.addEventListener("click", close, { once: true }), 0);
+    return () => { clearTimeout(t); document.removeEventListener("click", close); };
+  }, [open]);
+  return (
+    <div className="e-lang">
+      <button type="button" className="e-btn e-langbtn" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} aria-label="Language">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z" /></svg>
+        <span>{cur.short}</span>
+      </button>
+      {open && (
+        <div className="e-langmenu" role="menu">
+          {LANGS.map((l) => (
+            <button key={l.id} type="button" role="menuitemradio" aria-checked={l.id === lang} className={l.id === lang ? "on" : ""} onClick={() => { setLang(l.id); setOpen(false); }}>
+              <span className="dim">{l.short}</span>{l.name}{l.id === lang && <i aria-hidden="true">✓</i>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Account() {
   const w = useWallet();
-  if (!w.signedIn) return <button type="button" className="e-btn pri" onClick={w.login}>Log in</button>;
+  const tr = useT();
+  if (!w.signedIn) return <button type="button" className="e-btn pri" onClick={w.login}>{tr("Log in")}</button>;
   return <Link href="/you/" className="e-btn num">{w.address?.slice(0, 5)}…{w.address?.slice(-3)}</Link>;
 }
 
@@ -84,6 +115,7 @@ function Ticker() {
 
 function Search() {
   const r = useRouter();
+  const tr = useT();
   const [q, setQ] = useState("");
   return (
     <form
@@ -98,13 +130,14 @@ function Search() {
       }}
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ flex: "none" }}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search token name or address" enterKeyHint="search" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("Search")} aria-label="Search token name or address" enterKeyHint="search" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
     </form>
   );
 }
 
 function Frame({ children }: { children: React.ReactNode }) {
   const path = usePathname() || "/";
+  const tr = useT();
   const on = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   return (
     <div className="ely">
@@ -115,11 +148,12 @@ function Frame({ children }: { children: React.ReactNode }) {
             <span>ArkhamPad</span>
           </Link>
           <nav className="e-links" aria-label="Main">
-            {NAV.map((n) => <Link key={n.href} href={n.href} className={`e-link ${on(n.href) ? "on" : ""}`}>{n.label}</Link>)}
-            <Link href="/stats/" className={`e-link ${on("/stats/") ? "on" : ""}`}>Stats</Link>
-            <Link href="/learn/" className={`e-link ${on("/learn/") ? "on" : ""}`}>Learn</Link>
+            {NAV.map((n) => <Link key={n.href} href={n.href} className={`e-link ${on(n.href) ? "on" : ""}`}>{tr(n.label)}</Link>)}
+            <Link href="/stats/" className={`e-link ${on("/stats/") ? "on" : ""}`}>{tr("Stats")}</Link>
+            <Link href="/learn/" className={`e-link ${on("/learn/") ? "on" : ""}`}>{tr("Learn")}</Link>
           </nav>
           <Search />
+          <LangButton />
           <ThemeButton />
           <Account />
         </div>
@@ -128,15 +162,15 @@ function Frame({ children }: { children: React.ReactNode }) {
       {children}
       <footer className="e-foot">
         <div className="e-in">
-          <span>ArkhamPad · the Elysium launchpad</span>
+          <span>{tr("ArkhamPad · the Elysium launchpad")}</span>
           <nav aria-label="Footer">
-            <Link href="/stats/">Stats</Link>
-            <Link href="/learn/">Learn</Link>
-            <Link href="/learn/what-is-elysium/">What is Elysium</Link>
-            <Link href="/learn/create-a-token-on-elysium/">Create a token</Link>
-            <Link href="/learn/bridge-hype-to-elysium/">Bridge HYPE</Link>
-            <Link href="/terms/">Terms</Link>
-            <Link href="/privacy/">Privacy</Link>
+            <Link href="/stats/">{tr("Stats")}</Link>
+            <Link href="/learn/">{tr("Learn")}</Link>
+            <Link href="/learn/what-is-elysium/">{tr("What is Elysium")}</Link>
+            <Link href="/learn/create-a-token-on-elysium/">{tr("Create a token")}</Link>
+            <Link href="/learn/bridge-hype-to-elysium/">{tr("Bridge HYPE")}</Link>
+            <Link href="/terms/">{tr("Terms")}</Link>
+            <Link href="/privacy/">{tr("Privacy")}</Link>
             <a href="https://x.com/Arkhampad" target="_blank" rel="noopener noreferrer">X</a>
           </nav>
         </div>
@@ -145,7 +179,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         {NAV.map((n) => (
           <Link key={n.href} href={n.href} className={`e-tabnav ${on(n.href) ? "on" : ""}`}>
             <Icon d={n.icon} />
-            {n.label}
+            {tr(n.label)}
           </Link>
         ))}
       </nav>
@@ -155,8 +189,10 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 export function ElyShell({ children }: { children: React.ReactNode }) {
   return (
-    <WalletProvider>
-      <Frame>{children}</Frame>
-    </WalletProvider>
+    <I18nProvider>
+      <WalletProvider>
+        <Frame>{children}</Frame>
+      </WalletProvider>
+    </I18nProvider>
   );
 }

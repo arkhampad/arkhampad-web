@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import type { ETrade } from "@/lib/ely";
+import { useT } from "@/lib/i18n";
 
 export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
 const FRAMES = [
@@ -53,6 +54,7 @@ function palette(el: Element | null) {
 }
 
 export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[] | undefined; usd: number; supply: number; height?: number }) {
+  const tr = useT();
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const candle = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -125,13 +127,13 @@ export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[]
           {FRAMES.map((f) => <button key={f.id} type="button" className={frame === f.s ? "on" : ""} onClick={() => setFrame(f.s)}>{f.id}</button>)}
         </div>
         <div className="e-seg">
-          <button type="button" className={mc ? "on" : ""} onClick={() => setMc(true)}>MCap</button>
-          <button type="button" className={!mc ? "on" : ""} onClick={() => setMc(false)}>Price</button>
+          <button type="button" className={mc ? "on" : ""} onClick={() => setMc(true)}>{tr("MCap")}</button>
+          <button type="button" className={!mc ? "on" : ""} onClick={() => setMc(false)}>{tr("Price")}</button>
         </div>
       </div>
       <div className="e-chart-box" style={{ ["--h" as string]: `${height}px` }}>
         <div ref={box} style={{ position: "absolute", inset: 0 }} role="img" aria-label="Price chart" />
-        {candles && candles.length === 0 && <div className="e-chart-empty">No trades yet.</div>}
+        {candles && candles.length === 0 && <div className="e-chart-empty">{tr("No trades yet.")}</div>}
         {!candles && <div className="e-skel" style={{ position: "absolute", inset: 8 }} />}
       </div>
     </div>

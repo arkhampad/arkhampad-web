@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { TokenAvatar } from "./shell";
+import { useT } from "@/lib/i18n";
 import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchTokens, money, pct, short, usePoll, type EToken, type ETrade } from "@/lib/ely";
 
 type Sort = "trending" | "new" | "top" | "gainers" | "losers" | "live";
@@ -36,10 +37,11 @@ function sortTokens(list: EToken[], sort: Sort) {
 const upDown = (v: number | null | undefined) => ((v ?? 0) >= 0 ? "up" : "down");
 
 function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
+  const tr = useT();
   const top = tokens.slice().sort((a, b) => (b.vol24_hype || 0) - (a.vol24_hype || 0)).slice(0, 10);
   return (
     <section>
-      <div className="e-sec-h"><h2>Hot right now</h2><span className="dim" style={{ fontSize: 12.5 }}>by 24h volume</span></div>
+      <div className="e-sec-h"><h2>{tr("Hot right now")}</h2><span className="dim" style={{ fontSize: 12.5 }}>{tr("by 24h volume")}</span></div>
       <div className="e-hot">
         {!tokens.length && <div className="e-hot-run">{Array.from({ length: 5 }, (_, i) => <div key={i} className="e-hc e-skel" style={{ height: 150 }} />)}</div>}
         {!!top.length && (
@@ -54,7 +56,7 @@ function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
                     <TokenAvatar t={t} size={40} />
                     <div>
                       <b>{t.name}</b>
-                      <small>{t.symbol} · {ago(t.created_at)} old</small>
+                      <small>{t.symbol} · {tr("{age} old", { age: ago(t.created_at) })}</small>
                     </div>
                     <span className="e-hc-rank">#{i + 1}</span>
                   </div>
@@ -63,7 +65,7 @@ function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
                     <span className={`e-pill ${upDown(t.change24)}`}>{pct(t.change24)}</span>
                   </div>
                   <div className="e-press">
-                    <span>Buys {buys}% · {money((t.vol24_hype || 0) * usd)} vol</span>
+                    <span>{tr("Buys {p}% · {v} vol", { p: buys, v: money((t.vol24_hype || 0) * usd) })}</span>
                     <span className="e-press-bar"><i style={{ width: `${buys}%` }} /></span>
                   </div>
                 </Link>
@@ -77,12 +79,13 @@ function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
 }
 
 function TradeItem({ x, t, usd }: { x: ETrade; t?: EToken; usd: number }) {
+  const tr = useT();
   return (
     <li>
       {t ? <TokenAvatar t={t} size={30} /> : <span />}
       <Link href={`/t/?a=${x.token}`} className="who">
         <b>{t?.symbol ?? short(x.token)}</b>
-        <span className="dim">{x.side === "buy" ? "Bought" : "Sold"} by {x.trader ? short(x.trader) : "—"} · {ago(x.at)}</span>
+        <span className="dim">{tr(x.side === "buy" ? "Bought by {who}" : "Sold by {who}", { who: x.trader ? short(x.trader) : "—" })} · {ago(x.at)}</span>
       </Link>
       <span className={`amt num ${x.side === "buy" ? "up" : "down"}`}>
         {x.side === "buy" ? "+" : "−"}{money(x.hype * usd)}
@@ -102,6 +105,7 @@ function TradeList({ byAddr, usd, n = 24 }: { byAddr: Map<string, EToken>; usd: 
 }
 
 function Row({ t, i, usd }: { t: EToken; i: number; usd: number }) {
+  const tr = useT();
   const mc = money((t.mcap_hype ?? 0) * usd);
   return (
     <Link href={`/t/?a=${t.address}`} className="e-row">
@@ -111,8 +115,8 @@ function Row({ t, i, usd }: { t: EToken; i: number; usd: number }) {
         <span>
           <span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span>{t.ours && <span className="e-lock">LP locked</span>}</span>
           <small>
-            <span className="e-hide-m">by {short(t.creator)} · {ago(t.created_at)} old</span>
-            <span className="e-only-m-inline">{ago(t.created_at)} old · {compact(t.holders || 0)} holders</span>
+            <span className="e-hide-m">{tr("by {who}", { who: short(t.creator) })} · {tr("{age} old", { age: ago(t.created_at) })}</span>
+            <span className="e-only-m-inline">{tr("{age} old", { age: ago(t.created_at) })} · {tr("{n} holders", { n: compact(t.holders || 0) })}</span>
           </small>
         </span>
       </span>
@@ -128,6 +132,7 @@ function Row({ t, i, usd }: { t: EToken; i: number; usd: number }) {
 }
 
 export function Discover() {
+  const tr = useT();
   const params = useSearchParams();
   const r = useRouter();
   const tokens = usePoll(fetchTokens, 15_000);
@@ -149,13 +154,13 @@ export function Discover() {
     <main className="e-in e-page">
       <section className="e-hero">
         <div>
-          <span className="e-eyebrow"><i className="e-dot" />Elysium mainnet · live</span>
-          <h1>Discover</h1>
-          <p>Every token on Elysium in one place. Find it, chart it, trade it.</p>
+          <span className="e-eyebrow"><i className="e-dot" />{tr("Elysium mainnet · live")}</span>
+          <h1>{tr("Discover")}</h1>
+          <p>{tr("Every token on Elysium in one place. Find it, chart it, trade it.")}</p>
         </div>
         <div className="e-stats">
-          <div className="e-stat"><span>Tokens</span><b>{tokens ? tokens.length.toLocaleString("en-US") : "—"}</b></div>
-          <div className="e-stat"><span>24h volume</span><b>{tokens ? money(vol * usd) : "—"}</b></div>
+          <div className="e-stat"><span>{tr("Tokens")}</span><b>{tokens ? tokens.length.toLocaleString("en-US") : "—"}</b></div>
+          <div className="e-stat"><span>{tr("24h volume")}</span><b>{tokens ? money(vol * usd) : "—"}</b></div>
           <div className="e-stat"><span>HYPE</span><b>{usd ? `$${usd.toFixed(2)}` : "—"}</b></div>
         </div>
       </section>
@@ -168,14 +173,14 @@ export function Discover() {
             <div className="e-scrollx">
               <div className="e-tabs" role="tablist">
                 {SORTS.map((s) => (
-                  <button key={s.id} type="button" role="tab" aria-selected={sort === s.id} className={`e-tab ${sort === s.id ? "on" : ""} ${s.narrow ? "e-narrow" : ""}`} onClick={() => { setSort(s.id); setShown(50); }}>{s.label}</button>
+                  <button key={s.id} type="button" role="tab" aria-selected={sort === s.id} className={`e-tab ${sort === s.id ? "on" : ""} ${s.narrow ? "e-narrow" : ""}`} onClick={() => { setSort(s.id); setShown(50); }}>{tr(s.label)}</button>
                 ))}
               </div>
             </div>
             {q && sort !== "live" && (
               <div className="e-scrollx" style={{ alignItems: "center" }}>
-                <span className="muted" style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Results for “{q}”</span>
-                <button type="button" className="e-chip" onClick={() => r.push("/")}>Clear</button>
+                <span className="muted" style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tr("Results for “{q}”", { q })}</span>
+                <button type="button" className="e-chip" onClick={() => r.push("/")}>{tr("Clear")}</button>
               </div>
             )}
           </div>
@@ -186,25 +191,25 @@ export function Discover() {
             <>
               <div className="e-row h">
                 <span className="e-hide-m">#</span>
-                <span>Token</span>
+                <span>{tr("Token")}</span>
                 <span className="r e-hide-m">24h</span>
-                <span className="r e-hide-m">Volume</span>
-                <span className="r e-hide-t e-hide-m">Txns</span>
-                <span className="r e-hide-m">Holders</span>
-                <span className="r e-hide-t e-hide-m">Top 10</span>
-                <span className="r e-hide-m">Mkt cap</span>
+                <span className="r e-hide-m">{tr("Volume")}</span>
+                <span className="r e-hide-t e-hide-m">{tr("Txns")}</span>
+                <span className="r e-hide-m">{tr("Holders")}</span>
+                <span className="r e-hide-t e-hide-m">{tr("Top 10")}</span>
+                <span className="r e-hide-m">{tr("Mkt cap")}</span>
               </div>
               <div className="e-rows">
                 {list.slice(0, shown).map((t, i) => <Row key={t.address} t={t} i={i} usd={usd} />)}
               </div>
               {!tokens && <div style={{ padding: 14, display: "grid", gap: 10 }}>{Array.from({ length: 8 }, (_, i) => <div key={i} className="e-skel" style={{ height: 48 }} />)}</div>}
-              {tokens && !list.length && <div className="e-empty">No tokens here yet.</div>}
-              {list.length > shown && <button type="button" className="e-more" onClick={() => setShown((s) => s + 50)}>Show more</button>}
+              {tokens && !list.length && <div className="e-empty">{tr("No tokens here yet.")}</div>}
+              {list.length > shown && <button type="button" className="e-more" onClick={() => setShown((s) => s + 50)}>{tr("Show more")}</button>}
             </>
           )}
         </section>
         <aside className="e-panel e-feed">
-          <h3>Live trades <span className="e-eyebrow" style={{ fontSize: 12 }}><i className="e-dot" />live</span></h3>
+          <h3>{tr("Live trades")} <span className="e-eyebrow" style={{ fontSize: 12 }}><i className="e-dot" />{tr("live")}</span></h3>
           <TradeList byAddr={byAddr} usd={usd} />
         </aside>
       </div>

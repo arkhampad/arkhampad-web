@@ -491,3 +491,13 @@ a.e-row:hover { background: var(--e-card2); }
   .e-row.e-toprow { grid-template-columns: 22px minmax(0, 1fr) auto; }
 }
 .e-chipnet { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--e-teal); background: var(--e-glow); }
+.e-lang { position: relative; flex: none; }
+.e-langbtn { gap: 6px; padding: 0 11px; }
+.e-langbtn span { font-size: 13px; }
+.e-langmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 180px; padding: 6px; border-radius: 14px; background: var(--e-card); border: 1px solid var(--e-line); box-shadow: 0 14px 40px rgba(12,20,25,.16); display: flex; flex-direction: column; }
+.e-langmenu button { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 10px; border: 0; border-radius: 9px; background: none; color: var(--e-text); font-size: 14px; font-weight: 600; cursor: pointer; text-align: left; }
+.e-langmenu button:hover, .e-langmenu button.on { background: var(--e-raise); }
+.e-langmenu button .dim { width: 30px; font-size: 12px; font-weight: 700; }
+.e-langmenu button i { margin-left: auto; font-style: normal; color: var(--e-teal); }
+@media (max-width: 860px) { .e-langbtn span { display: none; } .e-langbtn { width: 40px; padding: 0; } }
+@media (max-width: 380px) { .e-top .e-icon { display: none; } }

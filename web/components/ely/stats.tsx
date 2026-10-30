@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { TokenAvatar } from "./shell";
+import { useT } from "@/lib/i18n";
 import { compact, fetchHypeUsd, fetchStats, money, usePoll, type EStats } from "@/lib/ely";
 
 type Pt = { x: string; y: number; label: string; sub?: string };
@@ -85,9 +86,10 @@ const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US"
 const hourLabel = (h: string) => new Date(h).toLocaleString("en-US", { weekday: "short", hour: "2-digit", minute: "2-digit" });
 
 function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  const tr = useT();
   return (
     <div className="e-tile">
-      <span>{label}</span>
+      <span>{tr(label)}</span>
       <b className="num">{value}</b>
       {sub && <small className="dim">{sub}</small>}
     </div>
@@ -95,6 +97,7 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 export function StatsPage() {
+  const tr = useT();
   const s = usePoll(fetchStats, 60_000);
   const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
   const [range, setRange] = useState<"30d" | "48h">("30d");
@@ -102,12 +105,12 @@ export function StatsPage() {
   const volPts = useMemo<Pt[]>(() => {
     if (!s) return [];
     return range === "30d"
-      ? s.daily.map((d) => ({ x: d.d, y: d.vol * usd, label: day(d.d), sub: `${d.trades.toLocaleString("en-US")} trades · ${d.traders.toLocaleString("en-US")} traders` }))
-      : s.hourly.map((h) => ({ x: h.h, y: h.vol * usd, label: hourLabel(h.h), sub: `${h.trades.toLocaleString("en-US")} trades` }));
-  }, [s, usd, range]);
+      ? s.daily.map((d) => ({ x: d.d, y: d.vol * usd, label: day(d.d), sub: tr("{a} trades · {b} traders", { a: d.trades.toLocaleString("en-US"), b: d.traders.toLocaleString("en-US") }) }))
+      : s.hourly.map((h) => ({ x: h.h, y: h.vol * usd, label: hourLabel(h.h), sub: tr("{a} trades", { a: h.trades.toLocaleString("en-US") }) }));
+  }, [s, usd, range, tr]);
 
   if (s === null) {
-    return <main className="e-in e-page"><div className="e-panel e-empty" style={{ padding: "60px 20px" }}>Stats are being prepared. Check back in a few minutes.</div></main>;
+    return <main className="e-in e-page"><div className="e-panel e-empty" style={{ padding: "60px 20px" }}>{tr("Stats are being prepared. Check back in a few minutes.")}</div></main>;
   }
   if (!s) {
     return <main className="e-in e-page"><div className="e-skel" style={{ height: 90 }} /><div className="e-skel" style={{ height: 300 }} /></main>;
@@ -124,26 +127,26 @@ export function StatsPage() {
     <main className="e-in e-page">
       <section className="e-hero">
         <div>
-          <span className="e-eyebrow"><i className="e-dot" />Live · updated {new Date(s.updated).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}</span>
-          <h1>Elysium in numbers</h1>
-          <p>Every trade on every HYPE pair on Elysium, counted by ArkhamPad.</p>
+          <span className="e-eyebrow"><i className="e-dot" />{tr("Live · updated")} {new Date(s.updated).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}</span>
+          <h1>{tr("Elysium in numbers")}</h1>
+          <p>{tr("Every trade on every HYPE pair on Elysium, counted by ArkhamPad.")}</p>
         </div>
       </section>
 
       <section className="e-tiles">
-        <Tile label="24h volume" value={money(s.vol_24h * usd)} sub={change == null ? undefined : `${change >= 0 ? "+" : ""}${change.toFixed(1)}% vs yesterday`} />
+        <Tile label="24h volume" value={money(s.vol_24h * usd)} sub={change == null ? undefined : `${change >= 0 ? "+" : ""}${change.toFixed(1)}% ${tr("vs yesterday")}`} />
         <Tile label="7d volume" value={money(s.vol_7d * usd)} />
         <Tile label="All-time volume" value={money(s.vol_all * usd)} sub={`${compact(s.vol_all)} HYPE`} />
-        <Tile label="Trades 24h" value={s.trades_24h.toLocaleString("en-US")} sub={`${compact(s.trades_all)} all time`} />
-        <Tile label="Traders 24h" value={s.traders_24h.toLocaleString("en-US")} sub={`${compact(s.traders_all)} all time`} />
-        <Tile label="Tokens" value={s.tokens.toLocaleString("en-US")} sub={`${compact(s.holders)} holders`} />
+        <Tile label="Trades 24h" value={s.trades_24h.toLocaleString("en-US")} sub={`${compact(s.trades_all)} ${tr("all time")}`} />
+        <Tile label="Traders 24h" value={s.traders_24h.toLocaleString("en-US")} sub={`${compact(s.traders_all)} ${tr("all time")}`} />
+        <Tile label="Tokens" value={s.tokens.toLocaleString("en-US")} sub={tr("{n} holders", { n: compact(s.holders) })} />
       </section>
 
       <section className="e-panel e-chartpanel">
         <div className="e-chart-head">
           <div>
-            <h2>Trading volume</h2>
-            <span className="dim">{range === "30d" ? "Per day, last 30 days" : "Per hour, last 48 hours"} · USD</span>
+            <h2>{tr("Trading volume")}</h2>
+            <span className="dim">{tr(range === "30d" ? "Per day, last 30 days" : "Per hour, last 48 hours")} · USD</span>
           </div>
           <div className="e-seg">
             <button type="button" className={range === "30d" ? "on" : ""} onClick={() => setRange("30d")}>30D</button>
@@ -155,43 +158,43 @@ export function StatsPage() {
 
       <div className="e-two">
         <section className="e-panel e-chartpanel">
-          <div className="e-chart-head"><div><h2>Trades per day</h2><span className="dim">Last 30 days</span></div></div>
-          <Chart pts={s.daily.map((d) => ({ x: d.d, y: d.trades, label: day(d.d), sub: `${d.traders.toLocaleString("en-US")} traders` }))} kind="bar" fmt={(v) => compact(Math.round(v))} height={200} tick={tickDaily} />
+          <div className="e-chart-head"><div><h2>{tr("Trades per day")}</h2><span className="dim">{tr("Last 30 days")}</span></div></div>
+          <Chart pts={s.daily.map((d) => ({ x: d.d, y: d.trades, label: day(d.d), sub: tr("{n} traders", { n: d.traders.toLocaleString("en-US") }) }))} kind="bar" fmt={(v) => compact(Math.round(v))} height={200} tick={tickDaily} />
         </section>
         <section className="e-panel e-chartpanel">
-          <div className="e-chart-head"><div><h2>New tokens per day</h2><span className="dim">Last 30 days</span></div></div>
-          <Chart pts={s.daily.map((d) => ({ x: d.d, y: d.new_tokens, label: day(d.d), sub: d.new_ours ? `${d.new_ours} on ArkhamPad` : undefined }))} kind="bar" fmt={(v) => String(Math.round(v))} height={200} tick={tickDaily} />
+          <div className="e-chart-head"><div><h2>{tr("New tokens per day")}</h2><span className="dim">{tr("Last 30 days")}</span></div></div>
+          <Chart pts={s.daily.map((d) => ({ x: d.d, y: d.new_tokens, label: day(d.d), sub: d.new_ours ? tr("{n} on ArkhamPad", { n: d.new_ours }) : undefined }))} kind="bar" fmt={(v) => String(Math.round(v))} height={200} tick={tickDaily} />
         </section>
       </div>
 
       <section className="e-ark">
         <div className="e-ark-head">
           <span className="e-eyebrow" style={{ color: "#3fe3d4" }}>ArkhamPad</span>
-          <h2>Coins launched here</h2>
-          <p>Liquidity locked forever. 30% of every trading fee goes to the coin&apos;s creator, automatically.</p>
+          <h2>{tr("Coins launched here")}</h2>
+          <p>{tr("Liquidity locked forever. 30% of every trading fee goes to the coin's creator, automatically.")}</p>
         </div>
         <div className="e-ark-grid">
-          <div><span>Coins launched</span><b className="num">{s.ours.coins.toLocaleString("en-US")}</b></div>
-          <div><span>Volume, all time</span><b className="num">{money(s.ours.vol_all * usd)}</b></div>
-          <div><span>Paid to creators</span><b className="num">{money(s.ours.creator_fees * usd)}</b></div>
+          <div><span>{tr("Coins launched")}</span><b className="num">{s.ours.coins.toLocaleString("en-US")}</b></div>
+          <div><span>{tr("Volume, all time")}</span><b className="num">{money(s.ours.vol_all * usd)}</b></div>
+          <div><span>{tr("Paid to creators")}</span><b className="num">{money(s.ours.creator_fees * usd)}</b></div>
           <div className="e-share">
-            <span>Share of Elysium volume, 24h</span>
+            <span>{tr("Share of Elysium volume, 24h")}</span>
             <b className="num">{share.toFixed(1)}%</b>
             <span className="e-meter"><i style={{ width: `${Math.min(100, share)}%` }} /></span>
           </div>
         </div>
-        <Link href="/create/" className="e-btn pri" style={{ alignSelf: "flex-start" }}>Launch a coin</Link>
+        <Link href="/create/" className="e-btn pri" style={{ alignSelf: "flex-start" }}>{tr("Launch a coin")}</Link>
       </section>
 
       <section className="e-panel">
-        <div className="e-chart-head" style={{ padding: "16px 16px 6px" }}><div><h2>Top tokens this week</h2><span className="dim">By 7-day volume</span></div></div>
+        <div className="e-chart-head" style={{ padding: "16px 16px 6px" }}><div><h2>{tr("Top tokens this week")}</h2><span className="dim">{tr("By 7-day volume")}</span></div></div>
         <div className="e-rows">
           {s.top.map((t, i) => (
             <Link key={t.address} href={`/t/?a=${t.address}`} className="e-row e-toprow">
               <span className="dim num">{i + 1}</span>
               <span className="e-tok"><TokenAvatar t={t} size={34} /><span><span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span>{t.ours && <span className="e-lock">ArkhamPad</span>}</span></span></span>
               <span className="e-hbar e-hide-m"><i style={{ width: `${(t.vol_7d / topMax) * 100}%` }} /></span>
-              <span className="r num e-hide-m">{t.trades_7d.toLocaleString("en-US")} trades</span>
+              <span className="r num e-hide-m">{tr("{a} trades", { a: t.trades_7d.toLocaleString("en-US") })}</span>
               <span className="r num"><b>{money(t.vol_7d * usd)}</b></span>
             </Link>
           ))}

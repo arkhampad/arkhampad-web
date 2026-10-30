@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Address } from "viem";
 import { useWallet } from "@/components/wallet";
 import { TokenAvatar } from "./shell";
+import { useT } from "@/lib/i18n";
 import { EChart } from "./chart";
 import { Confetti } from "@/components/celebrate";
 import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
@@ -27,6 +28,7 @@ function Copy({ text, label }: { text: string; label?: string }) {
 }
 
 function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: number; side?: "buy" | "sell"; onDone?: () => void }) {
+  const tr = useT();
   const w = useWallet();
   const [side, setSide] = useState<"buy" | "sell">(side0);
   const [val, setVal] = useState("");
@@ -58,7 +60,7 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
   const short1 = side === "buy" ? hype != null && inWei > hype : bal != null && inWei > bal;
 
   const quick = side === "buy"
-    ? [{ l: "0.1", v: "0.1" }, { l: "0.5", v: "0.5" }, { l: "1", v: "1" }, { l: "Max", v: hype != null ? String(Math.max(0, fromWei(hype > GAS_KEEP ? hype - GAS_KEEP : 0n))) : "" }]
+    ? [{ l: "0.1", v: "0.1" }, { l: "0.5", v: "0.5" }, { l: "1", v: "1" }, { l: tr("Max"), v: hype != null ? String(Math.max(0, fromWei(hype > GAS_KEEP ? hype - GAS_KEEP : 0n))) : "" }]
     : [25, 50, 75, 100].map((p) => ({ l: `${p}%`, v: bal != null ? String(fromWei((bal * BigInt(p)) / 100n, dec)) : "" }));
 
   async function go() {
@@ -68,36 +70,36 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
       const q = out ?? (await quote(t, side === "buy", inWei));
       if (q === null) throw new TradeFail("This token can't be traded here right now.");
       const min = (q * BigInt(100 - slip)) / 100n;
-      if (side === "buy") { setBusy("Buying…"); await buy(w.signer, t, inWei, min); }
-      else { setBusy("Selling…"); await sell(w.signer, t, inWei, min, setBusy); }
-      setMsg({ ok: true, text: side === "buy" ? `Bought ${amt(fromWei(q, dec))} ${sym}` : `Sold for ${fromWei(q).toFixed(4)} HYPE` });
+      if (side === "buy") { setBusy(tr("Buying…")); await buy(w.signer, t, inWei, min); }
+      else { setBusy(tr("Selling…")); await sell(w.signer, t, inWei, min, (x) => setBusy(tr(x))); }
+      setMsg({ ok: true, text: side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) }) });
       setVal("");
       setTick((x) => x + 1);
       onDone?.();
     } catch (e) {
-      setMsg({ ok: false, text: e instanceof TradeFail ? e.message : "Trade failed. Please try again." });
+      setMsg({ ok: false, text: tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.") });
     } finally {
       setBusy(null);
     }
   }
 
-  let label = side === "buy" ? `Buy ${sym}` : `Sell ${sym}`;
+  let label = tr(side === "buy" ? "Buy {sym}" : "Sell {sym}", { sym });
   let disabled = !!busy;
-  if (!w.signedIn) label = "Log in to trade";
-  else if (!ROUTER) { label = "Trading opens soon"; disabled = true; }
-  else if (!tradable) { label = "Not tradable here yet"; disabled = true; }
-  else if (inWei <= 0n) { label = "Enter an amount"; disabled = true; }
-  else if (short1) { label = side === "buy" ? "Not enough HYPE" : `Not enough ${sym}`; disabled = true; }
+  if (!w.signedIn) label = tr("Log in to trade");
+  else if (!ROUTER) { label = tr("Trading opens soon"); disabled = true; }
+  else if (!tradable) { label = tr("Not tradable here yet"); disabled = true; }
+  else if (inWei <= 0n) { label = tr("Enter an amount"); disabled = true; }
+  else if (short1) { label = tr(side === "buy" ? "Not enough HYPE" : "Not enough {sym}", { sym }); disabled = true; }
   if (busy) label = busy;
 
   return (
     <div className="e-trade">
       <div className="e-bs">
-        <button type="button" className={side === "buy" ? "on buy" : ""} onClick={() => { setSide("buy"); setVal(""); }}>Buy</button>
-        <button type="button" className={side === "sell" ? "on sell" : ""} onClick={() => { setSide("sell"); setVal(""); }}>Sell</button>
+        <button type="button" className={side === "buy" ? "on buy" : ""} onClick={() => { setSide("buy"); setVal(""); }}>{tr("Buy")}</button>
+        <button type="button" className={side === "sell" ? "on sell" : ""} onClick={() => { setSide("sell"); setVal(""); }}>{tr("Sell")}</button>
       </div>
       <label className="e-amt">
-        <span className="e-amt-top"><span>{side === "buy" ? "You pay" : "You sell"}</span><span className="dim">Balance {side === "buy" ? (hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—") : bal != null ? `${amt(fromWei(bal, dec))} ${sym}` : "—"}</span></span>
+        <span className="e-amt-top"><span>{tr(side === "buy" ? "You pay" : "You sell")}</span><span className="dim">{tr("Balance")} {side === "buy" ? (hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—") : bal != null ? `${amt(fromWei(bal, dec))} ${sym}` : "—"}</span></span>
         <span className="e-amt-row">
           <input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="Amount" autoComplete="off" />
           <b>{side === "buy" ? "HYPE" : sym}</b>
@@ -106,34 +108,35 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
       </label>
       <div className="e-quick">{quick.map((q) => <button key={q.l} type="button" onClick={() => q.v && setVal(q.v.slice(0, 18))} disabled={!q.v}>{q.l}</button>)}</div>
       <div className="e-recv">
-        <span className="muted">You get</span>
+        <span className="muted">{tr("You get")}</span>
         <b className="num">{estOut > 0 ? `≈ ${amt(estOut)} ${side === "buy" ? sym : "HYPE"}` : "—"}</b>
       </div>
       <div className="e-slip">
-        <span className="dim">Slippage</span>
+        <span className="dim">{tr("Slippage")}</span>
         <div className="e-seg">{[1, 3, 5, 10].map((s) => <button key={s} type="button" className={slip === s ? "on" : ""} onClick={() => setSlip(s)}>{s}%</button>)}</div>
       </div>
       <button type="button" className={`e-go ${side}`} disabled={disabled && w.signedIn} onClick={go}>{label}</button>
       {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
-      {w.signedIn && hype === 0n && side === "buy" && <Link href="/bridge/" className="e-hint">No HYPE on Elysium yet. <b>Add HYPE or USDC →</b></Link>}
+      {w.signedIn && hype === 0n && side === "buy" && <Link href="/bridge/" className="e-hint">{tr("No HYPE on Elysium yet.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}
     </div>
   );
 }
 
 function Trades({ t, usd }: { t: EToken; usd: number }) {
+  const tr = useT();
   const trades = usePoll(() => fetchTrades(t.address, 60), 5000, [t.address]);
   if (!trades) return <div style={{ padding: 14, display: "grid", gap: 8 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="e-skel" style={{ height: 40 }} />)}</div>;
-  if (!trades.length) return <div className="e-empty">No trades yet.</div>;
+  if (!trades.length) return <div className="e-empty">{tr("No trades yet.")}</div>;
   return (
     <div className="e-rows">
-      <div className="e-row e-tr h"><span>Time</span><span>Type</span><span className="r">USD</span><span className="r e-hide-m">HYPE</span><span className="r">{t.symbol}</span><span className="r e-hide-m">Trader</span></div>
+      <div className="e-row e-tr h"><span>{tr("Time")}</span><span>{tr("Type")}</span><span className="r">USD</span><span className="r e-hide-m">HYPE</span><span className="r">{t.symbol}</span><span className="r e-hide-m">{tr("Trader")}</span></div>
       {trades.map((x) => {
         const href = ELY_EXPLORER ? `${ELY_EXPLORER}/tx/${x.tx}` : undefined;
         const Cell = href ? "a" : "div";
         return (
           <Cell key={`${x.tx}-${x.log_index}`} className="e-row e-tr" {...(href ? { href, target: "_blank", rel: "noopener noreferrer" } : {})}>
             <span className="dim">{ago(x.at)}</span>
-            <span className={x.side === "buy" ? "up" : "down"} style={{ fontWeight: 700 }}>{x.side === "buy" ? "Buy" : "Sell"}</span>
+            <span className={x.side === "buy" ? "up" : "down"} style={{ fontWeight: 700 }}>{tr(x.side === "buy" ? "Buy" : "Sell")}</span>
             <span className={`r num ${x.side === "buy" ? "up" : "down"}`}>{money(x.hype * usd)}</span>
             <span className="r num e-hide-m">{x.hype.toFixed(x.hype < 1 ? 4 : 2)}</span>
             <span className="r num">{amt(x.amount)}</span>
@@ -146,10 +149,11 @@ function Trades({ t, usd }: { t: EToken; usd: number }) {
 }
 
 function Holders({ t }: { t: EToken }) {
+  const tr = useT();
   const rows = usePoll(() => fetchHolders(t.address, 30), 20000, [t.address]);
   const sup = supplyOf(t) || 1;
   if (!rows) return <div style={{ padding: 14, display: "grid", gap: 8 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="e-skel" style={{ height: 36 }} />)}</div>;
-  if (!rows.length) return <div className="e-empty">Holder list is loading on the indexer. Check back in a minute.</div>;
+  if (!rows.length) return <div className="e-empty">{tr("Holder list is loading. Check back in a minute.")}</div>;
   const isPool = (h: string) => h === (t.pool || "").toLowerCase() || h === (t.manager || "").toLowerCase();
   return (
     <div className="e-rows">
@@ -158,7 +162,7 @@ function Holders({ t }: { t: EToken }) {
         return (
           <div key={h.holder} className="e-row e-hr">
             <span className="dim num">{i + 1}</span>
-            <span className="num">{short(h.holder)} {isPool(h.holder) && <span className="e-lock">Pool</span>}{h.holder === (t.creator || "").toLowerCase() && <span className="e-lock">Creator</span>}</span>
+            <span className="num">{short(h.holder)} {isPool(h.holder) && <span className="e-lock">{tr("Pool")}</span>}{h.holder === (t.creator || "").toLowerCase() && <span className="e-lock">{tr("Creator")}</span>}</span>
             <span className="e-hbar"><i style={{ width: `${Math.min(100, p)}%` }} /></span>
             <span className="r num">{p.toFixed(2)}%</span>
           </div>
@@ -169,21 +173,23 @@ function Holders({ t }: { t: EToken }) {
 }
 
 function About({ t }: { t: EToken }) {
+  const tr = useT();
   return (
     <div className="e-about">
       {t.description && <p>{t.description}</p>}
       <dl>
-        <div><dt>Contract</dt><dd><Copy text={t.address} /></dd></div>
-        <div><dt>Creator</dt><dd>{t.creator ? <Copy text={t.creator} /> : "—"}</dd></div>
-        <div><dt>Pool</dt><dd>{t.venue === "v4" ? "Uniswap v4 style" : "Uniswap v3 style"} · {(t.fee ?? 0) / 10000}% fee</dd></div>
-        <div><dt>Supply</dt><dd className="num">{compact(supplyOf(t))}</dd></div>
-        <div><dt>Created</dt><dd>{t.created_at ? `${new Date(t.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · ${ago(t.created_at)} ago` : "—"}</dd></div>
+        <div><dt>{tr("Contract")}</dt><dd><Copy text={t.address} /></dd></div>
+        <div><dt>{tr("Creator")}</dt><dd>{t.creator ? <Copy text={t.creator} /> : "—"}</dd></div>
+        <div><dt>{tr("Pool")}</dt><dd>{t.venue === "v4" ? "Uniswap v4" : "Uniswap v3"} · {tr("{n}% fee", { n: (t.fee ?? 0) / 10000 })}</dd></div>
+        <div><dt>{tr("Supply")}</dt><dd className="num">{compact(supplyOf(t))}</dd></div>
+        <div><dt>{tr("Created")}</dt><dd>{t.created_at ? `${new Date(t.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · ${tr("{age} ago", { age: ago(t.created_at) })}` : "—"}</dd></div>
       </dl>
     </div>
   );
 }
 
 export function TokenPage() {
+  const tr = useT();
   const params = useSearchParams();
   const a = (params.get("a") || "").toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(a);
@@ -205,22 +211,22 @@ export function TokenPage() {
   const stats = useMemo(() => {
     if (!t) return [];
     return [
-            { l: "Price", v: tinyPrice((t.price_hype ?? 0) * usd) },
-      { l: "24h volume", v: money((t.vol24_hype || 0) * usd) },
-      { l: "Holders", v: compact(t.holders || 0) },
-      { l: "Top 10", v: t.top10_pct == null ? "—" : `${Math.min(100, t.top10_pct).toFixed(0)}%` },
-      { l: "24h txns", v: `${t.buys24 + t.sells24}` },
-      { l: "Age", v: ago(t.created_at) },
+            { l: tr("Price"), v: tinyPrice((t.price_hype ?? 0) * usd) },
+      { l: tr("24h volume"), v: money((t.vol24_hype || 0) * usd) },
+      { l: tr("Holders"), v: compact(t.holders || 0) },
+      { l: tr("Top 10"), v: t.top10_pct == null ? "—" : `${Math.min(100, t.top10_pct).toFixed(0)}%` },
+      { l: tr("24h txns"), v: `${t.buys24 + t.sells24}` },
+      { l: tr("Age"), v: ago(t.created_at) },
     ];
-  }, [t, usd]);
+  }, [t, usd, tr]);
 
   if (!valid || t === null) {
     return (
       <main className="e-in e-page">
         <div className="e-panel e-empty" style={{ padding: "60px 20px" }}>
-          <h2 style={{ margin: "0 0 8px", color: "var(--e-text)" }}>Token not found</h2>
-          <p style={{ margin: "0 0 18px" }}>{valid ? "We haven't seen this token on Elysium yet. New tokens show up within a minute." : "That doesn't look like a token address."}</p>
-          <Link href="/" className="e-btn pri">Back to Discover</Link>
+          <h2 style={{ margin: "0 0 8px", color: "var(--e-text)" }}>{tr("Token not found")}</h2>
+          <p style={{ margin: "0 0 18px" }}>{tr(valid ? "We haven't seen this token on Elysium yet. New tokens show up within a minute." : "That doesn't look like a token address.")}</p>
+          <Link href="/" className="e-btn pri">{tr("Back to Discover")}</Link>
         </div>
       </main>
     );
@@ -247,13 +253,13 @@ export function TokenPage() {
               <h1>{t.name} <span>{t.symbol}</span></h1>
               <div className="e-tmeta">
                 <span className="e-chipnet">Elysium</span>
-                {t.ours && <span className="e-lock">LP locked</span>}
+                {t.ours && <span className="e-lock">{tr("LP locked")}</span>}
                 <Copy text={t.address} />
               </div>
             </div>
             <div className="e-tprice">
               <b className="num">{money((t.mcap_hype ?? 0) * usd)}</b>
-              <span className={`e-pill ${upDown(t.change24)}`}>{pct(t.change24)} 24h</span>
+              <span className={`e-pill ${upDown(t.change24)}`}>{pct(t.change24)} {tr("24h")}</span>
             </div>
             <a className="e-btn e-icon e-share" href={`https://x.com/intent/post?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer" aria-label="Share on X" title="Share on X">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M17.8 3h3.1l-6.8 7.7L22 21h-6.2l-4.9-6.3L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z" /></svg>
@@ -269,7 +275,7 @@ export function TokenPage() {
           <section className="e-panel">
             <div className="e-bar" style={{ flexDirection: "row" }}>
               <div className="e-tabs" role="tablist">
-                {(["trades", "holders", "about"] as const).map((k) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={`e-tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{k === "trades" ? "Trades" : k === "holders" ? `Holders ${t.holders ? compact(t.holders) : ""}` : "About"}</button>)}
+                {(["trades", "holders", "about"] as const).map((k) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={`e-tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{k === "trades" ? tr("Trades") : k === "holders" ? `${tr("Holders")} ${t.holders ? compact(t.holders) : ""}` : tr("About")}</button>)}
               </div>
             </div>
             {tab === "trades" && <Trades t={t} usd={usd} />}
@@ -284,8 +290,8 @@ export function TokenPage() {
       </div>
 
       <div className="e-mbar">
-        <button type="button" className="e-go buy" onClick={() => setSheet("buy")}>Buy</button>
-        <button type="button" className="e-go sell" onClick={() => setSheet("sell")}>Sell</button>
+        <button type="button" className="e-go buy" onClick={() => setSheet("buy")}>{tr("Buy")}</button>
+        <button type="button" className="e-go sell" onClick={() => setSheet("sell")}>{tr("Sell")}</button>
       </div>
       {fresh && (
         <div className="e-sheet e-center" role="dialog" aria-modal="true" aria-label="Your coin is live" onClick={(e) => { if (e.target === e.currentTarget) setFresh(false); }}>
@@ -293,18 +299,18 @@ export function TokenPage() {
           <Confetti />
           <div className="e-sheet-in e-live-card">
             <span className="e-live-ring"><TokenAvatar t={t} size={92} /></span>
-            <span className="e-eyebrow"><i className="e-dot" />Live on Elysium</span>
+            <span className="e-eyebrow"><i className="e-dot" />{tr("Live on Elysium")}</span>
             <h2>{t.name} <span className="dim">${t.symbol}</span></h2>
-            <p className="muted">Your coin is trading now. Share it while it&apos;s fresh: the first hour decides most launches. You earn 30% of the fees on every trade.</p>
+            <p className="muted">{tr("Your coin is trading now. Share it while it's fresh: the first hour decides most launches. You earn 30% of the fees on every trade.")}</p>
             <div className="e-ca">
               <span className="dim">CA</span>
               <code className="num">{t.address}</code>
-              <Copy text={t.address} label="Copy CA" />
+              <Copy text={t.address} label={tr("Copy CA")} />
             </div>
-            <a className="e-go" style={{ display: "grid", placeItems: "center", textDecoration: "none" }} href={`https://x.com/intent/post?text=${encodeURIComponent(`I just launched $${t.symbol} on Elysium. Liquidity locked forever, trading live now on @Arkhampad\n\nCA: ${t.address}`)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer">Share on X</a>
+            <a className="e-go" style={{ display: "grid", placeItems: "center", textDecoration: "none" }} href={`https://x.com/intent/post?text=${encodeURIComponent(`I just launched $${t.symbol} on Elysium. Liquidity locked forever, trading live now on @Arkhampad\n\nCA: ${t.address}`)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer">{tr("Share on X")}</a>
             <div className="e-cta-btns" style={{ justifyContent: "center" }}>
-              <Copy text={`$${t.symbol} is live on Elysium\nCA: ${t.address}\n${shareUrl}`} label="Copy for Telegram" />
-              <button type="button" className="e-copy" onClick={() => { setFresh(false); history.replaceState(null, "", `/t/?a=${t.address}`); }}>Go to my coin</button>
+              <Copy text={`$${t.symbol} is live on Elysium\nCA: ${t.address}\n${shareUrl}`} label={tr("Copy for Telegram")} />
+              <button type="button" className="e-copy" onClick={() => { setFresh(false); history.replaceState(null, "", `/t/?a=${t.address}`); }}>{tr("Go to my coin")}</button>
             </div>
           </div>
         </div>

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createPublicClient, encodeFunctionData, fallback, formatUnits, http, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
+import { useT } from "@/lib/i18n";
 import { usePoll } from "@/lib/ely";
 import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC, balanceChanged, ely, fromWei, toWei } from "@/lib/elytrade";
 
@@ -28,6 +29,7 @@ const DEPOSIT = encodeFunctionData({ abi: parseAbi(["function depositEth() payab
 const fmt = (v: bigint | null | undefined, d = 18, p = 4) => (v == null ? "—" : Number(formatUnits(v, d)).toLocaleString("en-US", { maximumFractionDigits: p }));
 
 function Address0({ address }: { address: string }) {
+  const tr = useT();
   const [ok, setOk] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
   useEffect(() => {
@@ -37,15 +39,16 @@ function Address0({ address }: { address: string }) {
     <div className="e-addr">
       {qr && <img src={qr} alt="Your address as a QR code" width={120} height={120} />}
       <div>
-        <span className="dim">Your address (same on HyperEVM, Base and Elysium)</span>
+        <span className="dim">{tr("Your address (same on HyperEVM, Base and Elysium)")}</span>
         <code className="num">{address}</code>
-        <button type="button" className="e-btn" onClick={() => navigator.clipboard?.writeText(address).then(() => { setOk(true); setTimeout(() => setOk(false), 1400); })}>{ok ? "Copied" : "Copy address"}</button>
+        <button type="button" className="e-btn" onClick={() => navigator.clipboard?.writeText(address).then(() => { setOk(true); setTimeout(() => setOk(false), 1400); })}>{tr(ok ? "Copied" : "Copy address")}</button>
       </div>
     </div>
   );
 }
 
 function HypeIn({ me, onSent }: { me: Address; onSent: () => void }) {
+  const tr = useT();
   const w = useWallet();
   const bal = usePoll(() => hyperevm.getBalance({ address: me }), 5000, [me]);
   const [val, setVal] = useState("");
@@ -64,7 +67,7 @@ function HypeIn({ me, onSent }: { me: Address; onSent: () => void }) {
       const hash = await w.signer.sendTx(HYPEREVM, { to: INBOX, data: DEPOSIT, value: sent });
       const r = await hyperevm.waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
       if (r.status !== "success") throw new Error("failed");
-      setMsg({ ok: true, text: `${fmt(sent)} HYPE is on its way. It shows up on Elysium in about a minute.` });
+      setMsg({ ok: true, text: tr("{n} HYPE is on its way. It shows up on Elysium in about a minute.", { n: fmt(sent) }) });
       setVal("");
       setCustom(false);
       onSent();
@@ -81,41 +84,41 @@ function HypeIn({ me, onSent }: { me: Address; onSent: () => void }) {
       <div className="e-step">
         <span className="e-stepn">1</span>
         <div>
-          <b>Send HYPE to your address</b>
-          <p>On Binance or another exchange: <b>Withdraw → HYPE</b>, choose the network <b>HYPE EVM</b> (HyperEVM) and paste your address.</p>
+          <b>{tr("Send HYPE to your address")}</b>
+          <p>{tr("On Binance or another exchange: Withdraw → HYPE, choose the network HYPE EVM (HyperEVM) and paste your address.")}</p>
         </div>
       </div>
       <Address0 address={me} />
       <div className="e-step">
         <span className="e-stepn">2</span>
         <div>
-          <b>Move it to Elysium</b>
-          <p>One tap when it arrives. It lands on Elysium in about a minute.</p>
+          <b>{tr("Move it to Elysium")}</b>
+          <p>{tr("One tap when it arrives. It lands on Elysium in about a minute.")}</p>
         </div>
       </div>
       {arrived ? (
         <div className="e-arrived">
           <span className="e-dot" />
-          <div><b className="num">{fmt(bal)} HYPE</b> arrived on HyperEVM</div>
+          <div><b className="num">{fmt(bal)} HYPE</b> {tr("arrived on HyperEVM")}</div>
         </div>
       ) : (
         <div className="e-waiting">
           <span className="e-spin" />
-          <span>{bal === undefined ? "Checking your HyperEVM balance…" : <>Nothing on HyperEVM yet (<b className="num">{fmt(bal)} HYPE</b>). As soon as your HYPE arrives, the button below turns on. No need to refresh.</>}</span>
+          <span>{bal === undefined ? tr("Checking your HyperEVM balance…") : <>{tr("Nothing on HyperEVM yet")} (<b className="num">{fmt(bal)} HYPE</b>). {tr("As soon as your HYPE arrives, the button below turns on. No need to refresh.")}</>}</span>
         </div>
       )}
       {custom && (
         <label className="e-amt">
-          <span className="e-amt-top"><span>Amount</span><span className="dim">Max {fmt(max)} HYPE</span></span>
+          <span className="e-amt-top"><span>{tr("Amount")}</span><span className="dim">{tr("Max")} {fmt(max)} HYPE</span></span>
           <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="HYPE amount" autoFocus /><b>HYPE</b></span>
         </label>
       )}
       <button type="button" className="e-go" disabled={busy || !arrived || amount <= 0n || amount > max} onClick={go}>
-        {busy ? "Moving…" : !arrived ? "Move to Elysium" : custom ? `Move ${val || "0"} HYPE to Elysium` : `Move ${fmt(max)} HYPE to Elysium`}
+        {busy ? tr("Moving…") : !arrived ? tr("Move to Elysium") : tr("Move {n} HYPE to Elysium", { n: custom ? val || "0" : fmt(max) })}
       </button>
-      {arrived && <button type="button" className="e-link-btn" onClick={() => setCustom(!custom)}>{custom ? "Move everything instead" : "Move a different amount"}</button>}
-      {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
-      <p className="e-note">Uses Elysium&apos;s official bridge. About 0.01 HYPE stays on HyperEVM for the network fee.</p>
+      {arrived && <button type="button" className="e-link-btn" onClick={() => setCustom(!custom)}>{tr(custom ? "Move everything instead" : "Move a different amount")}</button>}
+      {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{tr(msg.text)}</div>}
+      <p className="e-note">{tr("Uses Elysium's official bridge. About 0.01 HYPE stays on HyperEVM for the network fee.")}</p>
     </div>
   );
 }
@@ -123,6 +126,7 @@ function HypeIn({ me, onSent }: { me: Address; onSent: () => void }) {
 type RelayStep = { id: string; kind: string; requestId?: string; items: { status: string; data: { to: Address; data: Hex; value?: string; chainId: number } }[] };
 
 function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
+  const tr = useT();
   const w = useWallet();
   const usdc = usePoll(() => base.readContract({ address: USDC_BASE, abi: ERC20, functionName: "balanceOf", args: [me] }), 6000, [me]);
   const eth = usePoll(() => base.getBalance({ address: me }), 10000, [me]);
@@ -186,7 +190,7 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
       const send = total > GAS_KEEP ? total - GAS_KEEP : 0n;
       const hash = await w.signer.sendTx(HYPEREVM, { to: INBOX, data: DEPOSIT, value: send });
       await hyperevm.waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
-      setMsg({ ok: true, text: `Done. About ${fmt(send)} HYPE is on its way to Elysium (about a minute).` });
+      setMsg({ ok: true, text: tr("Done. About {n} HYPE is on its way to Elysium (about a minute).", { n: fmt(send) }) });
       setVal("");
       onSent();
     } catch (e) {
@@ -201,24 +205,24 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
   return (
     <div className="e-trade">
       <ol className="e-steps">
-        <li>Send USDC on <b>Base</b> to your address below, plus a little ETH on Base for the network fee.</li>
-        <li>Convert and bridge here in one go. You arrive on Elysium with HYPE.</li>
+        <li>{tr("Send USDC on Base to your address below, plus a little ETH on Base for the network fee.")}</li>
+        <li>{tr("Convert and bridge here in one go. You arrive on Elysium with HYPE.")}</li>
       </ol>
       <Address0 address={me} />
       <label className="e-amt">
-        <span className="e-amt-top"><span>You pay</span><span className="dim">On Base: {fmt(usdc, 6, 2)} USDC</span></span>
+        <span className="e-amt-top"><span>{tr("You pay")}</span><span className="dim">Base: {fmt(usdc, 6, 2)} USDC</span></span>
         <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="USDC amount" /><b>USDC</b></span>
       </label>
       <div className="e-quick">
         {["10", "50", "100"].map((v) => <button key={v} type="button" onClick={() => setVal(v)}>{v}</button>)}
-        <button type="button" disabled={!usdc} onClick={() => usdc && setVal(formatUnits(usdc, 6))}>Max</button>
+        <button type="button" disabled={!usdc} onClick={() => usdc && setVal(formatUnits(usdc, 6))}>{tr("Max")}</button>
       </div>
-      <div className="e-recv"><span className="muted">You get on Elysium</span><b className="num">{quote ? `≈ ${fmt(quote.out)} HYPE` : "—"}</b></div>
+      <div className="e-recv"><span className="muted">{tr("You get on Elysium")}</span><b className="num">{quote ? `≈ ${fmt(quote.out)} HYPE` : "—"}</b></div>
       <button type="button" className="e-go" disabled={!!step || !quote || (usdc != null && amount > usdc) || noGas} onClick={go}>
-        {step ?? (noGas ? "Add a little ETH on Base for gas" : usdc != null && amount > usdc ? "Not enough USDC on Base" : amount > 0n && amount < 1_000_000n ? "Minimum 1 USDC" : "Convert and bridge")}
+        {tr(step ?? (noGas ? "Add a little ETH on Base for gas" : usdc != null && amount > usdc ? "Not enough USDC on Base" : amount > 0n && amount < 1_000_000n ? "Minimum 1 USDC" : "Convert and bridge"))}
       </button>
-      {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
-      <p className="e-note">Conversion by Relay, then Elysium&apos;s official bridge. Usually under two minutes.</p>
+      {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{tr(msg.text)}</div>}
+      <p className="e-note">{tr("Conversion by Relay, then Elysium's official bridge. Usually under two minutes.")}</p>
     </div>
   );
 }
@@ -287,6 +291,7 @@ async function myWithdrawals(me: Address): Promise<Wd[]> {
 }
 
 function WdRow({ w: x, confirmed, me, onDone }: { w: Wd; confirmed: bigint | null; me: Address; onDone: () => void }) {
+  const tr = useT();
   const wallet = useWallet();
   const spent = usePoll(async () => hyperevm.readContract({ address: await outbox(), abi: W_ABI, functionName: "isSpent", args: [x.position] }) as Promise<boolean>, 30_000, [x.position]);
   const [busy, setBusy] = useState(false);
@@ -317,17 +322,18 @@ function WdRow({ w: x, confirmed, me, onDone }: { w: Wd; confirmed: bigint | nul
         <b className="num">{fmt(x.callvalue)} HYPE</b>
         <span className="dim">{new Date(Number(x.timestamp) * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}{x.destination.toLowerCase() !== me.toLowerCase() ? ` · to ${x.destination.slice(0, 6)}…` : ""}</span>
       </div>
-      {spent ? <span className="e-pill up">Claimed</span> : ready ? (
-        <button type="button" className="e-btn pri" disabled={busy} onClick={claim}>{busy ? "Claiming…" : "Claim"}</button>
+      {spent ? <span className="e-pill up">{tr("Claimed")}</span> : ready ? (
+        <button type="button" className="e-btn pri" disabled={busy} onClick={claim}>{tr(busy ? "Claiming…" : "Claim")}</button>
       ) : (
-        <span className="e-pill" style={{ background: "var(--e-raise)", color: "var(--e-muted)" }}>{Date.now() > eta ? "Finalizing…" : `Ready ~${new Date(eta).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}</span>
+        <span className="e-pill" style={{ background: "var(--e-raise)", color: "var(--e-muted)" }}>{Date.now() > eta ? tr("Finalizing…") : tr("Ready ~{d}", { d: new Date(eta).toLocaleDateString(undefined, { month: "short", day: "numeric" }) })}</span>
       )}
-      {err && <div className="e-msg bad" style={{ flexBasis: "100%" }}>{err}</div>}
+      {err && <div className="e-msg bad" style={{ flexBasis: "100%" }}>{tr(err)}</div>}
     </div>
   );
 }
 
 function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
+  const tr = useT();
   const w = useWallet();
   const [tick, setTick] = useState(0);
   const bal = usePoll(() => ely().getBalance({ address: me }), 5000, [me, tick]);
@@ -348,7 +354,7 @@ function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
       const hash = await w.signer.sendTx(ELY_CHAIN_ID, { to: ARBSYS, data, value: amount });
       const r = await ely().waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
       if (r.status !== "success") throw new Error("failed");
-      setMsg({ ok: true, text: `Withdrawal of ${val} HYPE started. Claim it here in about 5.5 days.` });
+      setMsg({ ok: true, text: tr("Withdrawal of {n} HYPE started. Claim it here in about 5.5 days.", { n: val }) });
       setVal("");
       setAgree(false);
       setTick((t) => t + 1);
@@ -362,23 +368,23 @@ function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
   }
   return (
     <div className="e-trade">
-      <p className="e-wnote"><b>Withdrawals take about 5.5 days.</b> Elysium is an optimistic rollup: HYPE leaving it through the official bridge waits out a challenge period, then you claim it on HyperEVM. Your HYPE is safe while it waits. <Link href="/learn/elysium-withdrawal-time/">Why?</Link></p>
+      <p className="e-wnote"><b>{tr("Withdrawals take about 5.5 days.")}</b> {tr("Elysium is an optimistic rollup: HYPE leaving it through the official bridge waits out a challenge period, then you claim it on HyperEVM. Your HYPE is safe while it waits.")} <Link href="/learn/elysium-withdrawal-time/">{tr("Why?")}</Link></p>
       <label className="e-amt">
-        <span className="e-amt-top"><span>Withdraw to HyperEVM</span><span className="dim">On Elysium: {fmt(bal)} HYPE</span></span>
+        <span className="e-amt-top"><span>{tr("Withdraw to HyperEVM")}</span><span className="dim">Elysium: {fmt(bal)} HYPE</span></span>
         <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="HYPE amount" /><b>HYPE</b></span>
       </label>
       <div className="e-quick">
         {[25, 50, 75].map((p) => <button key={p} type="button" disabled={!max} onClick={() => setVal(formatUnits((max * BigInt(p)) / 100n, 18))}>{p}%</button>)}
-        <button type="button" disabled={!max} onClick={() => setVal(formatUnits(max, 18))}>Max</button>
+        <button type="button" disabled={!max} onClick={() => setVal(formatUnits(max, 18))}>{tr("Max")}</button>
       </div>
-      <label className="e-check"><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> I understand this takes about 5.5 days and I claim it on HyperEVM afterwards.</label>
-      <button type="button" className="e-go" disabled={busy || !agree || amount <= 0n || amount > max} onClick={go}>{busy ? "Starting…" : amount > max && amount > 0n ? "Not enough HYPE on Elysium" : "Start withdrawal"}</button>
-      {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
+      <label className="e-check"><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> {tr("I understand this takes about 5.5 days and I claim it on HyperEVM afterwards.")}</label>
+      <button type="button" className="e-go" disabled={busy || !agree || amount <= 0n || amount > max} onClick={go}>{tr(busy ? "Starting…" : amount > max && amount > 0n ? "Not enough HYPE on Elysium" : "Start withdrawal")}</button>
+      {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{tr(msg.text)}</div>}
       {!!list?.length && (
         <div className="e-wdlist">
-          <b>Your withdrawals</b>
+          <b>{tr("Your withdrawals")}</b>
           {list.map((x) => <WdRow key={x.position.toString()} w={x} confirmed={confirmed ?? null} me={me} onDone={() => setTick((t) => t + 1)} />)}
-          <p className="e-note">Claiming is a transaction on HyperEVM, so keep about 0.001 HYPE there for gas.</p>
+          <p className="e-note">{tr("Claiming is a transaction on HyperEVM, so keep about 0.001 HYPE there for gas.")}</p>
         </div>
       )}
     </div>
@@ -386,6 +392,7 @@ function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
 }
 
 export function BridgePage() {
+  const tr = useT();
   const w = useWallet();
   const me = w.address as Address | null;
   const q = useSearchParams().get("tab");
@@ -396,37 +403,37 @@ export function BridgePage() {
     <main className="e-in e-page">
       <section className="e-hero">
         <div>
-          <span className="e-eyebrow">Bridge</span>
-          <h1>Add money</h1>
-          <p>Everything on Elysium is paid in HYPE. Send HYPE from an exchange, or USDC from Base, and move it here in one tap.</p>
+          <span className="e-eyebrow">{tr("Bridge")}</span>
+          <h1>{tr("Add money")}</h1>
+          <p>{tr("Everything on Elysium is paid in HYPE. Send HYPE from an exchange, or USDC from Base, and move it here in one tap.")}</p>
         </div>
-        {me && <div className="e-stats" style={{ gridTemplateColumns: "auto" }}><div className="e-stat"><span>Your HYPE on Elysium</span><b>{elyBal == null ? "—" : fromWei(elyBal).toLocaleString("en-US", { maximumFractionDigits: 4 })}</b></div></div>}
+        {me && <div className="e-stats" style={{ gridTemplateColumns: "auto" }}><div className="e-stat"><span>{tr("Your HYPE on Elysium")}</span><b>{elyBal == null ? "—" : fromWei(elyBal).toLocaleString("en-US", { maximumFractionDigits: 4 })}</b></div></div>}
       </section>
       <div className="e-bridge">
         <section className="e-panel">
           <div className="e-bar">
             <div className="e-scrollx">
               <div className="e-tabs" role="tablist">
-                {([["hype", "HYPE"], ["usdc", "USDC"], ["out", "Withdraw"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={`e-tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}
+                {([["hype", "HYPE"], ["usdc", "USDC"], ["out", "Withdraw"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={`e-tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{tr(l)}</button>)}
               </div>
             </div>
           </div>
           {!me ? (
             <div className="e-trade">
-              <p className="e-note" style={{ fontSize: 15 }}>Log in with email, Google or a wallet to get your Elysium address.</p>
-              <button type="button" className="e-go" onClick={w.login}>Log in</button>
+              <p className="e-note" style={{ fontSize: 15 }}>{tr("Log in with email, Google or a wallet to get your Elysium address.")}</p>
+              <button type="button" className="e-go" onClick={w.login}>{tr("Log in")}</button>
             </div>
           ) : tab === "hype" ? <HypeIn me={me} onSent={() => setTick((x) => x + 1)} /> : tab === "usdc" ? <UsdcIn me={me} onSent={() => setTick((x) => x + 1)} /> : <Withdraw me={me} onSent={() => setTick((x) => x + 1)} />}
         </section>
         <aside className="e-panel e-bside">
-          <h3 className="e-ph">Good to know</h3>
+          <h3 className="e-ph">{tr("Good to know")}</h3>
           <ul>
-            <li>Your address is the same on HyperEVM, Base and Elysium.</li>
-            <li>Deposits through the official bridge arrive in about a minute.</li>
-            <li>Network fees on Elysium are paid in HYPE. Keep a little for gas.</li>
-            <li>Withdrawing back to HyperEVM takes about 5.5 days.</li>
+            <li>{tr("Your address is the same on HyperEVM, Base and Elysium.")}</li>
+            <li>{tr("Deposits through the official bridge arrive in about a minute.")}</li>
+            <li>{tr("Network fees on Elysium are paid in HYPE. Keep a little for gas.")}</li>
+            <li>{tr("Withdrawing back to HyperEVM takes about 5.5 days.")}</li>
           </ul>
-          <Link href="/learn/bridge-hype-to-elysium/" className="e-more" style={{ display: "grid", placeItems: "center", textDecoration: "none" }}>Bridge guide</Link>
+          <Link href="/learn/bridge-hype-to-elysium/" className="e-more" style={{ display: "grid", placeItems: "center", textDecoration: "none" }}>{tr("Bridge guide")}</Link>
         </aside>
       </div>
     </main>

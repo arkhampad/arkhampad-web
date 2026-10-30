@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { decodeEventLog, encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
+import { useT } from "@/lib/i18n";
 import { fetchHypeUsd, money, usePoll } from "@/lib/ely";
 import { ELY_CHAIN, ely, fromWei, hypeBalance, rememberToken, toWei } from "@/lib/elytrade";
 
@@ -41,6 +42,7 @@ function shrink(src: string, size = 192): Promise<string> {
 const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 
 export function CreatePage() {
+  const tr = useT();
   const w = useWallet();
   const r = useRouter();
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
@@ -181,9 +183,9 @@ export function CreatePage() {
     <main className="e-in e-page">
       <section className="e-hero">
         <div>
-          <span className="e-eyebrow">Create</span>
-          <h1>Launch a coin on Elysium</h1>
-          <p>Takes about 30 seconds. You earn 30% of the trading fees on your coin, forever.</p>
+          <span className="e-eyebrow">{tr("Create")}</span>
+          <h1>{tr("Launch a coin on Elysium")}</h1>
+          <p>{tr("Takes about 30 seconds. You earn 30% of the trading fees on your coin, forever.")}</p>
         </div>
       </section>
       <div className="e-bridge">
@@ -192,52 +194,52 @@ export function CreatePage() {
             <button type="button" className="e-idea" onClick={idea} disabled={thinking || drawing}>
               <span className="e-spark" aria-hidden="true">✦</span>
               <span>
-                <b>{thinking ? "Reading Elysium trends…" : drawing && !img ? "Drawing your coin…" : "Give me a coin idea"}</b>
-                <small>AI looks at what's trending on Elysium and fills everything in{left != null ? ` · ${left} left today` : ""}</small>
+                <b>{tr(thinking ? "Reading Elysium trends…" : drawing && !img ? "Drawing your coin…" : "Give me a coin idea")}</b>
+                <small>{tr("AI looks at what's trending on Elysium and fills everything in")}{left != null ? ` · ${tr("{n} left today", { n: left })}` : ""}</small>
               </span>
             </button>
             <div className="e-imgrow">
               <button type="button" className="e-imgbox" onClick={() => file.current?.click()} aria-label="Upload a picture">
-                {img ? <img src={img} alt="Coin picture" /> : <span>Add picture</span>}
+                {img ? <img src={img} alt="Coin picture" /> : <span>{tr("Add picture")}</span>}
               </button>
               <div className="e-imgbtns">
-                <button type="button" className="e-btn" onClick={() => file.current?.click()}>Upload</button>
-                <button type="button" className="e-btn" onClick={() => (name.trim() ? draw() : idea())} disabled={drawing || thinking}>{drawing ? "Drawing…" : "Draw with AI"}</button>
-                <span className="e-note">Square works best. PNG, JPG, WebP or GIF.</span>
+                <button type="button" className="e-btn" onClick={() => file.current?.click()}>{tr("Upload")}</button>
+                <button type="button" className="e-btn" onClick={() => (name.trim() ? draw() : idea())} disabled={drawing || thinking}>{tr(drawing ? "Drawing…" : "Draw with AI")}</button>
+                <span className="e-note">{tr("Square works best. PNG, JPG, WebP or GIF.")}</span>
               </div>
               <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => pick(e.target.files?.[0])} />
             </div>
-            {aiMsg && <div className="e-msg bad" role="status">{aiMsg}</div>}
-            <label className="e-field"><span>Name</span><input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="Moon Otter" autoComplete="off" /></label>
-            <label className="e-field"><span>Ticker</span><input value={sym} maxLength={10} onChange={(e) => setSym(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())} placeholder="OTTER" autoComplete="off" autoCapitalize="characters" /></label>
-            <label className="e-field"><span>Description <i className="dim">optional</i></span><textarea value={desc} maxLength={400} rows={3} onChange={(e) => { setDesc(e.target.value); setPicture(""); }} placeholder="What is your coin about?" /></label>
+            {aiMsg && <div className="e-msg bad" role="status">{tr(aiMsg)}</div>}
+            <label className="e-field"><span>{tr("Name")}</span><input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="Moon Otter" autoComplete="off" /></label>
+            <label className="e-field"><span>{tr("Ticker")}</span><input value={sym} maxLength={10} onChange={(e) => setSym(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())} placeholder="OTTER" autoComplete="off" autoCapitalize="characters" /></label>
+            <label className="e-field"><span>{tr("Description")} <i className="dim">{tr("optional")}</i></span><textarea value={desc} maxLength={400} rows={3} onChange={(e) => { setDesc(e.target.value); setPicture(""); }} placeholder={tr("What is your coin about?")} /></label>
             <details className="e-more-links">
-              <summary>Links <i className="dim">optional</i></summary>
+              <summary>{tr("Links")} <i className="dim">{tr("optional")}</i></summary>
               <label className="e-field"><span>X</span><input value={x} onChange={(e) => setX(e.target.value)} placeholder="https://x.com/yourcoin" inputMode="url" autoCapitalize="off" /></label>
               <label className="e-field"><span>Telegram</span><input value={tg} onChange={(e) => setTg(e.target.value)} placeholder="https://t.me/yourcoin" inputMode="url" autoCapitalize="off" /></label>
-              <label className="e-field"><span>Website</span><input value={site} onChange={(e) => setSite(e.target.value)} placeholder="https://" inputMode="url" autoCapitalize="off" /></label>
+              <label className="e-field"><span>{tr("Website")}</span><input value={site} onChange={(e) => setSite(e.target.value)} placeholder="https://" inputMode="url" autoCapitalize="off" /></label>
             </details>
             <label className="e-amt">
-              <span className="e-amt-top"><span>First buy <i className="dim">optional</i></span><span className="dim">Balance {hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—"}</span></span>
+              <span className="e-amt-top"><span>{tr("First buy")} <i className="dim">{tr("optional")}</i></span><span className="dim">{tr("Balance")} {hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—"}</span></span>
               <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={buy} onChange={(e) => setBuy(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="First buy in HYPE" /><b>HYPE</b></span>
-              <span className="dim" style={{ fontSize: 12.5 }}>{b > 0 ? `≈ ${money(fromWei(buyWei) * usd)} · about ${pctOfSupply.toFixed(1)}% of the supply` : "Be the first buyer of your own coin, in the same transaction."}</span>
+              <span className="dim" style={{ fontSize: 12.5 }}>{b > 0 ? `≈ ${money(fromWei(buyWei) * usd)} · ${tr("about {p}% of the supply", { p: pctOfSupply.toFixed(1) })}` : tr("Be the first buyer of your own coin, in the same transaction.")}</span>
             </label>
             <div className="e-quick">{["0.1", "0.5", "1", "2"].map((v) => <button key={v} type="button" onClick={() => setBuy(v)}>{v}</button>)}</div>
-            <button type="button" className="e-go" disabled={disabled && w.signedIn} onClick={launch}>{label}</button>
-            {msg && <div className="e-msg bad" role="status">{msg}</div>}
-            {w.signedIn && hype === 0n && <Link href="/bridge/" className="e-hint">You need a little HYPE on Elysium for gas. <b>Add HYPE or USDC →</b></Link>}
+            <button type="button" className="e-go" disabled={disabled && w.signedIn} onClick={launch}>{tr(label)}</button>
+            {msg && <div className="e-msg bad" role="status">{tr(msg)}</div>}
+            {w.signedIn && hype === 0n && <Link href="/bridge/" className="e-hint">{tr("You need a little HYPE on Elysium for gas.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}
           </div>
         </section>
         <aside className="e-panel e-bside">
-          <h3 className="e-ph">How it works</h3>
+          <h3 className="e-ph">{tr("How it works")}</h3>
           <ul>
-            <li>All 1,000,000,000 coins go into the pool. No team share, no presale.</li>
-            <li>Starts at a {START_MC} HYPE market cap{usd ? ` (about ${money(START_MC * usd)})` : ""}.</li>
-            <li>Liquidity is locked forever. Nobody can pull it, including you and us.</li>
-            <li>Every trade pays a 1% fee. 30% of it goes to you, paid in HYPE and in your coin.</li>
-            <li>Your coin shows up on Discover right away, with a chart and holders.</li>
+            <li>{tr("All 1,000,000,000 coins go into the pool. No team share, no presale.")}</li>
+            <li>{tr("Starts at a {n} HYPE market cap", { n: START_MC })}{usd ? ` (≈ ${money(START_MC * usd)})` : ""}.</li>
+            <li>{tr("Liquidity is locked forever. Nobody can pull it, including you and us.")}</li>
+            <li>{tr("Every trade pays a 1% fee. 30% of it goes to you, paid in HYPE and in your coin.")}</li>
+            <li>{tr("Your coin shows up on Discover right away, with a chart and holders.")}</li>
           </ul>
-          <Link href="/learn/create-a-token-on-elysium/" className="e-more" style={{ display: "grid", placeItems: "center", textDecoration: "none" }}>Full guide</Link>
+          <Link href="/learn/create-a-token-on-elysium/" className="e-more" style={{ display: "grid", placeItems: "center", textDecoration: "none" }}>{tr("Full guide")}</Link>
         </aside>
       </div>
     </main>
