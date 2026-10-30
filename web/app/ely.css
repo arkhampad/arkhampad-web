@@ -399,7 +399,7 @@ a.e-row:hover { background: var(--e-card2); }
 .e-wd .e-btn { height: 34px; font-size: 13px; }
 .e-wnote a { color: var(--e-teal); }
 .e-sheet.e-center { align-items: center; padding: 16px; }
-.e-live-card { border-radius: 22px; padding: 26px 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; max-width: 420px; }
+.e-live-card { overflow-x: hidden; border-radius: 22px; padding: 26px 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; max-width: 420px; }
 .e-live-card h2 { margin: 4px 0 0; font-size: 22px; letter-spacing: -.02em; overflow-wrap: anywhere; }
 .e-live-card p { margin: 0; font-size: 14.5px; line-height: 1.5; }
 .e-live-card .e-go { width: 100%; }
@@ -532,9 +532,9 @@ a.e-row:hover { background: var(--e-card2); }
 /* new coin: firework pops */
 .e-burst { position: fixed; inset: 0; z-index: 70; pointer-events: none; display: grid; place-items: center; }
 .e-burst i { position: absolute; width: 10px; height: 10px; border-radius: 50%; opacity: 0; animation: eBurst 1.15s cubic-bezier(.12,.75,.3,1) forwards; }
-.e-burst b { position: absolute; width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--e-tealfill); opacity: 0; animation: eRing .9s ease-out forwards; }
+.e-burst b { position: absolute; width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--e-tealfill); opacity: 0; animation: eBurstRing .9s ease-out forwards; }
 @keyframes eBurst { 0% { transform: translate(0, 0) scale(1.2); opacity: 1; } 100% { transform: translate(var(--bx), var(--by)) scale(.3); opacity: 0; } }
-@keyframes eRing { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(16); opacity: 0; } }
+@keyframes eBurstRing { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(16); opacity: 0; } }
 
 /* create: live preview card */
 .e-prev { display: flex; gap: 14px; align-items: center; padding: 16px; }
