@@ -2,10 +2,19 @@
 // since the last round (launcher.collectMany). The launcher pays each coin's creator 30% and the
 // ArkhamPad treasury 70%, in native HYPE and in the coin. Anyone may call collect; this wallet only
 // pays the gas. Runs when KEEPER_KEY (a private key with a little HYPE on Elysium) is set on Railway.
+//
+// Self-funding: when the launcher's treasury is set to this keeper wallet (owner, once, on /ops), the
+// platform's share lands here first. After every round the keeper keeps KEEPER_FLOOR HYPE (default 0.1)
+// for its own gas and forwards everything above it, plus the coin-side fees, to the real treasury
+// (KEEPER_FORWARD_TO). So the keeper never runs dry and nobody has to top it up.
 import { createPublicClient, createWalletClient, defineChain, fallback, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-const ABI = parseAbi(["function collectMany(address[] list)"]);
+const ABI = parseAbi(["function collectMany(address[] list)", "function treasury() view returns (address)"]);
+const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function transfer(address,uint256) returns (bool)"]);
+const FORWARD_TO = (process.env.KEEPER_FORWARD_TO || "0xd9D46EB26c9D753135683b7736FC2be097e7B099").trim();
+const FLOOR = BigInt(Math.round(Number(process.env.KEEPER_FLOOR || "0.1") * 1e6)) * 10n ** 12n;
+const MIN_SEND = 10n ** 16n; // don't forward dust (0.01 HYPE)
 const EVERY_MS = 30 * 60_000;
 const BATCH = 25;
 
@@ -48,6 +57,28 @@ export async function keeperLoop({ rpc, launcher, key, pool, log }) {
         }
       }
       since = started;
+      // self-funding: forward what's above the gas floor (only when fees are routed through this wallet)
+      const routed = String(await pub.readContract({ address: launcher, abi: ABI, functionName: "treasury" })).toLowerCase() === account.address.toLowerCase();
+      if (routed && FORWARD_TO.toLowerCase() !== account.address.toLowerCase()) {
+        for (const c of coins) {
+          try {
+            const amt = await pub.readContract({ address: c, abi: ERC20, functionName: "balanceOf", args: [account.address] });
+            if (amt > 0n) {
+              const h = await wallet.writeContract({ address: c, abi: ERC20, functionName: "transfer", args: [FORWARD_TO, amt] });
+              await pub.waitForTransactionReceipt({ hash: h, timeout: 120_000 });
+            }
+          } catch (e) {
+            log(`keeper: forward coin ${c}: ${String(e.shortMessage || e.message).slice(0, 100)}`);
+          }
+        }
+        const now = await pub.getBalance({ address: account.address });
+        if (now > FLOOR + MIN_SEND) {
+          const value = now - FLOOR;
+          const h = await wallet.sendTransaction({ to: FORWARD_TO, value });
+          await pub.waitForTransactionReceipt({ hash: h, timeout: 120_000 });
+          log(`keeper: forwarded ${Number(value) / 1e18} HYPE to the treasury`);
+        }
+      }
     } catch (e) {
       log(`keeper: ${String(e.shortMessage || e.message).slice(0, 200)}`);
     }

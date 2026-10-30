@@ -3,5 +3,6 @@ Allow: /
 Disallow: /profile/
 Disallow: /alerts/
 Disallow: /you/
+Disallow: /ops/
 
 Sitemap: https://arkhampad.com/sitemap.xml
