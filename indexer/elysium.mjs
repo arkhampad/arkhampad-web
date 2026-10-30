@@ -253,34 +253,43 @@ export function makeElysium(cfg, store) {
   async function readBulk() {
     if (Date.now() - bulkAt < 30 * 60_000) return;
     bulkAt = Date.now();
-    let imgUrls = 0;
-    for (const site of ["https://boxa.club", "https://ronspad.fun", "https://elyspump.fun"]) {
+    const known = store.tokens();
+    const take = (addr, obj) => {
+      const a = String(addr || "").toLowerCase();
+      if (!known.has(a) || bulk.has(a)) return;
+      const img = findImg(obj);
+      if (img && !/\/api\/(share|v1\/card)\//.test(img)) bulk.set(a, img);
+    };
+    const getJson = async (u) => {
       try {
-        const r = await fetch(site, { headers: UA, signal: AbortSignal.timeout(12_000) });
-        if (!r.ok) { log(`elysium: pictures: ${site} answered ${r.status}`); continue; }
-        const home = await r.text();
-        const base = new URL(r.url || site);
-        const scripts = [...new Set([...home.matchAll(/<script[^>]+src="([^"]+)"/gi)].map((m) => new URL(m[1], base).href))].slice(0, 25);
-        const texts = [home];
-        for (const js of scripts) {
-          try { const x = await fetch(js, { headers: UA, signal: AbortSignal.timeout(12_000) }); if (x.ok) texts.push(await x.text()); } catch {}
-        }
-        for (const t of texts) {
-          for (const m of t.matchAll(/https:\/\/[^"'`\s\\)]+/g)) {
-            const url = m[0];
-            if (!findImg(url)) continue;
-            imgUrls++;
-            const before = t.slice(Math.max(0, m.index - 1500), m.index);
-            const after = t.slice(m.index, m.index + 600);
-            const prev = [...before.matchAll(/0x[0-9a-fA-F]{40}/g)].pop()?.[0];
-            const next = after.match(/0x[0-9a-fA-F]{40}/)?.[0];
-            const a = (prev || next || "").toLowerCase();
-            if (a && store.tokens().has(a) && !bulk.has(a)) bulk.set(a, url);
-          }
-        }
-      } catch {}
+        const r = await fetch(u, { headers: UA, signal: AbortSignal.timeout(15_000) });
+        if (!r.ok) { log(`elysium: pictures: ${u} answered ${r.status}`); return null; }
+        return await r.json();
+      } catch (e) { log(`elysium: pictures: ${u} ${String(e.message).slice(0, 60)}`); return null; }
+    };
+    // 1) token list APIs (address + picture in each record)
+    for (let off = 0; off < 3000; off += 500) {
+      const j = await getJson(`https://ronspad.fun/api/v1/tokens?limit=500&offset=${off}`);
+      const list = j?.tokens ?? [];
+      for (const t of list) take(t.address, t);
+      if (list.length < 500) break;
     }
-    log(`elysium: picture list read, ${bulk.size} coins matched (${imgUrls} picture links seen)`);
+    const bx = await getJson("https://boxa.club/api/tokens");
+    for (const t of bx?.tokens ?? []) take(t.address, t);
+    // 2) boxa's front page carries every coin's record with a "marketImage": split it by coin address
+    try {
+      const r = await fetch("https://boxa.club/", { headers: UA, signal: AbortSignal.timeout(15_000) });
+      if (r.ok) {
+        const html = await r.text();
+        const hits = [...html.matchAll(/"address":"(0x[0-9a-fA-F]{40})"/g)].filter((m) => known.has(m[1].toLowerCase()));
+        for (let i = 0; i < hits.length; i++) {
+          const seg = html.slice(hits[i].index, i + 1 < hits.length ? hits[i + 1].index : hits[i].index + 20_000);
+          const img = seg.match(/"(?:marketImage|image|imageUrl|logo)":"(https:[^"]+)"/)?.[1];
+          if (img) take(hits[i][1], img);
+        }
+      } else log(`elysium: pictures: boxa.club answered ${r.status}`);
+    } catch {}
+    log(`elysium: picture list read, ${bulk.size} coins matched`);
   }
 
   let imgAt = 0;
