@@ -244,6 +244,43 @@ export function makeElysium(cfg, store) {
     } catch {}
     return null;
   }
+  /**
+   * Launchpad front pages ship their coin list (address + picture URL) in the page and its scripts.
+   * We read them every 30 minutes and pair each picture URL with the nearest coin address before it.
+   */
+  const bulk = new Map(); // address -> image
+  let bulkAt = 0;
+  async function readBulk() {
+    if (Date.now() - bulkAt < 30 * 60_000) return;
+    bulkAt = Date.now();
+    for (const site of ["https://boxa.club", "https://ronspad.fun", "https://elyspump.fun"]) {
+      try {
+        const r = await fetch(site, { headers: UA, signal: AbortSignal.timeout(12_000) });
+        if (!r.ok) continue;
+        const home = await r.text();
+        const base = new URL(r.url || site);
+        const scripts = [...new Set([...home.matchAll(/<script[^>]+src="([^"]+)"/gi)].map((m) => new URL(m[1], base).href))].slice(0, 25);
+        const texts = [home];
+        for (const js of scripts) {
+          try { const x = await fetch(js, { headers: UA, signal: AbortSignal.timeout(12_000) }); if (x.ok) texts.push(await x.text()); } catch {}
+        }
+        for (const t of texts) {
+          for (const m of t.matchAll(/https:\/\/[^"'`\s\\)]+/g)) {
+            const url = m[0];
+            if (!findImg(url)) continue;
+            const before = t.slice(Math.max(0, m.index - 1500), m.index);
+            const after = t.slice(m.index, m.index + 600);
+            const prev = [...before.matchAll(/0x[0-9a-fA-F]{40}/g)].pop()?.[0];
+            const next = after.match(/0x[0-9a-fA-F]{40}/)?.[0];
+            const a = (prev || next || "").toLowerCase();
+            if (a && store.tokens().has(a) && !bulk.has(a)) bulk.set(a, url);
+          }
+        }
+      } catch {}
+    }
+    log(`elysium: picture list read, ${bulk.size} coins matched`);
+  }
+
   let imgAt = 0;
   async function backfillImages() {
     if (Date.now() - imgAt < 60_000) return;
@@ -253,12 +290,20 @@ export function makeElysium(cfg, store) {
       .filter((t) => !t.ours && !t.image && now - (imgTried.get(t.address) || 0) > 6 * 3600_000)
       .sort((x, y) => (y.vol24_hype || 0) - (x.vol24_hype || 0))
       .slice(0, 8);
+    await readBulk().catch(() => {});
+    // everything the front pages gave us, at once
+    let found = 0;
+    for (const [a, image] of bulk) {
+      const t = store.tokens().get(a);
+      if (t && !t.ours && !t.image) { t.image = image; found++; await store.upsertToken({ ...t, image }).catch(() => {}); }
+    }
     for (const t of todo) {
+      if (t.image) continue;
       imgTried.set(t.address, now);
       const image = await lookupImage(t.address);
-      if (image) { t.image = image; await store.upsertToken({ ...t, image }).catch(() => {}); }
+      if (image) { t.image = image; found++; await store.upsertToken({ ...t, image }).catch(() => {}); }
     }
-    if (todo.length) log(`elysium: pictures looked up for ${todo.length} coins`);
+    if (todo.length || found) log(`elysium: pictures: ${found} found (${todo.length} looked up one by one)`);
   }
 
   function launchpadFor(maker, venue) {

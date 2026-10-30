@@ -10,7 +10,7 @@
 import { createPublicClient, createWalletClient, defineChain, fallback, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-const ABI = parseAbi(["function collectMany(address[] list)", "function treasury() view returns (address)"]);
+const ABI = parseAbi(["function collectMany(address[] list)", "function treasury() view returns (address)", "function coins(address) view returns (uint256 tokenId, address pool, address creator, uint16 creatorBps, bool coinIsToken0)"]);
 const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function transfer(address,uint256) returns (bool)"]);
 const FORWARD_TO = (process.env.KEEPER_FORWARD_TO || "0xd9D46EB26c9D753135683b7736FC2be097e7B099").trim();
 const FLOOR = BigInt(Math.round(Number(process.env.KEEPER_FLOOR || "0.1") * 1e6)) * 10n ** 12n;
@@ -37,19 +37,26 @@ export async function keeperLoop({ rpc, launcher, key, pool, log }) {
          where t.ours and x.at > $1 order by t.address`,
         [since]
       );
-      const coins = rows.map((r) => r.address);
+      // only coins our launcher made (another pool on the same factory would revert UnknownCoin)
+      const coins = [];
+      for (const r of rows) {
+        try {
+          const c = await pub.readContract({ address: launcher, abi: ABI, functionName: "coins", args: [r.address] });
+          if (c[1] && !/^0x0{40}$/i.test(c[1])) coins.push(r.address);
+        } catch {}
+      }
       for (let i = 0; i < coins.length; i += BATCH) {
         const list = coins.slice(i, i + BATCH);
         try {
           const hash = await wallet.writeContract({ address: launcher, abi: ABI, functionName: "collectMany", args: [list] });
-          const r = await pub.waitForTransactionReceipt({ hash, timeout: 120_000 });
+          const r = await pub.waitForTransactionReceipt({ hash, timeout: 180_000, pollingInterval: 1000 });
           log(`keeper: collected fees for ${list.length} coins (${r.status})`);
         } catch (e) {
           // one bad coin must not block the rest: retry this batch one by one
           for (const c of list) {
             try {
               const hash = await wallet.writeContract({ address: launcher, abi: ABI, functionName: "collectMany", args: [[c]] });
-              await pub.waitForTransactionReceipt({ hash, timeout: 120_000 });
+              await pub.waitForTransactionReceipt({ hash, timeout: 180_000, pollingInterval: 1000 });
             } catch (e2) {
               log(`keeper: ${c} ${String(e2.shortMessage || e2.message).slice(0, 120)}`);
             }
@@ -62,7 +69,7 @@ export async function keeperLoop({ rpc, launcher, key, pool, log }) {
       if (routed && FORWARD_TO.toLowerCase() !== account.address.toLowerCase()) {
         for (const c of coins) {
           try {
-            const amt = await pub.readContract({ address: c, abi: ERC20, functionName: "balanceOf", args: [account.address] });
+            const amt = await pub.readContract({ address: c, abi: ERC20, functionName: "balanceOf", args: [account.address] }).catch(() => 0n);
             if (amt > 0n) {
               const h = await wallet.writeContract({ address: c, abi: ERC20, functionName: "transfer", args: [FORWARD_TO, amt] });
               await pub.waitForTransactionReceipt({ hash: h, timeout: 120_000 });
