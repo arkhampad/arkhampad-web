@@ -28,7 +28,24 @@ for (const site of SITES) {
     }
     for (const m of r.t.matchAll(/["'`]((?:image|imageUrl|image_url|logo|logoUrl|icon|avatar|metadataUri|metadata_uri|uri)["'`]?\s*:)/g)) found.add(`field ${m[1]}`);
   }
-  for (const f of [...found].slice(0, 80)) log(f);
+  for (const f of [...found].slice(0, 30)) log(f);
+  // context around the first picture links: how is the coin address written next to them?
+  let shown = 0;
+  for (const js of [home.url || site, ...scripts]) {
+    const r = js === (home.url || site) ? home : await get(js);
+    for (const m of r.t.matchAll(/https:\/\/(?:[a-z0-9-]+\.public\.blob\.vercel-storage\.com|stokx\.b-cdn\.net|elysp\.com\/api\/img|elyspump\.com\/api\/img)[^"'`\s\\]+/g)) {
+      if (shown >= 4) break;
+      shown++;
+      log(`--- context in ${js.slice(0, 80)} ---`);
+      log(r.t.slice(Math.max(0, m.index - 700), m.index + 300).replace(/\s+/g, " "));
+    }
+    if (shown >= 4) break;
+  }
+  // and the site's own token API, if any
+  for (const p of ["/api/tokens", "/api/tokens?limit=5", "/api/coins", "/api/v1/tokens", "/api/v1/token/0xa3c1d6a8648df3978a38ce1478fbc284c75d95d7", "/api/token/0xa3c1d6a8648df3978a38ce1478fbc284c75d95d7"]) {
+    const r = await get((home.url ? new URL(home.url).origin : site) + p);
+    if (r.s && r.s !== 404) log(`API ${p} → ${r.s} ${r.t.slice(0, 400).replace(/\s+/g, " ")}`);
+  }
   // per-token pages: og:image often is the coin picture
   const base = home.url ? new URL(home.url).origin : site;
   for (const a of Object.values(SAMPLE)) {

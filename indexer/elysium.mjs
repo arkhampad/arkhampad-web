@@ -216,7 +216,7 @@ export function makeElysium(cfg, store) {
    */
   const IMG_HOSTS = /^https:\/\/[^"'\s]+\.(?:png|jpe?g|webp|gif)(?:\?[^"'\s]*)?$|^https:\/\/(?:[a-z0-9-]+\.public\.blob\.vercel-storage\.com|stokx\.b-cdn\.net|elysp\.com\/api\/img|elyspump\.com\/api\/img|elysiumpump\.com\/api\/img|ipfs\.[a-z.]+\/ipfs)\//i;
   const imgTried = new Map(); // address -> last try (ms)
-  const UA = { "user-agent": "Mozilla/5.0 (compatible; ArkhamPadBot/1.0; +https://arkhampad.com)" };
+  const UA = { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36", accept: "text/html,application/json,*/*" };
   function findImg(v, depth = 0) {
     if (depth > 5 || v == null) return null;
     if (typeof v === "string") return IMG_HOSTS.test(v) && !/\/api\/(share|v1\/card)\//.test(v) ? v : null;
@@ -253,10 +253,11 @@ export function makeElysium(cfg, store) {
   async function readBulk() {
     if (Date.now() - bulkAt < 30 * 60_000) return;
     bulkAt = Date.now();
+    let imgUrls = 0;
     for (const site of ["https://boxa.club", "https://ronspad.fun", "https://elyspump.fun"]) {
       try {
         const r = await fetch(site, { headers: UA, signal: AbortSignal.timeout(12_000) });
-        if (!r.ok) continue;
+        if (!r.ok) { log(`elysium: pictures: ${site} answered ${r.status}`); continue; }
         const home = await r.text();
         const base = new URL(r.url || site);
         const scripts = [...new Set([...home.matchAll(/<script[^>]+src="([^"]+)"/gi)].map((m) => new URL(m[1], base).href))].slice(0, 25);
@@ -268,6 +269,7 @@ export function makeElysium(cfg, store) {
           for (const m of t.matchAll(/https:\/\/[^"'`\s\\)]+/g)) {
             const url = m[0];
             if (!findImg(url)) continue;
+            imgUrls++;
             const before = t.slice(Math.max(0, m.index - 1500), m.index);
             const after = t.slice(m.index, m.index + 600);
             const prev = [...before.matchAll(/0x[0-9a-fA-F]{40}/g)].pop()?.[0];
@@ -278,7 +280,7 @@ export function makeElysium(cfg, store) {
         }
       } catch {}
     }
-    log(`elysium: picture list read, ${bulk.size} coins matched`);
+    log(`elysium: picture list read, ${bulk.size} coins matched (${imgUrls} picture links seen)`);
   }
 
   let imgAt = 0;
