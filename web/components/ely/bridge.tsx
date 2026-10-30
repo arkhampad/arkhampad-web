@@ -21,6 +21,37 @@ const RELAY = "https://api.relay.link";
 const RELAY_KEY = process.env.NEXT_PUBLIC_RELAY_KEY || "";
 const GAS_KEEP = 10n ** 16n; // 0.01 HYPE stays on HyperEVM for the bridge transaction's gas
 
+/** Where USDC can come from. Relay converts it to HYPE on HyperEVM; native USDC everywhere (6 decimals) except BNB Chain. */
+type Origin = { id: number; name: string; usdc: Address; dec: number; gas: string; rpcs: string[] };
+const ORIGINS: Origin[] = [
+  { id: 8453, name: "Base", usdc: USDC_BASE, dec: 6, gas: "ETH", rpcs: [BASE_RPC, "https://base.llamarpc.com", "https://base-rpc.publicnode.com"] },
+  { id: 42161, name: "Arbitrum", usdc: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", dec: 6, gas: "ETH", rpcs: ["https://arb1.arbitrum.io/rpc", "https://arbitrum-one-rpc.publicnode.com"] },
+  { id: 1, name: "Ethereum", usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", dec: 6, gas: "ETH", rpcs: ["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com", "https://cloudflare-eth.com"] },
+  { id: 10, name: "Optimism", usdc: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", dec: 6, gas: "ETH", rpcs: ["https://mainnet.optimism.io", "https://optimism-rpc.publicnode.com"] },
+  { id: 137, name: "Polygon", usdc: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", dec: 6, gas: "POL", rpcs: ["https://polygon-rpc.com", "https://polygon-bor-rpc.publicnode.com"] },
+  { id: 56, name: "BNB Chain", usdc: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", dec: 18, gas: "BNB", rpcs: ["https://bsc-dataseed.binance.org", "https://bsc-rpc.publicnode.com"] },
+];
+const clients = new Map<number, ReturnType<typeof createPublicClient>>();
+const originClient = (o: Origin) => {
+  let c = clients.get(o.id);
+  if (!c) {
+    c = createPublicClient({ chain: { id: o.id, name: o.name, nativeCurrency: { name: o.gas, symbol: o.gas, decimals: 18 }, rpcUrls: { default: { http: o.rpcs } } }, transport: fallback(o.rpcs.map((u) => http(u, { timeout: 6000, retryCount: 0 }))) });
+    clients.set(o.id, c);
+  }
+  return c;
+};
+/** USDC (as dollars) and gas balance on every origin chain, read in parallel. */
+async function usdcEverywhere(me: Address) {
+  return Promise.all(ORIGINS.map(async (o) => {
+    const c = originClient(o);
+    const [u, g] = await Promise.all([
+      c.readContract({ address: o.usdc, abi: ERC20, functionName: "balanceOf", args: [me] }).catch(() => 0n) as Promise<bigint>,
+      c.getBalance({ address: me }).catch(() => 0n),
+    ]);
+    return { o, usdc: u, gas: g, usd: Number(formatUnits(u, o.dec)) };
+  }));
+}
+
 const hyperevm = createPublicClient({ chain: { id: HYPEREVM, name: "HyperEVM", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [HYPEREVM_RPC] } } }, transport: fallback([http(HYPEREVM_RPC), http("https://hyperliquid.drpc.org"), http("https://rpc.hypurrscan.io")]) });
 const base = createPublicClient({ chain: { id: BASE, name: "Base", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [BASE_RPC] } } }, transport: http(BASE_RPC) });
 const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)"]);
@@ -31,11 +62,10 @@ const DEPOSIT = encodeFunctionData({ abi: parseAbi(["function depositEth() payab
  * The You page counts it in the total and offers to move it.
  */
 export async function waitingBalances(me: Address): Promise<{ usdc: bigint; hype: bigint }> {
-  const [usdc, hype] = await Promise.all([
-    base.readContract({ address: USDC_BASE, abi: ERC20, functionName: "balanceOf", args: [me] }).catch(() => 0n),
-    hyperevm.getBalance({ address: me }).catch(() => 0n),
-  ]);
-  return { usdc: usdc as bigint, hype };
+  const [all, hype] = await Promise.all([usdcEverywhere(me).catch(() => []), hyperevm.getBalance({ address: me }).catch(() => 0n)]);
+  // total USDC on every chain, in 6-decimal units
+  const usdc = all.reduce((s, x) => s + BigInt(Math.floor(x.usd * 1e6)), 0n);
+  return { usdc, hype };
 }
 
 const fmt = (v: bigint | null | undefined, d = 18, p = 4) => (v == null ? "—" : Number(formatUnits(v, d)).toLocaleString("en-US", { maximumFractionDigits: p }));
@@ -144,31 +174,37 @@ const needsBaseGas = (steps: RelayStep[]) => steps.some((s) => s.kind === "trans
 function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
   const tr = useT();
   const w = useWallet();
-  const usdc = usePoll(() => base.readContract({ address: USDC_BASE, abi: ERC20, functionName: "balanceOf", args: [me] }), 6000, [me]);
-  const eth = usePoll(() => base.getBalance({ address: me }), 10000, [me]);
+  const all = usePoll(() => usdcEverywhere(me), 8000, [me]);
+  const [pick, setPick] = useState<number | null>(null);
+  // the chain you picked, else the one where you hold the most USDC, else Base
+  const best = all?.slice().sort((x, y) => y.usd - x.usd)[0];
+  const cur = all?.find((x) => x.o.id === pick) ?? (best && best.usd >= 1 ? best : all?.[0]);
+  const origin = cur?.o ?? ORIGINS[0];
+  const usdc = cur?.usdc;
+  const eth = cur?.gas;
   const [val, setVal] = useState("");
   const [quote, setQuote] = useState<{ out: bigint; steps: RelayStep[] } | null>(null);
   const [step, setStep] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const amount = toWei(val, 6);
+  const amount = toWei(val, origin.dec);
 
   useEffect(() => {
     setQuote(null);
-    if (amount < 1_000_000n) return;
+    if (amount < 10n ** BigInt(origin.dec)) return;
     let live = true;
     const id = setTimeout(async () => {
       try {
         const res = await fetch(`${RELAY}/quote/v2`, {
           method: "POST",
           headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) },
-          body: JSON.stringify({ user: me, recipient: me, originChainId: BASE, destinationChainId: HYPEREVM, originCurrency: USDC_BASE, destinationCurrency: "0x0000000000000000000000000000000000000000", amount: amount.toString(), tradeType: "EXACT_INPUT", usePermit: true }),
+          body: JSON.stringify({ user: me, recipient: me, originChainId: origin.id, destinationChainId: HYPEREVM, originCurrency: origin.usdc, destinationCurrency: "0x0000000000000000000000000000000000000000", amount: amount.toString(), tradeType: "EXACT_INPUT", usePermit: true }),
         });
         const j = await res.json();
         if (live && j?.details?.currencyOut?.amount) setQuote({ out: BigInt(j.details.currencyOut.amount), steps: j.steps });
       } catch {}
     }, 400);
     return () => { live = false; clearTimeout(id); };
-  }, [amount, me]);
+  }, [amount, me, origin.id, origin.usdc]);
 
   async function go() {
     if (!w.signer?.sendTx) return w.login();
@@ -188,7 +224,7 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
             setStep("Confirm in your wallet…");
             const types = { ...sign.types };
             delete types.EIP712Domain;
-            const signature = await w.signer.signTypedData(Number(sign.domain.chainId ?? BASE), { domain: sign.domain, types, primaryType: sign.primaryType, message: sign.value } as never);
+            const signature = await w.signer.signTypedData(Number(sign.domain.chainId ?? origin.id), { domain: sign.domain, types, primaryType: sign.primaryType, message: sign.value } as never);
             setStep("Sending USDC…");
             const r = await fetch(`${RELAY}${post.endpoint}?signature=${signature}`, { method: post.method || "POST", headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) }, body: JSON.stringify(post.body) });
             if (!r.ok) throw new Error("relay post failed");
@@ -197,7 +233,7 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
           if (s.kind !== "transaction") throw new Error("unsupported step");
           setStep(s.id === "approve" ? "Approving USDC…" : "Sending USDC…");
           const hash = await w.signer.sendTx(it.data.chainId, { to: it.data.to, data: it.data.data, value: it.data.value ? BigInt(it.data.value) : undefined });
-          const r = await base.waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
+          const r = await originClient(origin).waitForTransactionReceipt({ hash: hash as Hex, timeout: 120_000 });
           if (r.status !== "success") throw new Error("failed");
         }
       }
@@ -235,21 +271,29 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
   return (
     <div className="e-trade">
       <ol className="e-steps">
-        <li>{tr("Send USDC on Base to your address below. No ETH needed: the network fee comes out of your USDC.")}</li>
+        <li>{tr("Send USDC to your address below from Base, Arbitrum, Ethereum, Optimism, Polygon or BNB Chain. Same address on all of them.")}</li>
         <li>{tr("Convert and bridge here in one go. You arrive on Elysium with HYPE.")}</li>
       </ol>
       <Address0 address={me} />
+      <div className="e-via" role="group" aria-label={tr("From")}>
+        <span className="dim">{tr("From")}</span>
+        {(all ?? ORIGINS.map((o) => ({ o, usd: 0 }))).map((x) => (
+          <button key={x.o.id} type="button" aria-pressed={origin.id === x.o.id} className={origin.id === x.o.id ? "on" : ""} onClick={() => { setPick(x.o.id); setVal(""); }}>
+            {x.o.name}{x.usd >= 0.01 ? ` · $${x.usd.toFixed(2)}` : ""}
+          </button>
+        ))}
+      </div>
       <label className="e-amt">
-        <span className="e-amt-top"><span>{tr("You pay")}</span><span className="dim">Base: {fmt(usdc, 6, 2)} USDC</span></span>
+        <span className="e-amt-top"><span>{tr("You pay")}</span><span className="dim">{origin.name}: {fmt(usdc, origin.dec, 2)} USDC</span></span>
         <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="USDC amount" /><b>USDC</b></span>
       </label>
       <div className="e-quick">
         {["10", "50", "100"].map((v) => <button key={v} type="button" onClick={() => setVal(v)}>{v}</button>)}
-        <button type="button" disabled={!usdc} onClick={() => usdc && setVal(formatUnits(usdc, 6))}>{tr("Max")}</button>
+        <button type="button" disabled={!usdc} onClick={() => usdc && setVal(formatUnits(usdc, origin.dec))}>{tr("Max")}</button>
       </div>
       <div className="e-recv"><span className="muted">{tr("You get on Elysium")}</span><b className="num">{quote ? `≈ ${fmt(quote.out)} HYPE` : "—"}</b></div>
       <button type="button" className="e-go" disabled={!!step || !quote || (usdc != null && amount > usdc) || noGas} onClick={go}>
-        {tr(step ?? (noGas ? "Add a little ETH on Base for gas" : usdc != null && amount > usdc ? "Not enough USDC on Base" : amount > 0n && amount < 1_000_000n ? "Minimum 1 USDC" : "Convert and bridge"))}
+        {step ? tr(step) : noGas ? tr("Add a little {g} on {c} for gas", { g: origin.gas, c: origin.name }) : usdc != null && amount > usdc ? tr("Not enough USDC on {c}", { c: origin.name }) : amount > 0n && amount < 10n ** BigInt(origin.dec) ? tr("Minimum 1 USDC") : tr("Convert and bridge")}
       </button>
       {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{tr(msg.text)}</div>}
       <p className="e-note">{tr("Conversion by Relay, then Elysium's official bridge. Usually under two minutes.")}</p>
@@ -499,7 +543,7 @@ export function BridgePage() {
         <div>
           <span className="e-eyebrow">{tr("Wallet")}</span>
           <h1>{tr(out ? "Withdraw" : "Deposit")}</h1>
-          <p>{tr(out ? "Move HYPE from Elysium back to HyperEVM, then send it to an exchange or turn it into USDC." : "Everything on Elysium is paid in HYPE. Send HYPE from an exchange, or USDC from Base, and move it here in one tap.")}</p>
+          <p>{tr(out ? "Move HYPE from Elysium back to HyperEVM, then send it to an exchange or turn it into USDC." : "Everything on Elysium is paid in HYPE. Send HYPE from an exchange, or USDC from Base, Arbitrum, Ethereum and more, and move it here in one tap.")}</p>
         </div>
         {me && <div className="e-stats" style={{ gridTemplateColumns: "auto" }}><div className="e-stat"><span>{tr("Your HYPE on Elysium")}</span><b>{elyBal == null ? "—" : fromWei(elyBal).toLocaleString("en-US", { maximumFractionDigits: 4 })}</b></div></div>}
       </section>
@@ -512,7 +556,7 @@ export function BridgePage() {
             {!out && (
               <div className="e-via" role="group" aria-label={tr("Pay with")}>
                 <span className="dim">{tr("Pay with")}</span>
-                {([["hype", "HYPE"], ["usdc", "USDC (Base)"]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={via === k} className={via === k ? "on" : ""} onClick={() => setVia(k)}>{tr(l)}</button>)}
+                {([["hype", "HYPE"], ["usdc", "USDC"]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={via === k} className={via === k ? "on" : ""} onClick={() => setVia(k)}>{tr(l)}</button>)}
               </div>
             )}
           </div>

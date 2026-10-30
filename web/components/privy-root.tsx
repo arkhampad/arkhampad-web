@@ -4,7 +4,7 @@ import { PrivyProvider, usePrivy, useSendTransaction, useSignTypedData, useWalle
 import { useEffect, useMemo, useRef } from "react";
 import type { Address, Hex } from "viem";
 import { defineChain } from "viem";
-import { base, baseSepolia, bsc } from "viem/chains";
+import { arbitrum, base, baseSepolia, bsc, mainnet, optimism, polygon } from "viem/chains";
 import { LIVE, robinhoodTestnet, type Signer, type TypedData } from "@/lib/chain";
 import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC_LIST } from "@/lib/elytrade";
 
@@ -150,7 +150,7 @@ const CONFIG = {
   loginMethods: (process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? ["email", "google", "wallet"] : process.env.NEXT_PUBLIC_TELEGRAM_LOGIN === "1" ? ["google", "twitter", "telegram", "email", "wallet"] : ["google", "twitter", "email", "wallet"]) as ("google" | "twitter" | "telegram" | "email" | "wallet")[],
   appearance: { theme: "light" as const, accentColor: "#0A9A8D" as `#${string}`, logo: "/icon-192.png", landingHeader: "Sign in to ArkhamPad", showWalletLoginFirst: false },
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" as const }, showWalletUIs: false },
-  supportedChains: process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? [elysium, hyperevm, base, elysiumTestnet] : [base, robinhood, bsc, arc, baseSepolia, robinhoodTestnet, elysiumTestnet],
+  supportedChains: process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? [elysium, hyperevm, base, arbitrum, mainnet, optimism, polygon, bsc, elysiumTestnet] : [base, robinhood, bsc, arc, baseSepolia, robinhoodTestnet, elysiumTestnet],
   defaultChain: process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? elysium : LIVE ? base : baseSepolia,
 };
 

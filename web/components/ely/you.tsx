@@ -151,7 +151,7 @@ export function YouPage() {
       {waitUsd >= 0.5 && (
         <Link href={`/bridge/?tab=${usdcWait >= hypeWait * usd ? "usdc" : "hype"}`} className="e-hint" style={{ fontSize: 15 }}>
           {usdcWait >= hypeWait * usd
-            ? tr("You have {n} USDC on Base. Move it to Elysium to start trading.", { n: usdcWait.toFixed(2) })
+            ? tr("You have {n} USDC waiting. Move it to Elysium to start trading.", { n: usdcWait.toFixed(2) })
             : tr("You have {n} HYPE on HyperEVM. Move it to Elysium to start trading.", { n: hypeWait.toFixed(4) })}{" "}
           <b>{tr("Move it now →")}</b>
         </Link>
