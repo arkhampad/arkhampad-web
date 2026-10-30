@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { encodeFunctionData, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { ELY_CHAIN, ELY_EXPLORER, ROUTER, ely } from "@/lib/elytrade";
-import { fetchTokensByAddress } from "@/lib/ely";
+import { fetchHypeUsd, fetchOurCoinsVolume, fetchTokensByAddress, money, usePoll, type EOurCoin } from "@/lib/ely";
 
 const START_BLOCK = 65000n; // just before the mainnet deploy
 const TRADE = parseAbiItem("event Trade(address indexed user, address indexed token, bool isBuy, uint256 hypeAmount, uint256 tokenAmount, uint256 fee)");
@@ -21,6 +21,66 @@ async function logsFrom<T>(fn: (from: bigint, to: bigint) => Promise<T[]>): Prom
     out.push(...(await fn(from, to)));
   }
   return out;
+}
+
+const FEES = parseAbiItem("event FeesCollected(address indexed coin, uint256 coinToCreator, uint256 coinToTreasury, uint256 nativeToCreator, uint256 nativeToTreasury)");
+const TREASURY_ADDR = "0xd9D46EB26c9D753135683b7736FC2be097e7B099" as Address;
+const KEEPER_ADDR = "0x8F7635FABfAd137E16E33ad808DdeC1D26491Af6" as Address;
+
+/** What ArkhamPad earns: wallet balances, fees already collected, and per-coin earnings for coins launched here. */
+function Earnings() {
+  const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
+  const coins = usePoll(fetchOurCoinsVolume, 60_000);
+  const chain = usePoll(async () => {
+    const [treasury, keeper] = await Promise.all([ely().getBalance({ address: TREASURY_ADDR }), ely().getBalance({ address: KEEPER_ADDR })]);
+    const collected = new Map<string, number>();
+    let collectedAll = 0;
+    if (LAUNCHER) {
+      const logs = await logsFrom((fromBlock, toBlock) => ely().getLogs({ address: LAUNCHER as Address, event: FEES, fromBlock, toBlock }));
+      for (const l of logs) {
+        const v = Number(l.args.nativeToTreasury ?? 0n) / 1e18;
+        collectedAll += v;
+        const k = String(l.args.coin).toLowerCase();
+        collected.set(k, (collected.get(k) ?? 0) + v);
+      }
+    }
+    return { treasury: Number(treasury) / 1e18, keeper: Number(keeper) / 1e18, collected, collectedAll };
+  }, 60_000);
+  const list: EOurCoin[] = coins ?? [];
+  const vol = list.reduce((s, c) => s + c.vol, 0);
+  const ours = vol * 0.007; // 1% pool fee, 70% to ArkhamPad
+  const toCreators = vol * 0.003;
+  const h = (x: number) => `${x.toFixed(4)} HYPE`;
+  const u = (x: number) => (usd ? ` · ${money(x * usd)}` : "");
+  return (
+    <section className="e-panel"><div className="e-trade">
+      <h3 className="e-ph" style={{ margin: 0 }}>Earnings <span className="dim" style={{ fontSize: 12.5, fontWeight: 600 }}>coins launched on ArkhamPad: 1% fee per trade, 70% ArkhamPad · 30% creator</span></h3>
+      <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", padding: 0, border: 0 }}>
+        <div><span>Treasury wallet</span><b>{chain ? h(chain.treasury) : "…"}</b><small className="dim">{chain ? u(chain.treasury).slice(3) : ""}</small></div>
+        <div><span>Keeper wallet (gas)</span><b>{chain ? h(chain.keeper) : "…"}</b><small className="dim">{chain ? u(chain.keeper).slice(3) : ""}</small></div>
+        <div><span>Earned, all time</span><b>{coins ? h(ours) : "…"}</b><small className="dim">{coins ? u(ours).slice(3) : ""}</small></div>
+        <div><span>Collected so far</span><b>{chain ? h(chain.collectedAll) : "…"}</b><small className="dim">waiting: {chain && coins ? h(Math.max(0, ours - chain.collectedAll)) : "…"}</small></div>
+        <div><span>Paid to creators</span><b>{coins ? h(toCreators) : "…"}</b></div>
+        <div><span>Volume, our coins</span><b>{coins ? h(vol) : "…"}</b><small className="dim">{coins ? u(vol).slice(3) : ""}</small></div>
+      </div>
+      <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Earned = 0.7% of every trade on our coins. Fees sit in each pool until the keeper collects them (every 30 min, coins traded since the last round); sell-side fees arrive in the coin itself. Router fees on other launchpads' coins are in Site activity.</p>
+      <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr .8fr .9fr .9fr .9fr", gap: 8, fontWeight: 700 }} className="dim">
+          <span>Coin · creator</span><span>Trades</span><span>Volume</span><span>ArkhamPad earned</span><span>Collected</span>
+        </div>
+        {list.map((c) => (
+          <a key={c.address} href={`/t/?a=${c.address}`} style={{ display: "grid", gridTemplateColumns: "1.4fr .8fr .9fr .9fr .9fr", gap: 8, padding: "8px 0", borderTop: "1px solid var(--e-line)", alignItems: "center" }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><b>${c.symbol}</b> <span className="dim num">{c.creator ? short(c.creator) : ""}</span></span>
+            <span className="num">{c.trades} <span className="dim">({c.buys}/{c.sells})</span></span>
+            <span className="num">{c.vol.toFixed(3)}</span>
+            <span className="num up">{(c.vol * 0.007).toFixed(4)}{usd ? <span className="dim"> {money(c.vol * 0.007 * usd)}</span> : null}</span>
+            <span className="num">{chain ? (chain.collected.get(c.address.toLowerCase()) ?? 0).toFixed(4) : "…"}</span>
+          </a>
+        ))}
+        {coins && !list.length && <p className="dim">No coins yet.</p>}
+      </div>
+    </div></section>
+  );
 }
 
 /** Everything people did through ArkhamPad: trades via our router (any wallet, MetaMask too) and launches. */
@@ -149,6 +209,7 @@ export function OpsPage() {
   return (
     <main className="e-in e-page">
       <section className="e-hero"><div><span className="e-eyebrow">Ops</span><h1>ArkhamPad ops</h1></div></section>
+      <Earnings />
       <Activity />
       <section className="e-panel"><div className="e-trade">
         {!LAUNCHER ? <p>Launcher not deployed.</p> : !s ? <p className="dim">Loading…</p> : (

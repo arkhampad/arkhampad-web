@@ -232,3 +232,25 @@ export async function fetchStats(): Promise<EStats | null> {
   const rows = await rest<{ v: EStats }[]>("ely_meta?select=v&k=eq.stats&limit=1", 60);
   return rows[0]?.v ?? null;
 }
+
+// ---------------------------------------------------------------- earnings (ops page)
+export type EOurCoin = { address: string; name: string; symbol: string; creator: string | null; created_at: string | null; vol: number; trades: number; buys: number; sells: number };
+/** Every coin launched on ArkhamPad with its all-time volume (HYPE) and trade counts. */
+export async function fetchOurCoinsVolume(): Promise<EOurCoin[]> {
+  const toks = await rest<{ address: string; name: string; symbol: string; creator: string | null; created_at: string | null }[]>("ely_tokens?select=address,name,symbol,creator,created_at&ours=eq.true&order=created_at.desc&limit=500", 30);
+  if (!toks.length) return [];
+  const rows: { token: string; hype: number; side: string }[] = [];
+  const list = toks.map((t) => t.address);
+  for (let i = 0; i < list.length; i += 40) {
+    rows.push(...(await rest<{ token: string; hype: number; side: string }[]>(`ely_trades?select=token,hype,side&token=in.(${list.slice(i, i + 40).join(",")})&limit=20000`, 30)));
+  }
+  const by = new Map<string, { vol: number; trades: number; buys: number; sells: number }>();
+  for (const r of rows) {
+    const x = by.get(r.token) ?? { vol: 0, trades: 0, buys: 0, sells: 0 };
+    x.vol += r.hype || 0;
+    x.trades += 1;
+    if (r.side === "buy") x.buys += 1; else x.sells += 1;
+    by.set(r.token, x);
+  }
+  return toks.map((t) => ({ ...t, ...(by.get(t.address) ?? { vol: 0, trades: 0, buys: 0, sells: 0 }) }));
+}
