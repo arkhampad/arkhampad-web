@@ -1,7 +1,7 @@
 "use client";
 // Site languages. English text is the key; lib/i18n-dict.ts holds the translations. Missing ones fall
-// back to English. The choice is remembered in this browser (localStorage "ap_lang"); on a first visit
-// the browser's own language is used when we have it. Learn guides stay in English.
+// back to English. Everyone starts in English; once someone picks a language it is remembered in this
+// browser (localStorage "ap_lang"). Learn guides stay in English.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { DICT, type Lang } from "./i18n-dict";
 
@@ -25,9 +25,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const saved = localStorage.getItem("ap_lang") as Lang | null;
-      const guess = (navigator.language || "en").slice(0, 2).toLowerCase() as Lang;
-      const pick = saved && DICT[saved] ? saved : DICT[guess] ? guess : "en";
-      setLangState(pick);
+      if (saved && DICT[saved]) setLangState(saved);
     } catch {}
   }, []);
   useEffect(() => {

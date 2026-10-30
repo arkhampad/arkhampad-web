@@ -230,7 +230,23 @@ export function CreatePage() {
             {w.signedIn && hype === 0n && <Link href="/bridge/" className="e-hint">{tr("You need a little HYPE on Elysium for gas.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}
           </div>
         </section>
-        <aside className="e-panel e-bside">
+        <aside className="e-bstack">
+          <section className="e-panel" aria-label={tr("Preview")}>
+            <h3 className="e-ph">{tr("Preview")} <span className="dim" style={{ fontWeight: 600, fontSize: 12.5 }}>{tr("how it shows on Discover")}</span></h3>
+            <div className="e-prev">
+              <span className="e-prev-img">{img ? <img src={img} alt="" /> : (sym || name || "?").slice(0, 1).toUpperCase()}</span>
+              <div className="e-prev-body">
+                <span className="l1"><b>{name.trim() || "Moon Otter"}</b><span className="dim">${sym || "OTTER"}</span></span>
+                <span className="dim" style={{ fontSize: 13 }}>{tr("by you · just now")}</span>
+              </div>
+            </div>
+            <div className="e-prev-grid">
+              <div><span>{tr("Market cap")}</span><b>{usd ? money(START_MC * usd) : `${START_MC} HYPE`}</b></div>
+              <div><span>{tr("Supply")}</span><b>1B</b></div>
+              <div><span>{tr("You earn")}</span><b>30%</b></div>
+            </div>
+          </section>
+          <div className="e-panel e-bside">
           <h3 className="e-ph">{tr("How it works")}</h3>
           <ul>
             <li>{tr("All 1,000,000,000 coins go into the pool. No team share, no presale.")}</li>
@@ -240,6 +256,7 @@ export function CreatePage() {
             <li>{tr("Your coin shows up on Discover right away, with a chart and holders.")}</li>
           </ul>
           <Link href="/learn/create-a-token-on-elysium/" className="e-more" style={{ display: "grid", placeItems: "center", textDecoration: "none" }}>{tr("Full guide")}</Link>
+          </div>
         </aside>
       </div>
     </main>

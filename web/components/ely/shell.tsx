@@ -3,7 +3,7 @@
 // live ticker, phone tab bar) and the shared token bits (avatar, launchpad tag).
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { WalletProvider, useWallet } from "@/components/wallet";
 import { I18nProvider, LANGS, useI18n, useT } from "@/lib/i18n";
 import { fetchTokens, fetchHypeUsd, money, pct, padColor, padOf, PADS, tokenColors, usePoll, type EToken } from "@/lib/ely";
@@ -117,20 +117,24 @@ function Search() {
   const r = useRouter();
   const tr = useT();
   const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
   return (
     <form
-      className="e-search"
+      className={`e-search ${open ? "open" : ""}`}
       role="search"
+      onClick={() => { if (!open) { setOpen(true); setTimeout(() => input.current?.focus(), 0); } }}
       onSubmit={(e) => {
         e.preventDefault();
         const v = q.trim();
         if (/^0x[0-9a-fA-F]{40}$/.test(v)) r.push(`/t/?a=${v.toLowerCase()}`);
         else r.push(v ? `/?q=${encodeURIComponent(v)}` : "/");
         (document.activeElement as HTMLElement | null)?.blur();
+        setOpen(false);
       }}
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ flex: "none" }}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("Search")} aria-label="Search token name or address" enterKeyHint="search" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+      <input ref={input} onBlur={() => { if (!q.trim()) setOpen(false); }} value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("Search")} aria-label="Search token name or address" enterKeyHint="search" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
     </form>
   );
 }

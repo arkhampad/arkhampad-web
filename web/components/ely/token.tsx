@@ -8,7 +8,7 @@ import { useWallet } from "@/components/wallet";
 import { TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
 import { EChart } from "./chart";
-import { Confetti } from "@/components/celebrate";
+import { Burst, Confetti } from "@/components/celebrate";
 import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
 import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, quote, sell, toWei, tokenBalance, TradeFail } from "@/lib/elytrade";
 
@@ -295,6 +295,7 @@ export function TokenPage() {
       </div>
       {fresh && (
         <div className="e-sheet e-center" role="dialog" aria-modal="true" aria-label="Your coin is live" onClick={(e) => { if (e.target === e.currentTarget) setFresh(false); }}>
+          <Burst />
           <Confetti />
           <Confetti />
           <div className="e-sheet-in e-live-card">

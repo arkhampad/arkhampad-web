@@ -31,6 +31,13 @@ export type EToken = {
   buys24: number;
   sells24: number;
   change24: number | null;
+  /** Shorter windows for Discover's time filter (db/027); missing until that file is run. */
+  change5m?: number | null;
+  change1h?: number | null;
+  change6h?: number | null;
+  vol5m_hype?: number;
+  vol1h_hype?: number;
+  vol6h_hype?: number;
   holders: number;
   top10_pct: number | null;
   last_trade_at: string | null;
@@ -42,11 +49,15 @@ const MOCK = process.env.NEXT_PUBLIC_ELY_MOCK === "1";
 let mockData: Promise<{ tokens: EToken[]; trades: ETrade[]; hypeUsd: number }> | null = null;
 const mock = () => (mockData ??= fetch("/ely-mock.json").then((r) => r.json()));
 
+const WINDOW_COLS = "change5m,change1h,change6h,vol5m_hype,vol1h_hype,vol6h_hype";
 const TOKEN_COLS = "address,name,symbol,decimals,supply,uri,image,description,launchpad,venue,pool,manager,whype,token_is0,fee,tick_spacing,hooks,creator,ours,created_at,price_hype,mcap_hype,vol24_hype,buys24,sells24,change24,holders,top10_pct,last_trade_at";
 
 export async function fetchTokens(): Promise<EToken[]> {
   if (MOCK) return (await mock()).tokens;
-  const { data, error } = await db().from("ely_tokens").select(TOKEN_COLS).not("price_hype", "is", null).order("vol24_hype", { ascending: false }).limit(2000);
+  // with the short-window columns when the database has them (db/027), without them otherwise
+  const pick = (cols: string) => db().from("ely_tokens").select(cols).not("price_hype", "is", null).order("vol24_hype", { ascending: false }).limit(2000);
+  let { data, error } = await pick(`${TOKEN_COLS},${WINDOW_COLS}`);
+  if (error) ({ data, error } = await pick(TOKEN_COLS));
   if (error) throw error;
   return (data ?? []) as unknown as EToken[];
 }

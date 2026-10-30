@@ -39,3 +39,28 @@ export function Confetti() {
     </div>
   );
 }
+
+/** Firework pops from the middle of the screen (two waves), for a new coin going live. */
+export function Burst() {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setOn(false); return; }
+    const t = setTimeout(() => setOn(false), 2600);
+    return () => clearTimeout(t);
+  }, []);
+  if (!on) return null;
+  const wave = (n: number, dist: number, delay: number, k: string) =>
+    Array.from({ length: n }, (_, i) => {
+      const a = (i / n) * Math.PI * 2;
+      const d = dist * (0.75 + ((i * 7) % 5) / 10);
+      return <i key={`${k}${i}`} style={{ background: COLORS[i % COLORS.length], ["--bx" as string]: `${Math.cos(a) * d}px`, ["--by" as string]: `${Math.sin(a) * d}px`, animationDelay: `${delay}s` }} />;
+    });
+  return (
+    <div className="e-burst" aria-hidden="true">
+      <b />
+      <b style={{ animationDelay: ".45s" }} />
+      {wave(28, 170, 0, "a")}
+      {wave(22, 120, 0.45, "b")}
+    </div>
+  );
+}

@@ -18,6 +18,13 @@ const SORTS: { id: Sort; label: string; narrow?: boolean }[] = [
   { id: "live", label: "Live", narrow: true },
 ];
 
+export type Win = "5m" | "1h" | "6h" | "24h";
+const WINS: Win[] = ["5m", "1h", "6h", "24h"];
+/** Price change over the chosen window (24h when the short windows aren't in the database yet). */
+const chg = (t: EToken, w: Win) => (w === "5m" ? t.change5m : w === "1h" ? t.change1h : w === "6h" ? t.change6h : undefined) ?? t.change24;
+const volOf = (t: EToken, w: Win) => (w === "5m" ? t.vol5m_hype : w === "1h" ? t.vol1h_hype : w === "6h" ? t.vol6h_hype : undefined) ?? t.vol24_hype ?? 0;
+const MIN_VOL: Record<Win, number> = { "5m": 0.2, "1h": 1, "6h": 2, "24h": 5 };
+
 /** Trending: real money moving now, more buys than sells, not only one old whale. */
 function trendScore(t: EToken) {
   const vol = t.vol24_hype || 0;
@@ -26,8 +33,13 @@ function trendScore(t: EToken) {
   const fresh = t.last_trade_at ? Math.max(0.2, 1 - (Date.now() - Date.parse(t.last_trade_at)) / 86_400_000) : 0.2;
   return Math.log10(1 + vol) * 2 + Math.log10(1 + tx) + buyShare + fresh;
 }
-function sortTokens(list: EToken[], sort: Sort) {
+function sortTokens(list: EToken[], sort: Sort, w: Win) {
   const l = list.slice();
+  if (w !== "24h" && sort !== "new" && sort !== "top") {
+    if (sort === "gainers") return l.filter((t) => volOf(t, w) >= MIN_VOL[w] && (chg(t, w) ?? 0) > 0).sort((a, b) => (chg(b, w) ?? -1e9) - (chg(a, w) ?? -1e9));
+    if (sort === "losers") return l.filter((t) => volOf(t, w) >= MIN_VOL[w] && (chg(t, w) ?? 0) < 0).sort((a, b) => (chg(a, w) ?? 1e9) - (chg(b, w) ?? 1e9));
+    return l.filter((t) => volOf(t, w) > 0).sort((a, b) => volOf(b, w) - volOf(a, w));
+  }
   if (sort === "new") return l.sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0"));
   if (sort === "top") return l.sort((a, b) => (b.mcap_hype || 0) - (a.mcap_hype || 0));
   if (sort === "gainers") return l.filter((t) => (t.vol24_hype || 0) >= 5 && (t.change24 ?? 0) > 0).sort((a, b) => (b.change24 ?? -1e9) - (a.change24 ?? -1e9));
@@ -104,7 +116,8 @@ function TradeList({ byAddr, usd, n = 24 }: { byAddr: Map<string, EToken>; usd: 
   );
 }
 
-function Row({ t, i, usd }: { t: EToken; i: number; usd: number }) {
+function Row({ t, i, usd, w }: { t: EToken; i: number; usd: number; w: Win }) {
+  const c = chg(t, w);
   const tr = useT();
   const mc = money((t.mcap_hype ?? 0) * usd);
   return (
@@ -120,13 +133,13 @@ function Row({ t, i, usd }: { t: EToken; i: number; usd: number }) {
           </small>
         </span>
       </span>
-      <span className={`r num e-hide-m ${upDown(t.change24)}`}>{pct(t.change24)}</span>
-      <span className="r num e-hide-m">{money((t.vol24_hype || 0) * usd)}</span>
+      <span className={`r num e-hide-m ${upDown(c)}`}>{pct(c)}</span>
+      <span className="r num e-hide-m">{money(volOf(t, w) * usd)}</span>
       <span className="r num e-hide-t e-hide-m"><span className="up">{t.buys24}</span><span className="dim"> / </span><span className="down">{t.sells24}</span></span>
       <span className="r num e-hide-m">{compact(t.holders || 0)}</span>
       <span className="r num muted e-hide-t e-hide-m">{t.top10_pct == null ? "—" : `${Math.min(100, t.top10_pct).toFixed(0)}%`}</span>
       <span className="r num e-hide-m"><b>{mc}</b></span>
-      <span className="e-mc"><b>{mc}</b><span className={`e-pill ${upDown(t.change24)}`}>{pct(t.change24)}</span></span>
+      <span className="e-mc"><b>{mc}</b><span className={`e-pill ${upDown(c)}`}>{pct(c)}</span></span>
     </Link>
   );
 }
@@ -138,14 +151,15 @@ export function Discover() {
   const tokens = usePoll(fetchTokens, 15_000);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const [sort, setSort] = useState<Sort>("trending");
+  const [win, setWin] = useState<Win>("24h");
   const [shown, setShown] = useState(50);
   const q = (params.get("q") || "").trim().toLowerCase();
 
   const list = useMemo(() => {
     let l = tokens ?? [];
     if (q) l = l.filter((t) => t.name.toLowerCase().includes(q) || t.symbol.toLowerCase().includes(q) || t.address === q);
-    return sortTokens(l, sort);
-  }, [tokens, sort, q]);
+    return sortTokens(l, sort, win);
+  }, [tokens, sort, q, win]);
 
   const byAddr = useMemo(() => new Map((tokens ?? []).map((t) => [t.address, t])), [tokens]);
   const vol = (tokens ?? []).reduce((s, t) => s + (t.vol24_hype || 0), 0);
@@ -177,6 +191,11 @@ export function Discover() {
                 ))}
               </div>
             </div>
+            {sort !== "live" && sort !== "new" && (
+              <div className="e-wins" role="group" aria-label={tr("Time")}>
+                {WINS.map((x) => <button key={x} type="button" className={win === x ? "on" : ""} aria-pressed={win === x} onClick={() => { setWin(x); setShown(50); }}>{x}</button>)}
+              </div>
+            )}
             {q && sort !== "live" && (
               <div className="e-scrollx" style={{ alignItems: "center" }}>
                 <span className="muted" style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tr("Results for “{q}”", { q })}</span>
@@ -192,7 +211,7 @@ export function Discover() {
               <div className="e-row h">
                 <span className="e-hide-m">#</span>
                 <span>{tr("Token")}</span>
-                <span className="r e-hide-m">24h</span>
+                <span className="r e-hide-m">{win}</span>
                 <span className="r e-hide-m">{tr("Volume")}</span>
                 <span className="r e-hide-t e-hide-m">{tr("Txns")}</span>
                 <span className="r e-hide-m">{tr("Holders")}</span>
@@ -200,7 +219,7 @@ export function Discover() {
                 <span className="r e-hide-m">{tr("Mkt cap")}</span>
               </div>
               <div className="e-rows">
-                {list.slice(0, shown).map((t, i) => <Row key={t.address} t={t} i={i} usd={usd} />)}
+                {list.slice(0, shown).map((t, i) => <Row key={t.address} t={t} i={i} usd={usd} w={win} />)}
               </div>
               {!tokens && <div style={{ padding: 14, display: "grid", gap: 10 }}>{Array.from({ length: 8 }, (_, i) => <div key={i} className="e-skel" style={{ height: 48 }} />)}</div>}
               {tokens && !list.length && <div className="e-empty">{tr("No tokens here yet.")}</div>}

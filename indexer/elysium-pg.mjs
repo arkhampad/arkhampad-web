@@ -61,6 +61,8 @@ export async function makePgStore(pool) {
       const r = await pool.query("select v from ely_meta where k='hype_usd'");
       const usd = Number(r.rows[0]?.v) || 0;
       await pool.query("select ely_refresh_stats($1)", [usd]);
+      // short windows for Discover's 5m / 1h / 6h filter (db/027); skipped until that file is run
+      await pool.query("select ely_refresh_windows()").catch(() => {});
     },
   };
 }
