@@ -251,7 +251,7 @@ export function makeElysium(cfg, store) {
   const bulk = new Map(); // address -> image
   let bulkAt = 0;
   async function readBulk() {
-    if (Date.now() - bulkAt < 30 * 60_000) return;
+    if (Date.now() - bulkAt < 10 * 60_000) return;
     bulkAt = Date.now();
     const known = store.tokens();
     const take = (addr, obj) => {
@@ -268,14 +268,18 @@ export function makeElysium(cfg, store) {
       } catch (e) { log(`elysium: pictures: ${u} ${String(e.message).slice(0, 60)}`); return null; }
     };
     // 1) token list APIs (address + picture in each record)
-    for (let off = 0; off < 3000; off += 500) {
-      const j = await getJson(`https://ronspad.fun/api/v1/tokens?limit=500&offset=${off}`);
+    let seen = 0;
+    for (let off = 0; off < 3000; off += 100) {
+      const j = await getJson(`https://ronspad.fun/api/v1/tokens?limit=100&offset=${off}`);
       const list = j?.tokens ?? [];
+      seen += list.length;
       for (const t of list) take(t.address, t);
-      if (list.length < 500) break;
+      if (!list.length || (j?.total && off + list.length >= j.total)) break;
     }
+    const afterList = bulk.size;
     const bx = await getJson("https://boxa.club/api/tokens");
     for (const t of bx?.tokens ?? []) take(t.address, t);
+    log(`elysium: pictures: list 1 gave ${seen} coins (${afterList} with a picture), list 2 gave ${(bx?.tokens ?? []).length}`);
     // 2) boxa's front page carries every coin's record with a "marketImage": split it by coin address
     try {
       const r = await fetch("https://boxa.club/", { headers: UA, signal: AbortSignal.timeout(15_000) });
@@ -306,7 +310,8 @@ export function makeElysium(cfg, store) {
     let found = 0;
     for (const [a, image] of bulk) {
       const t = store.tokens().get(a);
-      if (t && !t.ours && !t.image) { t.image = image; found++; await store.upsertToken({ ...t, image }).catch(() => {}); }
+      // the launchpad's own picture wins over an older guess (e.g. a dead IPFS link from metadata)
+      if (t && !t.ours && t.image !== image) { t.image = image; found++; await store.upsertToken({ ...t, image }).catch(() => {}); }
     }
     for (const t of todo) {
       if (t.image) continue;
