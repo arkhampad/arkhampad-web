@@ -69,18 +69,24 @@ export function makeRpc(urls, log = console.log) {
   const list = [...new Set([...String(urls).split(",").map((u) => u.trim()).filter(Boolean), OWN_RPC])];
   let id = 0;
   let at = 0;
+  let since = Date.now();
   return async function rpc(method, params = []) {
     let last;
+    // after a fail-over, go back to the first (main) node every 2 minutes
+    if (at !== 0 && Date.now() - since > 120_000) { at = 0; since = Date.now(); }
     for (let i = 0; i < list.length * 3; i++) {
       const url = list[(at + i) % list.length];
       try {
         const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(8_000) });
         const j = await r.json();
         if (j.error) throw new Error(`${method}: ${j.error.message}`);
+        if (at !== (at + i) % list.length) since = Date.now();
         at = (at + i) % list.length;
         return j.result;
       } catch (e) {
         last = e;
+        // a node that is a few blocks behind says "beyond current head": just ask the next node
+        if (/beyond current head|header not found|unknown block/i.test(e.message)) continue;
         if (/range|too many|limit/i.test(e.message) && method === "eth_getLogs") throw e;
         if (i % list.length === list.length - 1) await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
       }
