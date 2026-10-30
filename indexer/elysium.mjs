@@ -209,6 +209,58 @@ export function makeElysium(cfg, store) {
     }), 6);
   }
 
+  /**
+   * Pictures for coins whose launchpad keeps them off-chain. Public token pages / APIs of Elysium
+   * launchpads show each coin's logo; we look it up once (a few coins a minute, politely) and store
+   * only the picture's URL. Coins launched on ArkhamPad carry their picture on-chain and skip this.
+   */
+  const IMG_HOSTS = /^https:\/\/[^"'\s]+\.(?:png|jpe?g|webp|gif)(?:\?[^"'\s]*)?$|^https:\/\/(?:[a-z0-9-]+\.public\.blob\.vercel-storage\.com|stokx\.b-cdn\.net|elysp\.com\/api\/img|elyspump\.com\/api\/img|elysiumpump\.com\/api\/img|ipfs\.[a-z.]+\/ipfs)\//i;
+  const imgTried = new Map(); // address -> last try (ms)
+  const UA = { "user-agent": "Mozilla/5.0 (compatible; ArkhamPadBot/1.0; +https://arkhampad.com)" };
+  function findImg(v, depth = 0) {
+    if (depth > 5 || v == null) return null;
+    if (typeof v === "string") return IMG_HOSTS.test(v) && !/\/api\/(share|v1\/card)\//.test(v) ? v : null;
+    if (Array.isArray(v)) { for (const x of v) { const r = findImg(x, depth + 1); if (r) return r; } return null; }
+    if (typeof v === "object") {
+      for (const k of ["image", "imageUrl", "image_url", "logo", "logoUrl", "logo_url", "icon", "avatar", "pfp", "img"]) { const r = findImg(v[k], depth + 1); if (r) return r; }
+      for (const x of Object.values(v)) { const r = findImg(x, depth + 1); if (r) return r; }
+    }
+    return null;
+  }
+  async function lookupImage(a) {
+    try {
+      const r = await fetch(`https://ronspad.fun/api/v1/token/${a}`, { headers: UA, signal: AbortSignal.timeout(6000) });
+      if (r.ok) { const img = findImg(await r.json()); if (img) return img; }
+    } catch {}
+    try {
+      const r = await fetch(`https://boxa.club/token/${a}`, { headers: UA, signal: AbortSignal.timeout(6000) });
+      if (r.ok) {
+        const html = (await r.text()).slice(0, 2_000_000);
+        // the coin's own record: "image":"…" near its address
+        const at = html.toLowerCase().indexOf(a);
+        const near = at >= 0 ? html.slice(Math.max(0, at - 3000), at + 3000) : html;
+        for (const m of near.matchAll(/"(?:image|imageUrl|image_url|logo|icon)\\?"\s*:\s*\\?"(https:[^"\\]+)/g)) if (findImg(m[1])) return m[1];
+      }
+    } catch {}
+    return null;
+  }
+  let imgAt = 0;
+  async function backfillImages() {
+    if (Date.now() - imgAt < 60_000) return;
+    imgAt = Date.now();
+    const now = Date.now();
+    const todo = [...store.tokens().values()]
+      .filter((t) => !t.ours && !t.image && now - (imgTried.get(t.address) || 0) > 6 * 3600_000)
+      .sort((x, y) => (y.vol24_hype || 0) - (x.vol24_hype || 0))
+      .slice(0, 8);
+    for (const t of todo) {
+      imgTried.set(t.address, now);
+      const image = await lookupImage(t.address);
+      if (image) { t.image = image; await store.upsertToken({ ...t, image }).catch(() => {}); }
+    }
+    if (todo.length) log(`elysium: pictures looked up for ${todo.length} coins`);
+  }
+
   function launchpadFor(maker, venue) {
     return launchpadOf.get(maker) || launchpadOf.get(venue) || null;
   }
@@ -395,6 +447,7 @@ export function makeElysium(cfg, store) {
       try {
         const n = await syncOnce();
         backfillMeta().catch(() => {});
+        backfillImages().catch(() => {});
         // list stats once a minute (each run reads the database; keeps Supabase disk use low)
         if (Date.now() - statsAt > 60_000) {
           statsAt = Date.now();
