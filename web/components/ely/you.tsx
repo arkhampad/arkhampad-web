@@ -5,6 +5,7 @@ import { useState } from "react";
 import { encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
+import { waitingBalances } from "./bridge";
 import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHoldings, fetchHypeUsd, fetchMyTrades, fetchTokensByAddress, money, pct, short, usePoll } from "@/lib/ely";
 import { ELY_CHAIN, ely, fromWei, hypeBalance, recentTokens, tokenBalance } from "@/lib/elytrade";
@@ -93,6 +94,8 @@ export function YouPage() {
       .sort((a, b) => b.value - a.value);
   }, 10_000, [me]);
   const created = usePoll(async () => (me ? fetchCreated(me) : null), 20_000, [me]);
+  // money that arrived on Base (USDC) or HyperEVM (HYPE) but hasn't been moved to Elysium yet
+  const waiting = usePoll(async () => (me ? waitingBalances(me as Address) : null), 10_000, [me]);
   const trades = usePoll(async () => (me ? fetchMyTrades(me) : null), 10_000, [me]);
   const [copied, setCopied] = useState(false);
   const copy = () => me && navigator.clipboard?.writeText(me).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); });
@@ -111,6 +114,9 @@ export function YouPage() {
 
   const tokensHype = (holdings ?? []).reduce((s, h) => s + h.value, 0);
   const hypeNum = hype != null ? fromWei(hype) : 0;
+  const usdcWait = waiting ? Number(waiting.usdc) / 1e6 : 0;
+  const hypeWait = waiting ? fromWei(waiting.hype) : 0;
+  const waitUsd = usdcWait + hypeWait * usd;
   const byAddr = new Map((holdings ?? []).map((h) => [h.t.address, h.t]));
 
   return (
@@ -127,18 +133,28 @@ export function YouPage() {
       <section className="e-balance">
         <div className="e-balance-top">
           <span>{tr("Total balance")}</span>
-          <b className="num">{hype == null ? "—" : money((hypeNum + tokensHype) * usd)}</b>
+          <b className="num">{hype == null ? "—" : money((hypeNum + tokensHype) * usd + waitUsd)}</b>
           <div className="e-balance-split">
             <span><i style={{ background: "var(--e-tealfill)" }} />{hypeNum.toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE <em>{money(hypeNum * usd)}</em></span>
             <span><i style={{ background: "#7c5cff" }} />{tr("Tokens")} <em>{money(tokensHype * usd)}</em></span>
+            {waitUsd >= 0.01 && <span><i style={{ background: "#ffb43c" }} />{tr("Waiting to move")} <em>{money(waitUsd)}</em></span>}
           </div>
         </div>
         <div className="e-balance-btns">
-          <Link href="/bridge/" className="e-btn pri">{tr("Add money")}</Link>
+          <Link href="/bridge/" className="e-btn pri">{tr("Deposit")}</Link>
           <Link href="/bridge/?tab=out" className="e-btn">{tr("Withdraw")}</Link>
           <button type="button" className="e-btn" onClick={copy}>{tr(copied ? "Copied" : "Copy address")}</button>
         </div>
       </section>
+
+      {waitUsd >= 0.5 && (
+        <Link href={`/bridge/?tab=${usdcWait >= hypeWait * usd ? "usdc" : "hype"}`} className="e-hint" style={{ fontSize: 15 }}>
+          {usdcWait >= hypeWait * usd
+            ? tr("You have {n} USDC on Base. Move it to Elysium to start trading.", { n: usdcWait.toFixed(2) })
+            : tr("You have {n} HYPE on HyperEVM. Move it to Elysium to start trading.", { n: hypeWait.toFixed(4) })}{" "}
+          <b>{tr("Move it now →")}</b>
+        </Link>
+      )}
 
       <section className="e-panel">
         <h3 className="e-ph">{tr("Your coins")}</h3>

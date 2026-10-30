@@ -26,6 +26,18 @@ const base = createPublicClient({ chain: { id: BASE, name: "Base", nativeCurrenc
 const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 const DEPOSIT = encodeFunctionData({ abi: parseAbi(["function depositEth() payable returns (uint256)"]), functionName: "depositEth" });
 
+/**
+ * Money that has arrived but isn't on Elysium yet: USDC on Base and HYPE on HyperEVM at this address.
+ * The You page counts it in the total and offers to move it.
+ */
+export async function waitingBalances(me: Address): Promise<{ usdc: bigint; hype: bigint }> {
+  const [usdc, hype] = await Promise.all([
+    base.readContract({ address: USDC_BASE, abi: ERC20, functionName: "balanceOf", args: [me] }).catch(() => 0n),
+    hyperevm.getBalance({ address: me }).catch(() => 0n),
+  ]);
+  return { usdc: usdc as bigint, hype };
+}
+
 const fmt = (v: bigint | null | undefined, d = 18, p = 4) => (v == null ? "—" : Number(formatUnits(v, d)).toLocaleString("en-US", { maximumFractionDigits: p }));
 
 function Address0({ address }: { address: string }) {
@@ -123,7 +135,11 @@ function HypeIn({ me, onSent }: { me: Address; onSent: () => void }) {
   );
 }
 
-type RelayStep = { id: string; kind: string; requestId?: string; items: { status: string; data: { to: Address; data: Hex; value?: string; chainId: number } }[] };
+type RelaySign = { signatureKind: string; domain: Record<string, unknown> & { chainId?: number }; types: Record<string, { name: string; type: string }[]>; primaryType: string; value: Record<string, unknown> };
+type RelayPost = { endpoint: string; method?: string; body: unknown };
+type RelayStep = { id: string; kind: string; requestId?: string; items: { status: string; data: { to: Address; data: Hex; value?: string; chainId: number; sign?: RelaySign; post?: RelayPost } }[] };
+/** True when the quote needs a transaction sent from Base by the user (so the user needs ETH there). */
+const needsBaseGas = (steps: RelayStep[]) => steps.some((s) => s.kind === "transaction" && s.items.some((i) => i.status !== "complete"));
 
 function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
   const tr = useT();
@@ -145,7 +161,7 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
         const res = await fetch(`${RELAY}/quote/v2`, {
           method: "POST",
           headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) },
-          body: JSON.stringify({ user: me, recipient: me, originChainId: BASE, destinationChainId: HYPEREVM, originCurrency: USDC_BASE, destinationCurrency: "0x0000000000000000000000000000000000000000", amount: amount.toString(), tradeType: "EXACT_INPUT" }),
+          body: JSON.stringify({ user: me, recipient: me, originChainId: BASE, destinationChainId: HYPEREVM, originCurrency: USDC_BASE, destinationCurrency: "0x0000000000000000000000000000000000000000", amount: amount.toString(), tradeType: "EXACT_INPUT", usePermit: true }),
         });
         const j = await res.json();
         if (live && j?.details?.currencyOut?.amount) setQuote({ out: BigInt(j.details.currencyOut.amount), steps: j.steps });
@@ -162,10 +178,23 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
       const startHype = await hyperevm.getBalance({ address: me });
       let requestId = "";
       for (const s of quote.steps) {
-        if (s.kind !== "transaction") throw new Error("unsupported step");
         requestId = s.requestId || requestId;
         for (const it of s.items) {
           if (it.status === "complete") continue;
+          if (s.kind === "signature") {
+            // gasless: the user only signs; Relay sends it on Base and takes its fee from the USDC
+            const sign = it.data.sign, post = it.data.post;
+            if (!sign || sign.signatureKind !== "eip712" || !post || !w.signer.signTypedData) throw new Error("unsupported step");
+            setStep("Confirm in your wallet…");
+            const types = { ...sign.types };
+            delete types.EIP712Domain;
+            const signature = await w.signer.signTypedData(Number(sign.domain.chainId ?? BASE), { domain: sign.domain, types, primaryType: sign.primaryType, message: sign.value } as never);
+            setStep("Sending USDC…");
+            const r = await fetch(`${RELAY}${post.endpoint}?signature=${signature}`, { method: post.method || "POST", headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) }, body: JSON.stringify(post.body) });
+            if (!r.ok) throw new Error("relay post failed");
+            continue;
+          }
+          if (s.kind !== "transaction") throw new Error("unsupported step");
           setStep(s.id === "approve" ? "Approving USDC…" : "Sending USDC…");
           const hash = await w.signer.sendTx(it.data.chainId, { to: it.data.to, data: it.data.data, value: it.data.value ? BigInt(it.data.value) : undefined });
           const r = await base.waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
@@ -201,11 +230,12 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
     }
   }
 
-  const noGas = eth === 0n;
+  // with a gasless (signature) quote nobody needs ETH; only old-style quotes do
+  const noGas = !!quote && needsBaseGas(quote.steps) && eth === 0n;
   return (
     <div className="e-trade">
       <ol className="e-steps">
-        <li>{tr("Send USDC on Base to your address below, plus a little ETH on Base for the network fee.")}</li>
+        <li>{tr("Send USDC on Base to your address below. No ETH needed: the network fee comes out of your USDC.")}</li>
         <li>{tr("Convert and bridge here in one go. You arrive on Elysium with HYPE.")}</li>
       </ol>
       <Address0 address={me} />
@@ -403,7 +433,7 @@ export function BridgePage() {
       <section className="e-hero">
         <div>
           <span className="e-eyebrow">{tr("Bridge")}</span>
-          <h1>{tr("Add money")}</h1>
+          <h1>{tr("Deposit")}</h1>
           <p>{tr("Everything on Elysium is paid in HYPE. Send HYPE from an exchange, or USDC from Base, and move it here in one tap.")}</p>
         </div>
         {me && <div className="e-stats" style={{ gridTemplateColumns: "auto" }}><div className="e-stat"><span>{tr("Your HYPE on Elysium")}</span><b>{elyBal == null ? "—" : fromWei(elyBal).toLocaleString("en-US", { maximumFractionDigits: 4 })}</b></div></div>}
