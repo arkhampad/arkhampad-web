@@ -13,16 +13,25 @@ const TRADE = parseAbiItem("event Trade(address indexed user, address indexed to
 const LAUNCHED = parseAbiItem("event Launched(address indexed coin, address indexed creator, address pool, uint256 tokenId, string name, string symbol, string uri, uint256 startMc, uint256 firstBuyIn, uint256 firstBuyOut)");
 type Act = { kind: "buy" | "sell" | "launch"; who: Address; token: Address; hype: number; fee: number; block: bigint; tx: Hex; at?: number; label?: string };
 
+/** Logs since the mainnet deploy, read in small windows (nodes refuse big ranges); a failed window is retried smaller. */
 async function logsFrom<T>(fn: (from: bigint, to: bigint) => Promise<T[]>): Promise<T[]> {
   const latest = await ely().getBlockNumber();
+  const STEP = 9_000n;
+  const wins: [bigint, bigint][] = [];
+  for (let from = START_BLOCK; from <= latest; from += STEP) wins.push([from, from + STEP - 1n > latest ? latest : from + STEP - 1n]);
+  const one = async ([a, b]: [bigint, bigint]): Promise<T[]> => {
+    try {
+      return await fn(a, b);
+    } catch (e) {
+      if (b - a < 500n) throw e;
+      const mid = a + (b - a) / 2n;
+      return [...(await one([a, mid])), ...(await one([mid + 1n, b]))];
+    }
+  };
   const out: T[] = [];
-  for (let from = START_BLOCK; from <= latest; from += 50_000n) {
-    const to = from + 49_999n > latest ? latest : from + 49_999n;
-    out.push(...(await fn(from, to)));
-  }
+  for (let i = 0; i < wins.length; i += 4) out.push(...(await Promise.all(wins.slice(i, i + 4).map(one))).flat());
   return out;
 }
-
 const FEES = parseAbiItem("event FeesCollected(address indexed coin, uint256 coinToCreator, uint256 coinToTreasury, uint256 nativeToCreator, uint256 nativeToTreasury)");
 const TREASURY_ADDR = "0xd9D46EB26c9D753135683b7736FC2be097e7B099" as Address;
 const KEEPER_ADDR = "0x8F7635FABfAd137E16E33ad808DdeC1D26491Af6" as Address;
@@ -31,8 +40,11 @@ const KEEPER_ADDR = "0x8F7635FABfAd137E16E33ad808DdeC1D26491Af6" as Address;
 function Earnings() {
   const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
   const coins = usePoll(fetchOurCoinsVolume, 60_000);
-  const chain = usePoll(async () => {
+  const bals = usePoll(async () => {
     const [treasury, keeper] = await Promise.all([ely().getBalance({ address: TREASURY_ADDR }), ely().getBalance({ address: KEEPER_ADDR })]);
+    return { treasury: Number(treasury) / 1e18, keeper: Number(keeper) / 1e18 };
+  }, 30_000);
+  const chain = usePoll(async () => {
     const collected = new Map<string, number>();
     let collectedAll = 0;
     if (LAUNCHER) {
@@ -44,32 +56,33 @@ function Earnings() {
         collected.set(k, (collected.get(k) ?? 0) + v);
       }
     }
-    return { treasury: Number(treasury) / 1e18, keeper: Number(keeper) / 1e18, collected, collectedAll };
-  }, 60_000);
+    return { collected, collectedAll };
+  }, 120_000);
   const list: EOurCoin[] = coins ?? [];
   const vol = list.reduce((s, c) => s + c.vol, 0);
   const ours = vol * 0.007; // 1% pool fee, 70% to ArkhamPad
   const toCreators = vol * 0.003;
   const h = (x: number) => `${x.toFixed(4)} HYPE`;
-  const u = (x: number) => (usd ? ` · ${money(x * usd)}` : "");
+  const u = (x: number) => (usd ? money(x * usd) : "");
+  const cols = "1.4fr .8fr .9fr .9fr .9fr";
   return (
     <section className="e-panel"><div className="e-trade">
       <h3 className="e-ph" style={{ margin: 0 }}>Earnings <span className="dim" style={{ fontSize: 12.5, fontWeight: 600 }}>coins launched on ArkhamPad: 1% fee per trade, 70% ArkhamPad · 30% creator</span></h3>
       <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", padding: 0, border: 0 }}>
-        <div><span>Treasury wallet</span><b>{chain ? h(chain.treasury) : "…"}</b><small className="dim">{chain ? u(chain.treasury).slice(3) : ""}</small></div>
-        <div><span>Keeper wallet (gas)</span><b>{chain ? h(chain.keeper) : "…"}</b><small className="dim">{chain ? u(chain.keeper).slice(3) : ""}</small></div>
-        <div><span>Earned, all time</span><b>{coins ? h(ours) : "…"}</b><small className="dim">{coins ? u(ours).slice(3) : ""}</small></div>
+        <div><span>Treasury wallet</span><b>{bals ? h(bals.treasury) : "…"}</b><small className="dim">{bals ? u(bals.treasury) : ""}</small></div>
+        <div><span>Keeper wallet (gas)</span><b>{bals ? h(bals.keeper) : "…"}</b><small className="dim">{bals ? u(bals.keeper) : ""}</small></div>
+        <div><span>Earned, all time</span><b>{coins ? h(ours) : "…"}</b><small className="dim">{coins ? u(ours) : ""}</small></div>
         <div><span>Collected so far</span><b>{chain ? h(chain.collectedAll) : "…"}</b><small className="dim">waiting: {chain && coins ? h(Math.max(0, ours - chain.collectedAll)) : "…"}</small></div>
         <div><span>Paid to creators</span><b>{coins ? h(toCreators) : "…"}</b></div>
-        <div><span>Volume, our coins</span><b>{coins ? h(vol) : "…"}</b><small className="dim">{coins ? u(vol).slice(3) : ""}</small></div>
+        <div><span>Volume, our coins</span><b>{coins ? h(vol) : "…"}</b><small className="dim">{coins ? u(vol) : ""}</small></div>
       </div>
-      <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Earned = 0.7% of every trade on our coins. Fees sit in each pool until the keeper collects them (every 30 min, coins traded since the last round); sell-side fees arrive in the coin itself. Router fees on other launchpads' coins are in Site activity.</p>
+      <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Earned = 0.7% of every trade on our coins. Fees sit in each pool until the keeper collects them (every 30 min); sell-side fees arrive in the coin itself. Router fees on other launchpads' coins are in Site activity.</p>
       <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr .8fr .9fr .9fr .9fr", gap: 8, fontWeight: 700 }} className="dim">
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, fontWeight: 700 }} className="dim">
           <span>Coin · creator</span><span>Trades</span><span>Volume</span><span>ArkhamPad earned</span><span>Collected</span>
         </div>
         {list.map((c) => (
-          <a key={c.address} href={`/t/?a=${c.address}`} style={{ display: "grid", gridTemplateColumns: "1.4fr .8fr .9fr .9fr .9fr", gap: 8, padding: "8px 0", borderTop: "1px solid var(--e-line)", alignItems: "center" }}>
+          <a key={c.address} href={`/t/?a=${c.address}`} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "8px 0", borderTop: "1px solid var(--e-line)", alignItems: "center" }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><b>${c.symbol}</b> <span className="dim num">{c.creator ? short(c.creator) : ""}</span></span>
             <span className="num">{c.trades} <span className="dim">({c.buys}/{c.sells})</span></span>
             <span className="num">{c.vol.toFixed(3)}</span>
