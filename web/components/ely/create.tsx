@@ -21,7 +21,7 @@ const ABI = parseAbi([
 
 /**
  * The picture travels inside the coin's own metadata on-chain, so it must stay small: square, and
- * re-encoded until it is under ~12 KB (phones without WebP get JPEG, which is bigger, so we step down).
+ * re-encoded until it is under ~5 KB (phones without WebP get JPEG, which is bigger, so we step down).
  */
 function shrink(src: string, size = 160): Promise<string> {
   return new Promise((res, rej) => {
@@ -40,9 +40,11 @@ function shrink(src: string, size = 160): Promise<string> {
       };
       try {
         let out = "";
-        for (const [px, q] of [[size, 0.8], [size, 0.65], [128, 0.65], [128, 0.5], [96, 0.55], [96, 0.4]] as const) {
+        // every byte of the picture is stored on-chain inside the coin, which costs gas; ~7 KB keeps a
+        // launch well inside what wallets and nodes allow (bigger pictures made the launch revert)
+        for (const [px, q] of [[128, 0.72], [128, 0.55], [112, 0.5], [96, 0.5], [96, 0.38], [80, 0.35]] as const) {
           out = enc(px, q);
-          if (out.length <= 16_000) break;
+          if (out.length <= 7_000) break;
         }
         res(out);
       } catch (e) {
