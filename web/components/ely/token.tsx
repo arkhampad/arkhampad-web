@@ -1,4 +1,5 @@
 "use client";
+import { formatUnits } from "viem";
 // Token page (/t/?a=0x…): any Elysium token, from any launchpad. Chart, buy/sell, trades, holders.
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -42,7 +43,10 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
   const addr = w.address as Address | null;
   const hype = usePoll(async () => (addr ? hypeBalance(addr) : null), 6000, [addr, tick]);
   const bal = usePoll(async () => (addr ? tokenBalance(t.address as Address, addr) : null), 6000, [addr, t.address, tick]);
-  const inWei = toWei(val, side === "buy" ? 18 : dec);
+  // a % / Max button sets the exact on-chain amount (typing a number clears it), so 100% never ends up a
+  // hair above the real balance because of rounding
+  const [exact, setExact] = useState<bigint | null>(null);
+  const inWei = exact ?? toWei(val, side === "buy" ? 18 : dec);
   const tradable = canTrade(t);
 
   useEffect(() => {
@@ -60,8 +64,8 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
   const short1 = side === "buy" ? hype != null && inWei > hype : bal != null && inWei > bal;
 
   const quick = side === "buy"
-    ? [{ l: "0.1", v: "0.1" }, { l: "0.5", v: "0.5" }, { l: "1", v: "1" }, { l: tr("Max"), v: hype != null ? String(Math.max(0, fromWei(hype > GAS_KEEP ? hype - GAS_KEEP : 0n))) : "" }]
-    : [25, 50, 75, 100].map((p) => ({ l: `${p}%`, v: bal != null ? String(fromWei((bal * BigInt(p)) / 100n, dec)) : "" }));
+    ? [{ l: "0.1", v: "0.1", x: null as bigint | null }, { l: "0.5", v: "0.5", x: null }, { l: "1", v: "1", x: null }, (() => { const x = hype != null && hype > GAS_KEEP ? hype - GAS_KEEP : 0n; return { l: tr("Max"), v: hype != null ? trim(formatUnits(x, 18)) : "", x: hype != null ? x : null }; })()]
+    : [25, 50, 75, 100].map((p) => { const x = bal != null ? (bal * BigInt(p)) / 100n : null; return { l: `${p}%`, v: x != null ? trim(formatUnits(x, dec)) : "", x }; });
 
   async function go() {
     if (!w.signedIn || !w.signer) return w.login();
@@ -74,6 +78,7 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
       else { setBusy(tr("Selling…")); await sell(w.signer, t, inWei, min, (x) => setBusy(tr(x))); }
       setMsg({ ok: true, text: side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) }) });
       setVal("");
+      setExact(null);
       setTick((x) => x + 1);
       onDone?.();
     } catch (e) {
@@ -95,18 +100,18 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
   return (
     <div className="e-trade">
       <div className="e-bs">
-        <button type="button" className={side === "buy" ? "on buy" : ""} onClick={() => { setSide("buy"); setVal(""); }}>{tr("Buy")}</button>
-        <button type="button" className={side === "sell" ? "on sell" : ""} onClick={() => { setSide("sell"); setVal(""); }}>{tr("Sell")}</button>
+        <button type="button" className={side === "buy" ? "on buy" : ""} onClick={() => { setSide("buy"); setVal(""); setExact(null); }}>{tr("Buy")}</button>
+        <button type="button" className={side === "sell" ? "on sell" : ""} onClick={() => { setSide("sell"); setVal(""); setExact(null); }}>{tr("Sell")}</button>
       </div>
       <label className="e-amt">
         <span className="e-amt-top"><span>{tr(side === "buy" ? "You pay" : "You sell")}</span><span className="dim">{tr("Balance")} {side === "buy" ? (hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—") : bal != null ? `${amt(fromWei(bal, dec))} ${sym}` : "—"}</span></span>
         <span className="e-amt-row">
-          <input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="Amount" autoComplete="off" />
+          <input inputMode="decimal" placeholder="0" value={val} onChange={(e) => { setExact(null); setVal(e.target.value.replace(/[^0-9.,]/g, "")); }} aria-label="Amount" autoComplete="off" />
           <b>{side === "buy" ? "HYPE" : sym}</b>
         </span>
         <span className="dim num" style={{ fontSize: 12.5 }}>≈ {money(inUsd)}</span>
       </label>
-      <div className="e-quick">{quick.map((q) => <button key={q.l} type="button" onClick={() => q.v && setVal(q.v.slice(0, 18))} disabled={!q.v}>{q.l}</button>)}</div>
+      <div className="e-quick">{quick.map((q) => <button key={q.l} type="button" onClick={() => { if (!q.v) return; setVal(q.v); setExact(q.x); }} disabled={!q.v}>{q.l}</button>)}</div>
       <div className="e-recv">
         <span className="muted">{tr("You get")}</span>
         <b className="num">{estOut > 0 ? `≈ ${amt(estOut)} ${side === "buy" ? sym : "HYPE"}` : "—"}</b>
@@ -121,6 +126,9 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
     </div>
   );
 }
+
+/** Shows an exact amount without a long tail: at most 6 decimals, trailing zeros dropped (rounded down). */
+const trim = (v: string) => { const [a, b = ""] = v.split("."); const d = b.slice(0, 6).replace(/0+$/, ""); return d ? `${a}.${d}` : a; };
 
 function Trades({ t, usd }: { t: EToken; usd: number }) {
   const tr = useT();

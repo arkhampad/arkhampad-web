@@ -78,16 +78,20 @@ export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[]
       handleScale: { axisPressedMouseMove: { time: true, price: true }, mouseWheel: true, pinch: true },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
     });
+    // keep the bottom margin small so the axis never dips below zero
+    c.priceScale("right").applyOptions({ scaleMargins: { top: 0.12, bottom: 0.2 } });
     candle.current = c.addSeries(CandlestickSeries, {
       upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down, priceLineVisible: false,
       autoscaleInfoProvider: (orig: () => { priceRange: { minValue: number; maxValue: number } | null } | null) => {
         const r = orig();
         if (!r || !r.priceRange) return r;
-        const { minValue, maxValue } = r.priceRange;
+        // prices and market caps are never below zero
+        const minValue = Math.max(0, r.priceRange.minValue);
+        const maxValue = Math.max(minValue, r.priceRange.maxValue);
         const mid = (minValue + maxValue) / 2;
-        if (maxValue - minValue >= Math.abs(mid) * 0.02) return r;
+        if (maxValue - minValue >= Math.abs(mid) * 0.02) return { ...r, priceRange: { minValue, maxValue } };
         const pad = Math.abs(mid) * 0.05 || 1e-12;
-        return { ...r, priceRange: { minValue: mid - pad, maxValue: mid + pad } };
+        return { ...r, priceRange: { minValue: Math.max(0, mid - pad), maxValue: mid + pad } };
       },
     });
     vol.current = c.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
@@ -109,7 +113,7 @@ export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[]
     if (!c || !s || !v || !candles) return;
     const k = (mc ? supply : 1) * (usd || 0);
     if (!k) return;
-    s.applyOptions({ priceFormat: { type: "custom", formatter: (x: number) => fmt(x, mc), minMove: mc ? 0.01 : 1e-20 } });
+    s.applyOptions({ priceFormat: { type: "custom", formatter: (x: number) => (x < 0 ? "" : fmt(x, mc)), minMove: mc ? 0.01 : 1e-20 } });
     s.setData(candles.map((x) => ({ time: x.t as UTCTimestamp, open: x.o * k, high: x.h * k, low: x.l * k, close: x.c * k })));
     v.setData(candles.map((x) => ({ time: x.t as UTCTimestamp, value: x.v, color: x.c >= x.o ? "rgba(11,154,100,0.28)" : "rgba(224,70,75,0.28)" })));
     const key = `${frame}|${mc}`;
