@@ -124,7 +124,10 @@ export function CreatePage() {
       let j: { name?: string; ticker?: string; description?: string; picture?: string; left?: number; error?: string } = {};
       let limited = false;
       try {
-        const res = await fetch("/api/ely-idea", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: me ?? "" }) });
+        let avoid: string[] = [];
+        try { avoid = JSON.parse(localStorage.getItem("ap_ai_names") || "[]"); } catch {}
+        if (name.trim()) avoid = [name.trim(), ...avoid];
+        const res = await fetch("/api/ely-idea", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: me ?? "", avoid: avoid.slice(0, 30) }) });
         j = await res.json().catch(() => ({}));
         limited = res.status === 429;
         if (typeof j.left === "number") setLeft(j.left);
@@ -139,6 +142,10 @@ export function CreatePage() {
         j = o;
       }
       setName(j.name!);
+      try {
+        const seen: string[] = JSON.parse(localStorage.getItem("ap_ai_names") || "[]");
+        localStorage.setItem("ap_ai_names", JSON.stringify([j.name!, String(j.ticker || ""), ...seen].slice(0, 40)));
+      } catch {}
       setSym(String(j.ticker || "").toUpperCase());
       setDesc(j.description || "");
       setPicture(j.picture || "");

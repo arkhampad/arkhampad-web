@@ -10,8 +10,11 @@ function b64(bytes) {
 }
 
 export const STYLES = [
-  "glossy 3D cartoon render", "clean flat vector illustration", "bold comic book style", "soft pastel kawaii style",
-  "neon synthwave style", "retro pixel art", "thick-outline sticker style", "vibrant claymation look",
+  "Pixar-style 3D render, soft studio lighting, glossy subsurface materials",
+  "high-end 3D collectible toy render, cinematic rim light",
+  "polished 3D cartoon mascot render, octane lighting, depth of field",
+  "clean premium vector mascot logo, bold shapes, crisp outline",
+  "glossy 3D render with glowing teal neon accents, dark background",
 ];
 
 function prompt(name, description, picture) {
@@ -21,7 +24,7 @@ function prompt(name, description, picture) {
   const style = STYLES[Math.floor(Math.random() * STYLES.length)];
   // the idea's own art direction when the AI wrote one; otherwise built from the name and story
   const subject = p || `Mascot for a meme coin called "${n}". ${d}`;
-  return `${subject}. Coin logo artwork, one centered subject, ${style}, bold colors, simple background, high contrast, illustrated character not a realistic photo of a real person, no text, no letters, no watermark.`;
+  return `${subject}. Crypto coin mascot logo, square app-icon composition, one centered character, head and shoulders, ${style}, rich detail, vibrant colors, smooth dark gradient background with a soft glow behind the subject, high contrast, ultra detailed, sharp focus, 4k, illustrated character not a photo of a real person, no text, no letters, no words, no watermark.`;
 }
 
 /** Turns any model output (base64 field, bytes, stream) into a data URL, or null. */
@@ -37,7 +40,7 @@ async function toDataUrl(out) {
 }
 
 const MODELS = [
-  ["@cf/black-forest-labs/flux-1-schnell", (p) => ({ prompt: p, steps: 4 })], // flux takes no seed (a new picture every call anyway)
+  ["@cf/black-forest-labs/flux-1-schnell", (p) => ({ prompt: p, steps: 8 })], // flux takes no seed (a new picture every call anyway)
   ["@cf/bytedance/stable-diffusion-xl-lightning", (p, seed) => ({ prompt: p, width: 512, height: 512, seed })],
   ["@cf/lykon/dreamshaper-8-lcm", (p, seed) => ({ prompt: p, width: 512, height: 512, seed })],
   ["@cf/stabilityai/stable-diffusion-xl-base-1.0", (p, seed) => ({ prompt: p, width: 512, height: 512, num_steps: 12, seed })],
