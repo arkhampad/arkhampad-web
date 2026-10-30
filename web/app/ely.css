@@ -578,3 +578,10 @@ html { overscroll-behavior-y: none; }
   .e-top .e-in { padding-left: 20px; }
   .e-brand img { width: 42px; height: 42px; border-radius: 12px; }
 }
+
+/* invites */
+.e-invlink { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.e-invlink code { flex: 1 1 200px; min-width: 0; padding: 10px 12px; border-radius: 12px; background: var(--e-raise); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.e-invbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + var(--e-safe-b, 0px)); z-index: 45; width: min(560px, calc(100% - 24px)); display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 16px; background: var(--e-card); border: 1px solid var(--e-teal); box-shadow: var(--e-shadow); font-size: 13.5px; }
+.e-invbar span { flex: 1; }
+@media (min-width: 861px) { .e-invbar { bottom: 20px; } }

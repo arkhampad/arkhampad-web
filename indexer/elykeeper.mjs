@@ -7,7 +7,7 @@
 // platform's share lands here first. After every round the keeper keeps KEEPER_FLOOR HYPE (default 0.1)
 // for its own gas and forwards everything above it, plus the coin-side fees, to the real treasury
 // (KEEPER_FORWARD_TO). So the keeper never runs dry and nobody has to top it up.
-import { createPublicClient, createWalletClient, defineChain, fallback, http, parseAbi } from "viem";
+import { createPublicClient, createWalletClient, defineChain, fallback, http, parseAbi, verifyTypedData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 const ABI = parseAbi(["function collectMany(address[] list)", "function treasury() view returns (address)", "function coins(address) view returns (uint256 tokenId, address pool, address creator, uint16 creatorBps, bool coinIsToken0)"]);
@@ -16,6 +16,50 @@ const FORWARD_TO = (process.env.KEEPER_FORWARD_TO || "0xd9D46EB26c9D753135683b77
 const FLOOR = BigInt(Math.round(Number(process.env.KEEPER_FLOOR || "0.1") * 1e6)) * 10n ** 12n;
 const MIN_SEND = 10n ** 16n; // don't forward dust (0.01 HYPE)
 const EVERY_MS = 30 * 60_000;
+const REF_RATE = 0.0014; // 20% of ArkhamPad's 0.7% share, on invitees' trades in ArkhamPad coins
+const REF_MIN = 0.002; // pay once at least this much HYPE is owed
+/** The message an invitee signs (free, no gas) to confirm who invited them. */
+export const REF_TYPES = { domain: { name: "ArkhamPad", version: "1", chainId: 99901 }, types: { Invite: [{ name: "user", type: "address" }, { name: "code", type: "string" }] }, primaryType: "Invite" };
+
+/** Confirm signed invites, then pay referrers what they're owed (from this wallet, before forwarding). */
+async function referrals({ pool, pub, wallet, account, floor, log }) {
+  try {
+    const { rows: claims } = await pool.query("select c.user_addr, c.code, c.sig, k.address as referrer from ely_ref_claims c left join ely_ref_codes k on k.code = c.code where c.ok is null limit 200");
+    for (const c of claims) {
+      let ok = false;
+      try {
+        ok = !!c.referrer && c.referrer !== c.user_addr && (await verifyTypedData({ ...REF_TYPES, address: c.user_addr, message: { user: c.user_addr, code: c.code }, signature: c.sig }));
+      } catch {}
+      if (ok) await pool.query("insert into ely_refs (user_addr, referrer) values ($1, $2) on conflict do nothing", [c.user_addr, c.referrer]);
+      await pool.query("update ely_ref_claims set ok = $2 where user_addr = $1", [c.user_addr, ok]);
+    }
+    if (claims.length) log(`keeper: ${claims.length} invite claims checked`);
+    const { rows } = await pool.query(
+      `select r.referrer, coalesce(sum(t.hype), 0) * $1 as earned, coalesce(max(p.paid_hype), 0) as paid
+         from ely_refs r
+         join ely_trades t on t.trader = r.user_addr and t.at >= r.at
+         join ely_tokens k on k.address = t.token and k.ours
+         left join ely_ref_paid p on p.referrer = r.referrer
+        group by r.referrer`,
+      [REF_RATE]
+    );
+    for (const r of rows) {
+      const owed = Number(r.earned) - Number(r.paid);
+      if (owed < REF_MIN) continue;
+      const bal = await pub.getBalance({ address: account.address });
+      const value = BigInt(Math.floor(owed * 1e6)) * 10n ** 12n;
+      if (bal < value + floor) { log(`keeper: referral payout to ${r.referrer} waits (keeper low)`); continue; }
+      const h = await wallet.sendTransaction({ to: r.referrer, value });
+      const rc = await pub.waitForTransactionReceipt({ hash: h, timeout: 180_000, pollingInterval: 1000 });
+      if (rc.status === "success") {
+        await pool.query("insert into ely_ref_paid (referrer, paid_hype) values ($1, $2) on conflict (referrer) do update set paid_hype = ely_ref_paid.paid_hype + $2, updated_at = now()", [r.referrer, Number(value) / 1e18]);
+        log(`keeper: paid ${Number(value) / 1e18} HYPE referral reward to ${r.referrer}`);
+      }
+    }
+  } catch (e) {
+    log(`keeper: referrals ${String(e.shortMessage || e.message).slice(0, 140)}`);
+  }
+}
 const BATCH = 25;
 
 export async function keeperLoop({ rpc, launcher, key, pool, log }) {
@@ -64,6 +108,8 @@ export async function keeperLoop({ rpc, launcher, key, pool, log }) {
         }
       }
       since = started;
+      // invite rewards first (paid from fees that landed here), then forward the rest
+      await referrals({ pool, pub, wallet, account, floor: FLOOR, log });
       // self-funding: forward what's above the gas floor (only when fees are routed through this wallet)
       const routed = String(await pub.readContract({ address: launcher, abi: ABI, functionName: "treasury" })).toLowerCase() === account.address.toLowerCase();
       if (routed && FORWARD_TO.toLowerCase() !== account.address.toLowerCase()) {

@@ -6,6 +6,7 @@ import { encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { waitingBalances } from "./bridge";
+import { InviteCard } from "./invite";
 import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHoldings, fetchHypeUsd, fetchMyTrades, fetchTokensByAddress, money, pct, short, usePoll } from "@/lib/ely";
 import { ELY_CHAIN, ely, fromWei, hypeBalance, recentTokens, tokenBalance } from "@/lib/elytrade";
@@ -187,6 +188,8 @@ export function YouPage() {
           <p className="e-note" style={{ padding: "0 16px 14px" }}>{tr("Your 30% of the trading fees is sent to your wallet automatically every 30 minutes, in HYPE and in your coin. You can also collect it now.")}</p>
         </section>
       )}
+
+      <InviteCard me={me} />
 
       <AddMoneyHelp me={me} />
 

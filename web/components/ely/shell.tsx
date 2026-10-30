@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { WalletProvider, useWallet } from "@/components/wallet";
 import { fromWei, hypeBalance } from "@/lib/elytrade";
 import { Feel } from "./feel";
+import { InviteConfirm } from "./invite";
 import { I18nProvider, LANGS, useI18n, useT } from "@/lib/i18n";
 import { fetchTokens, fetchHypeUsd, money, pct, padColor, padOf, PADS, tokenColors, usePoll, type EToken } from "@/lib/ely";
 
@@ -158,6 +159,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   return (
     <div className="ely">
       <Feel />
+      <InviteConfirm />
       <header className="e-top">
         <div className="e-in">
           <Link href="/" className="e-brand" aria-label="ArkhamPad home">
