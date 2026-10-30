@@ -2,7 +2,27 @@
 // Elysium data for the site: every HYPE-paired token on Elysium (all launchpads), its trades and
 // holders, written by the indexer (indexer/elysium.mjs → db/025_elysium.sql). Read-only.
 import { useEffect, useRef, useState } from "react";
-import { db } from "./live";
+
+// Reads go through /api/ely-rest (cached at Cloudflare's edge and shared by every visitor), so the
+// database sends each answer once every few seconds instead of once per visitor. Falls back to the
+// database directly if that endpoint is unreachable.
+const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://yvdudswzmdziwnfurwir.supabase.co";
+const SB_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY || "sb_publishable_S49UWqqXDzSaRbjBsAfYaA_kjfxyRPB";
+async function rest<T>(path: string, ttl: number): Promise<T> {
+  try {
+    const r = await fetch(`/api/ely-rest?p=${encodeURIComponent(path)}&ttl=${ttl}`);
+    if (r.ok) return (await r.json()) as T;
+    if (r.status === 400 || r.status === 404) throw Object.assign(new Error(`rest ${r.status}`), { hard: r.status === 400 && (await r.text()).includes("column") });
+  } catch (e) {
+    if ((e as { hard?: boolean }).hard) throw e;
+  }
+  const r = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}` } });
+  if (!r.ok) throw new Error(`db ${r.status}`);
+  return (await r.json()) as T;
+}
+/** A token's picture comes from /api/ely-img (cached for days), never inside the lists. */
+const withImg = <T extends { address: string; image?: string | null }>(t: T): T => ({ ...t, image: `/api/ely-img/?a=${t.address}` });
+const TR_COLS = "id,token,tx,log_index,at,side,hype,amount,price_hype,trader";
 
 export type EToken = {
   address: string;
@@ -50,41 +70,37 @@ let mockData: Promise<{ tokens: EToken[]; trades: ETrade[]; hypeUsd: number }> |
 const mock = () => (mockData ??= fetch("/ely-mock.json").then((r) => r.json()));
 
 const WINDOW_COLS = "change5m,change1h,change6h,vol5m_hype,vol1h_hype,vol6h_hype";
-const TOKEN_COLS = "address,name,symbol,decimals,supply,uri,image,description,launchpad,venue,pool,manager,whype,token_is0,fee,tick_spacing,hooks,creator,ours,created_at,price_hype,mcap_hype,vol24_hype,buys24,sells24,change24,holders,top10_pct,last_trade_at";
+const LIST_COLS = "address,name,symbol,decimals,supply,launchpad,venue,pool,manager,whype,token_is0,fee,tick_spacing,hooks,creator,ours,created_at,price_hype,mcap_hype,vol24_hype,buys24,sells24,change24,holders,top10_pct,last_trade_at";
 
 export async function fetchTokens(): Promise<EToken[]> {
   if (MOCK) return (await mock()).tokens;
   // with the short-window columns when the database has them (db/027), without them otherwise
-  const pick = (cols: string) => db().from("ely_tokens").select(cols).not("price_hype", "is", null).order("vol24_hype", { ascending: false }).limit(2000);
-  let { data, error } = await pick(`${TOKEN_COLS},${WINDOW_COLS}`);
-  if (error) ({ data, error } = await pick(TOKEN_COLS));
-  if (error) throw error;
-  return (data ?? []) as unknown as EToken[];
+  const pick = (cols: string) => rest<EToken[]>(`ely_tokens?select=${cols}&price_hype=not.is.null&order=vol24_hype.desc&limit=2000`, 10);
+  let list: EToken[];
+  try { list = await pick(`${LIST_COLS},${WINDOW_COLS}`); } catch { list = await pick(LIST_COLS); }
+  return list.map(withImg);
 }
 export async function fetchToken(address: string): Promise<EToken | null> {
   if (MOCK) return (await mock()).tokens.find((t: EToken) => t.address === address) ?? null;
-  const { data } = await db().from("ely_tokens").select(TOKEN_COLS).eq("address", address.toLowerCase()).maybeSingle();
-  return (data as unknown as EToken) ?? null;
+  const rows = await rest<EToken[]>(`ely_tokens?select=${LIST_COLS},description&address=eq.${address.toLowerCase()}&limit=1`, 8);
+  return rows[0] ? withImg(rows[0]) : null;
 }
 export async function fetchHypeUsd(): Promise<number> {
   if (MOCK) return (await mock()).hypeUsd;
-  const { data } = await db().from("ely_meta").select("v").eq("k", "hype_usd").maybeSingle();
-  return Number(data?.v) || 0;
+  const rows = await rest<{ v: unknown }[]>("ely_meta?select=v&k=eq.hype_usd&limit=1", 30);
+  return Number(rows[0]?.v) || 0;
 }
 export async function fetchLiveTrades(limit = 30): Promise<ETrade[]> {
   if (MOCK) return (await mock()).trades.slice(0, limit);
-  const { data } = await db().from("ely_trades").select("id,token,tx,log_index,at,side,hype,amount,price_hype,trader").order("at", { ascending: false }).order("id", { ascending: false }).limit(limit);
-  return (data ?? []) as ETrade[];
+  return rest<ETrade[]>(`ely_trades?select=${TR_COLS}&order=at.desc,id.desc&limit=${limit}`, 3);
 }
 export async function fetchTrades(token: string, limit = 1500): Promise<ETrade[]> {
   if (MOCK) return (await mock()).trades.filter((t: ETrade) => t.token === token).slice(0, limit);
-  const { data } = await db().from("ely_trades").select("id,token,tx,log_index,at,side,hype,amount,price_hype,trader").eq("token", token.toLowerCase()).order("at", { ascending: false }).order("id", { ascending: false }).limit(limit);
-  return (data ?? []) as ETrade[];
+  return rest<ETrade[]>(`ely_trades?select=${TR_COLS}&token=eq.${token.toLowerCase()}&order=at.desc,id.desc&limit=${limit}`, limit > 200 ? 8 : 4);
 }
 export async function fetchHolders(token: string, limit = 25): Promise<EHolder[]> {
   if (MOCK) return ((await mock()) as unknown as { holders?: Record<string, EHolder[]> }).holders?.[token] ?? [];
-  const { data } = await db().from("ely_balances").select("holder,amount").eq("token", token.toLowerCase()).gt("amount", 0).order("amount", { ascending: false }).limit(limit);
-  return (data ?? []) as EHolder[];
+  return rest<EHolder[]>(`ely_balances?select=holder,amount&token=eq.${token.toLowerCase()}&amount=gt.0&order=amount.desc&limit=${limit}`, 20);
 }
 
 /** Re-runs `load` every `ms` while the tab is visible; keeps the last good value. */
@@ -178,24 +194,26 @@ export function tokenColors(address: string): [string, string] {
 export type EHolding = { token: string; amount: string };
 export async function fetchHoldings(holder: string): Promise<EHolding[]> {
   if (MOCK) return [];
-  const { data } = await db().from("ely_balances").select("token,amount").eq("holder", holder.toLowerCase()).gt("amount", 0).limit(500);
-  return (data ?? []) as EHolding[];
+  return rest<EHolding[]>(`ely_balances?select=token,amount&holder=eq.${holder.toLowerCase()}&amount=gt.0&limit=500`, 4);
 }
 export async function fetchTokensByAddress(addrs: string[]): Promise<EToken[]> {
   if (!addrs.length) return [];
   if (MOCK) return (await mock()).tokens.filter((t: EToken) => addrs.includes(t.address));
-  const { data } = await db().from("ely_tokens").select(TOKEN_COLS).in("address", addrs.slice(0, 300));
-  return (data ?? []) as unknown as EToken[];
+  const list = addrs.slice(0, 300).map((a) => a.toLowerCase());
+  const out: EToken[] = [];
+  for (let i = 0; i < list.length; i += 60) {
+    out.push(...(await rest<EToken[]>(`ely_tokens?select=${LIST_COLS}&address=in.(${list.slice(i, i + 60).join(",")})`, 10)));
+  }
+  return out.map(withImg);
 }
 export async function fetchCreated(creator: string): Promise<EToken[]> {
   if (MOCK) return [];
-  const { data } = await db().from("ely_tokens").select(TOKEN_COLS).eq("creator", creator.toLowerCase()).eq("ours", true).order("created_at", { ascending: false }).limit(100);
-  return (data ?? []) as unknown as EToken[];
+  const rows = await rest<EToken[]>(`ely_tokens?select=${LIST_COLS}&creator=eq.${creator.toLowerCase()}&ours=eq.true&order=created_at.desc&limit=100`, 10);
+  return rows.map(withImg);
 }
 export async function fetchMyTrades(trader: string, limit = 40): Promise<ETrade[]> {
   if (MOCK) return [];
-  const { data } = await db().from("ely_trades").select("id,token,tx,log_index,at,side,hype,amount,price_hype,trader").eq("trader", trader.toLowerCase()).order("at", { ascending: false }).limit(limit);
-  return (data ?? []) as ETrade[];
+  return rest<ETrade[]>(`ely_trades?select=${TR_COLS}&trader=eq.${trader.toLowerCase()}&order=at.desc&limit=${limit}`, 4);
 }
 
 // ---------------------------------------------------------------- network stats (Stats page)
@@ -211,6 +229,6 @@ export type EStats = {
 };
 export async function fetchStats(): Promise<EStats | null> {
   if (MOCK) return ((await mock()) as unknown as { stats?: EStats }).stats ?? null;
-  const { data } = await db().from("ely_meta").select("v").eq("k", "stats").maybeSingle();
-  return (data?.v as EStats) ?? null;
+  const rows = await rest<{ v: EStats }[]>("ely_meta?select=v&k=eq.stats&limit=1", 60);
+  return rows[0]?.v ?? null;
 }
