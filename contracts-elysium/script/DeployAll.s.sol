@@ -32,7 +32,11 @@ contract DeployAll is Script {
     }
 
     function run() external {
-        uint256 key = vm.envUint("PRIVATE_KEY");
+        // the key may be saved with or without "0x" in front
+        string memory raw = vm.envString("PRIVATE_KEY");
+        bytes memory rb = bytes(raw);
+        bool hasPrefix = rb.length > 1 && rb[0] == "0" && (rb[1] == "x" || rb[1] == "X");
+        uint256 key = vm.parseUint(hasPrefix ? raw : string.concat("0x", raw));
         address owner = vm.envAddress("OWNER");
         address treasury = vm.envAddress("TREASURY");
         uint256 startMc = vm.envUint("START_MC");
