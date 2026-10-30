@@ -420,39 +420,113 @@ function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
   );
 }
 
+/**
+ * HYPE that is back on HyperEVM (claimed withdrawals) → USDC on Base, in one tap through Relay. Optional:
+ * people who want dollars instead of HYPE.
+ */
+function CashOut({ me }: { me: Address }) {
+  const tr = useT();
+  const w = useWallet();
+  const bal = usePoll(() => hyperevm.getBalance({ address: me }), 8000, [me]);
+  const [step, setStep] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const KEEP = 3n * 10n ** 15n; // 0.003 HYPE stays for the transaction's gas
+  const amount = bal != null && bal > KEEP ? bal - KEEP : 0n;
+  const [quote, setQuote] = useState<{ out: bigint; steps: RelayStep[] } | null>(null);
+  useEffect(() => {
+    setQuote(null);
+    if (amount < 10n ** 16n) return;
+    let live = true;
+    (async () => {
+      try {
+        const res = await fetch(`${RELAY}/quote/v2`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) },
+          body: JSON.stringify({ user: me, recipient: me, originChainId: HYPEREVM, destinationChainId: BASE, originCurrency: "0x0000000000000000000000000000000000000000", destinationCurrency: USDC_BASE, amount: amount.toString(), tradeType: "EXACT_INPUT" }),
+        });
+        const j = await res.json();
+        if (live && j?.details?.currencyOut?.amount) setQuote({ out: BigInt(j.details.currencyOut.amount), steps: j.steps });
+      } catch {}
+    })();
+    return () => { live = false; };
+  }, [amount, me]);
+  async function go() {
+    if (!w.signer?.sendTx || !quote) return;
+    setMsg(null);
+    try {
+      for (const s of quote.steps) {
+        if (s.kind !== "transaction") throw new Error("unsupported");
+        for (const it of s.items) {
+          if (it.status === "complete") continue;
+          setStep("Converting to USDC…");
+          const hash = await w.signer.sendTx(it.data.chainId, { to: it.data.to, data: it.data.data, value: it.data.value ? BigInt(it.data.value) : undefined });
+          const r = await hyperevm.waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
+          if (r.status !== "success") throw new Error("failed");
+        }
+      }
+      setMsg({ ok: true, text: tr("Done. Your USDC arrives on Base in about a minute.") });
+    } catch (e) {
+      setMsg({ ok: false, text: /reject|denied|cancel/i.test(String((e as Error)?.message)) ? "Cancelled." : "Couldn't convert right now. Your HYPE is still on HyperEVM." });
+    } finally {
+      setStep(null);
+    }
+  }
+  return (
+    <div className="e-trade" style={{ borderTop: "1px solid var(--e-line)" }}>
+      <h3 className="e-ph" style={{ margin: 0 }}>{tr("Want USDC instead?")}</h3>
+      <p className="e-note" style={{ margin: 0 }}>{tr("After you claim, your HYPE is on HyperEVM. Turn it into USDC on Base in one tap, then send it to any exchange.")}</p>
+      <div className="e-recv"><span className="muted">{tr("HYPE on HyperEVM")}</span><b className="num">{fmt(bal)}</b></div>
+      <div className="e-recv"><span className="muted">{tr("You get on Base")}</span><b className="num">{quote ? `≈ ${fmt(quote.out, 6, 2)} USDC` : "—"}</b></div>
+      <button type="button" className="e-go" disabled={!!step || !quote} onClick={go}>{tr(step ?? (amount < 10n ** 16n ? "Nothing to convert yet" : "Convert to USDC"))}</button>
+      {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{tr(msg.text)}</div>}
+    </div>
+  );
+}
+
 export function BridgePage() {
   const tr = useT();
   const w = useWallet();
   const me = w.address as Address | null;
   const q = useSearchParams().get("tab");
-  const [tab, setTab] = useState<"hype" | "usdc" | "out">(q === "usdc" || q === "out" ? q : "hype");
+  const [mode, setMode] = useState<"in" | "out">(q === "out" ? "out" : "in");
+  const [via, setVia] = useState<"hype" | "usdc">(q === "usdc" ? "usdc" : "hype");
   const [tick, setTick] = useState(0);
   const elyBal = usePoll(async () => (me ? ely().getBalance({ address: me }) : null), 5000, [me, tick]);
+  const out = mode === "out";
   return (
     <main className="e-in e-page">
       <section className="e-hero">
         <div>
-          <span className="e-eyebrow">{tr("Bridge")}</span>
-          <h1>{tr("Deposit")}</h1>
-          <p>{tr("Everything on Elysium is paid in HYPE. Send HYPE from an exchange, or USDC from Base, and move it here in one tap.")}</p>
+          <span className="e-eyebrow">{tr("Wallet")}</span>
+          <h1>{tr(out ? "Withdraw" : "Deposit")}</h1>
+          <p>{tr(out ? "Move HYPE from Elysium back to HyperEVM, then send it to an exchange or turn it into USDC." : "Everything on Elysium is paid in HYPE. Send HYPE from an exchange, or USDC from Base, and move it here in one tap.")}</p>
         </div>
         {me && <div className="e-stats" style={{ gridTemplateColumns: "auto" }}><div className="e-stat"><span>{tr("Your HYPE on Elysium")}</span><b>{elyBal == null ? "—" : fromWei(elyBal).toLocaleString("en-US", { maximumFractionDigits: 4 })}</b></div></div>}
       </section>
       <div className="e-bridge">
         <section className="e-panel">
           <div className="e-bar">
-            <div className="e-scrollx">
-              <div className="e-tabs" role="tablist">
-                {([["hype", "HYPE"], ["usdc", "USDC"], ["out", "Withdraw"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={`e-tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{tr(l)}</button>)}
-              </div>
+            <div className="e-tabs e-mode" role="tablist">
+              {([["in", "Deposit"], ["out", "Withdraw"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={mode === k} className={`e-tab ${mode === k ? "on" : ""}`} onClick={() => setMode(k)}>{tr(l)}</button>)}
             </div>
+            {!out && (
+              <div className="e-via" role="group" aria-label={tr("Pay with")}>
+                <span className="dim">{tr("Pay with")}</span>
+                {([["hype", "HYPE"], ["usdc", "USDC (Base)"]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={via === k} className={via === k ? "on" : ""} onClick={() => setVia(k)}>{tr(l)}</button>)}
+              </div>
+            )}
           </div>
           {!me ? (
             <div className="e-trade">
               <p className="e-note" style={{ fontSize: 15 }}>{tr("Log in with email, Google or a wallet to get your Elysium address.")}</p>
               <button type="button" className="e-go" onClick={w.login}>{tr("Log in")}</button>
             </div>
-          ) : tab === "hype" ? <HypeIn me={me} onSent={() => setTick((x) => x + 1)} /> : tab === "usdc" ? <UsdcIn me={me} onSent={() => setTick((x) => x + 1)} /> : <Withdraw me={me} onSent={() => setTick((x) => x + 1)} />}
+          ) : out ? (
+            <>
+              <Withdraw me={me} onSent={() => setTick((x) => x + 1)} />
+              <CashOut me={me} />
+            </>
+          ) : via === "hype" ? <HypeIn me={me} onSent={() => setTick((x) => x + 1)} /> : <UsdcIn me={me} onSent={() => setTick((x) => x + 1)} />}
         </section>
         <aside className="e-panel e-bside">
           <h3 className="e-ph">{tr("Good to know")}</h3>

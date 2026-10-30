@@ -559,3 +559,22 @@ a.e-row:hover { background: var(--e-card2); }
 .e-new { flex: none; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; padding: 3px 7px; border-radius: 999px; background: var(--e-tealfill); color: var(--e-tealink); }
 .e-board-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--e-teal); margin-right: 8px; vertical-align: middle; box-shadow: 0 0 0 4px var(--e-glow); }
 .ely .e-board-cta { font-size: 13px; font-weight: 700; color: var(--e-teal); }
+
+/* Wallet page: Deposit | Withdraw, then "pay with" */
+.e-tabs.e-mode { width: 100%; display: flex; }
+.e-tabs.e-mode .e-tab { flex: 1; height: 42px; font-size: 15px; }
+.e-via { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.e-via button { height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--e-line2); background: var(--e-card); color: var(--e-muted); font-weight: 700; font-size: 13px; cursor: pointer; }
+.e-via button.on { border-color: var(--e-teal); color: var(--e-text); background: var(--e-glow); }
+
+/* account button: balance + plus, opens You */
+.e-acctbtn { gap: 8px; padding: 0 6px 0 14px; }
+.e-acctbtn i { font-style: normal; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--e-tealfill); color: var(--e-tealink); font-weight: 900; font-size: 17px; line-height: 1; }
+/* pull to refresh */
+html { overscroll-behavior-y: none; }
+.e-ptr { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 4px); z-index: 80; width: 40px; height: 40px; border-radius: 50%; background: var(--e-card); border: 1px solid var(--e-line2); box-shadow: var(--e-shadow); display: grid; place-items: center; color: var(--e-teal); font-weight: 900; }
+.e-ptr .e-spin { width: 18px; height: 18px; }
+@media (max-width: 860px) {
+  .e-top .e-in { padding-left: 20px; }
+  .e-brand img { width: 42px; height: 42px; border-radius: 12px; }
+}

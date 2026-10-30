@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { WalletProvider, useWallet } from "@/components/wallet";
+import { fromWei, hypeBalance } from "@/lib/elytrade";
+import { Feel } from "./feel";
 import { I18nProvider, LANGS, useI18n, useT } from "@/lib/i18n";
 import { fetchTokens, fetchHypeUsd, money, pct, padColor, padOf, PADS, tokenColors, usePoll, type EToken } from "@/lib/ely";
 
@@ -87,8 +89,18 @@ function LangButton() {
 function Account() {
   const w = useWallet();
   const tr = useT();
+  const me = w.address as `0x${string}` | null;
+  const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
+  const hype = usePoll(async () => (me ? hypeBalance(me) : null), 15_000, [me]);
   if (!w.signedIn) return <button type="button" className="e-btn pri" onClick={w.login}>{tr("Log in")}</button>;
-  return <Link href="/you/" className="e-btn num">{w.address?.slice(0, 5)}…{w.address?.slice(-3)}</Link>;
+  // your money at a glance; tap to open You (balance, coins, deposit, withdraw)
+  const bal = hype != null && usd ? money(fromWei(hype) * usd) : null;
+  return (
+    <Link href="/you/" className="e-btn e-acctbtn num" title={w.address ?? ""}>
+      <span>{bal ?? `${w.address?.slice(0, 5)}…${w.address?.slice(-3)}`}</span>
+      <i aria-hidden="true">+</i>
+    </Link>
+  );
 }
 
 function Ticker() {
@@ -145,6 +157,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const on = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   return (
     <div className="ely">
+      <Feel />
       <header className="e-top">
         <div className="e-in">
           <Link href="/" className="e-brand" aria-label="ArkhamPad home">
