@@ -69,12 +69,22 @@ export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[]
     const p = palette(box.current);
     const c = createChart(box.current, {
       autoSize: true,
-      localization: { locale: "en-US" },
+      localization: {
+        locale: "en-US",
+        // show the viewer's own clock, not UTC
+        timeFormatter: (t: number) => new Date(t * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+      },
       layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: p.text, fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontSize: 11, attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: p.line } },
       crosshair: { mode: CrosshairMode.Magnet, vertLine: { labelBackgroundColor: p.label }, horzLine: { labelBackgroundColor: p.label } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.1, bottom: 0.22 } },
-      timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false, rightOffset: 4, barSpacing: 9 },
+      timeScale: {
+        borderVisible: false, timeVisible: true, secondsVisible: false, rightOffset: 4, barSpacing: 9,
+        tickMarkFormatter: (t: number, kind: number) => {
+          const d = new Date(t * 1000);
+          return kind >= 3 ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString([], { month: "short", day: "numeric" });
+        },
+      },
       handleScale: { axisPressedMouseMove: { time: true, price: true }, mouseWheel: true, pinch: true },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
     });
@@ -97,6 +107,35 @@ export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[]
     vol.current = c.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
     c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 }, visible: false });
     chart.current = c;
+    // one-finger drag on the right axis squeezes / stretches the price range (like on mobile trading apps)
+    const el = box.current;
+    let y0 = -1;
+    let r0: { from: number; to: number } | null = null;
+    let lastTap = 0;
+    const axisW = () => c.priceScale("right").width() || 60;
+    const onAxis = (x: number) => x > el.getBoundingClientRect().right - axisW() - 6;
+    const ts = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || !onAxis(e.touches[0].clientX)) return;
+      const now = Date.now();
+      if (now - lastTap < 300) { c.priceScale("right").setAutoScale(true); lastTap = 0; return; }
+      lastTap = now;
+      y0 = e.touches[0].clientY;
+      r0 = c.priceScale("right").getVisibleRange();
+    };
+    const tm = (e: TouchEvent) => {
+      if (y0 < 0 || !r0) return;
+      e.preventDefault();
+      const dy = e.touches[0].clientY - y0; // down = positive
+      const f = Math.exp(dy / 180);
+      const mid = (r0.from + r0.to) / 2;
+      const half = ((r0.to - r0.from) / 2) * f;
+      c.priceScale("right").setAutoScale(false);
+      c.priceScale("right").setVisibleRange({ from: Math.max(0, mid - half), to: mid + half });
+    };
+    const te = () => { y0 = -1; r0 = null; };
+    el.addEventListener("touchstart", ts, { passive: true });
+    el.addEventListener("touchmove", tm, { passive: false });
+    el.addEventListener("touchend", te, { passive: true });
     const mo = new MutationObserver(() => {
       requestAnimationFrame(() => {
         const q = palette(box.current);
@@ -105,7 +144,7 @@ export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[]
       });
     });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => { mo.disconnect(); c.remove(); chart.current = null; candle.current = null; vol.current = null; fitKey.current = ""; };
+    return () => { el.removeEventListener("touchstart", ts); el.removeEventListener("touchmove", tm); el.removeEventListener("touchend", te); mo.disconnect(); c.remove(); chart.current = null; candle.current = null; vol.current = null; fitKey.current = ""; };
   }, []);
 
   useEffect(() => {
