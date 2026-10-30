@@ -20,7 +20,7 @@ import { makeFees } from "./fees.mjs";
 import { CLANKER_CHAINS, TOKEN_CREATED, clankerOf, lockersOf, mcAtTick } from "./clanker.mjs";
 import { makeElysium } from "./elysium.mjs";
 import { makePgStore } from "./elysium-pg.mjs";
-const relayer = process.env.ONCE ? null : makeRelayer();
+const relayer = process.env.ONCE || process.env.ELY_ONLY === "1" ? null : makeRelayer();
 // ETH / BNB prices in dollars, for coins paired with the chain's own coin (Clanker launches)
 const prices = makeFees({ log: (...a) => console.log(new Date().toISOString(), ...a) });
 /** The wallet that launches ArkhamPad's Clanker coins (the relayer). */
@@ -29,7 +29,10 @@ const CLANKER_SUPPLY = 100_000_000_000;
 
 const POLL_DEFAULT = process.env.POLL_SECONDS ? Number(process.env.POLL_SECONDS) * 1000 : null;
 const RANGE_DEFAULT = process.env.BLOCK_RANGE ? BigInt(process.env.BLOCK_RANGE) : null;
-const CHAINS = JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./chains.json", import.meta.url), "utf8"));
+// ELY_ONLY=1: Elysium only. The old Base / Robinhood / BNB jobs (chain indexing, markets, quality checks,
+// dex watch, fee sweeps) stay off, which saves most of the Railway usage.
+const ELY_ONLY = process.env.ELY_ONLY === "1";
+const CHAINS = ELY_ONLY ? [] : JSON.parse(fs.readFileSync(process.env.CHAINS_FILE || new URL("./chains.json", import.meta.url), "utf8"));
 const SUPPLY = 1_000_000_000; // every coin has a fixed 1B supply
 
 const EV = {
@@ -414,9 +417,9 @@ async function loop(c) {
 
 if (!process.env.DATABASE_URL) { console.error("DATABASE_URL is required"); process.exit(1); }
 if (process.env.PORT) http.createServer(httpHandler(relayer, status)).listen(process.env.PORT);
-if (!process.env.ONCE) { startMarkets(pool); startQuality(pool, CHAINS.map((c) => ({ chainId: c.chainId, rpc: (process.env[c.rpcEnv] || "").trim(), usdc: c.usdc, usdcDec: c.usdDecimals ?? 6, route: c.clankerRoute ?? null }))); startIndexNow(); startDexWatch(pool, { log, notifier }); }
+if (!process.env.ONCE && !ELY_ONLY) { startMarkets(pool); startQuality(pool, CHAINS.map((c) => ({ chainId: c.chainId, rpc: (process.env[c.rpcEnv] || "").trim(), usdc: c.usdc, usdcDec: c.usdDecimals ?? 6, route: c.clankerRoute ?? null }))); startIndexNow(); startDexWatch(pool, { log, notifier }); }
 // platform fees into the vault, creator payouts, pool fees and referral rewards: every 30 minutes
-if (relayer) {
+if (relayer && !ELY_ONLY) {
   const sweep = () => relayer.sweepFees().catch((e) => console.log(new Date().toISOString(), `fee sweep: ${e.message}`));
   setTimeout(sweep, 90_000);
   setInterval(sweep, Number(process.env.SWEEP_MINUTES || 30) * 60_000);
