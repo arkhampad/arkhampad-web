@@ -103,8 +103,8 @@ function HypeIn({ me, onSent }: { me: Address; onSent: () => void }) {
         </div>
       ) : (
         <div className="e-waiting">
-          <span className="e-spin" />
-          <span>{bal === undefined ? tr("Checking your HyperEVM balance…") : <>{tr("Nothing on HyperEVM yet")} (<b className="num">{fmt(bal)} HYPE</b>). {tr("As soon as your HYPE arrives, the button below turns on. No need to refresh.")}</>}</span>
+          {bal === undefined ? <span className="e-spin" /> : <span className="e-idle" aria-hidden="true">i</span>}
+          <span>{bal === undefined ? tr("Checking your HyperEVM balance…") : <>{tr("Your HyperEVM balance")}: <b className="num">{fmt(bal)} HYPE</b>. {tr("Send HYPE to the address above. The button turns on by itself when it arrives.")}</>}</span>
         </div>
       )}
       {custom && (

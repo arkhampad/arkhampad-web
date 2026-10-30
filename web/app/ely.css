@@ -447,6 +447,7 @@ a.e-row:hover { background: var(--e-card2); }
 .e-stepn { width: 28px; height: 28px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 13.5px; color: var(--e-tealink); background: var(--e-tealfill); }
 .e-arrived { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--e-upbg); color: var(--e-text); font-size: 14.5px; }
 .e-waiting { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--e-raise); color: var(--e-muted); font-size: 13.5px; }
+.e-idle { width: 18px; height: 18px; flex: none; border-radius: 50%; display: grid; place-items: center; font: italic 700 11px/1 Georgia, serif; color: var(--e-muted); border: 1.5px solid var(--e-line2); }
 .e-spin { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--e-line2); border-top-color: var(--e-teal); animation: eSpin .9s linear infinite; }
 .e-link-btn { border: 0; background: none; color: var(--e-teal); font-weight: 700; font-size: 13.5px; cursor: pointer; padding: 0; align-self: center; }
 
