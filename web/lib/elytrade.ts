@@ -227,7 +227,7 @@ export async function chainToken(address: string): Promise<EToken | null> {
     const price = tokenIs0 ? p : p > 0 ? 1 / p : 0;
     const now = new Date().toISOString();
     return {
-      address: a, name, symbol, decimals: 18, supply: supply.toString(), image: `/api/ely-img/?a=${a}`, description: null,
+      address: a, name, symbol, decimals: 18, supply: supply.toString(), image: `/api/ely-img?a=${a}`, description: null,
       launchpad: "ArkhamPad", venue: "v3", pool: pool.toLowerCase(), manager: null, whype: (wrapped as string).toLowerCase(), token_is0: tokenIs0,
       fee: 10000, tick_spacing: 200, hooks: null, creator: (creator as string).toLowerCase(), ours: true, created_at: now,
       price_hype: price, mcap_hype: price * (Number(supply) / 1e18), vol24_hype: 0, buys24: 0, sells24: 0, change24: 0,

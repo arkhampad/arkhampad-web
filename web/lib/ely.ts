@@ -21,7 +21,7 @@ async function rest<T>(path: string, ttl: number): Promise<T> {
   return (await r.json()) as T;
 }
 /** A token's picture comes from /api/ely-img (cached for days), never inside the lists. */
-const withImg = <T extends { address: string; image?: string | null }>(t: T): T => ({ ...t, image: `/api/ely-img/?a=${t.address}` });
+const withImg = <T extends { address: string; image?: string | null }>(t: T): T => ({ ...t, image: `/api/ely-img?a=${t.address}` });
 const TR_COLS = "id,token,tx,log_index,at,side,hype,amount,price_hype,trader";
 
 export type EToken = {

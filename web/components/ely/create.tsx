@@ -19,27 +19,48 @@ const ABI = parseAbi([
   "event Launched(address indexed coin, address indexed creator, address pool, uint256 tokenId, string name, string symbol, string uri, uint256 startMc, uint256 firstBuyIn, uint256 firstBuyOut)",
 ]);
 
-function shrink(src: string, size = 192): Promise<string> {
+/**
+ * The picture travels inside the coin's own metadata on-chain, so it must stay small: square, and
+ * re-encoded until it is under ~12 KB (phones without WebP get JPEG, which is bigger, so we step down).
+ */
+function shrink(src: string, size = 160): Promise<string> {
   return new Promise((res, rej) => {
     const img = new Image();
     img.onload = () => {
-      const cv = document.createElement("canvas");
-      cv.width = size;
-      cv.height = size;
-      const ctx = cv.getContext("2d");
-      if (!ctx) return rej(new Error("canvas"));
       const side = Math.min(img.width, img.height);
-      ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
-      let out = cv.toDataURL("image/webp", 0.82);
-      if (!out.startsWith("data:image/webp")) out = cv.toDataURL("image/jpeg", 0.85);
-      res(out);
+      const enc = (px: number, q: number) => {
+        const cv = document.createElement("canvas");
+        cv.width = px;
+        cv.height = px;
+        const ctx = cv.getContext("2d");
+        if (!ctx) throw new Error("canvas");
+        ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, px, px);
+        const w = cv.toDataURL("image/webp", q);
+        return w.startsWith("data:image/webp") ? w : cv.toDataURL("image/jpeg", q);
+      };
+      try {
+        let out = "";
+        for (const [px, q] of [[size, 0.8], [size, 0.65], [128, 0.65], [128, 0.5], [96, 0.55], [96, 0.4]] as const) {
+          out = enc(px, q);
+          if (out.length <= 16_000) break;
+        }
+        res(out);
+      } catch (e) {
+        rej(e);
+      }
     };
     img.onerror = () => rej(new Error("image"));
     img.src = src;
   });
 }
 
-const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+/** base64 of UTF-8 text, in chunks (spreading a long byte array into one call breaks on iPhones). */
+const b64 = (s: string) => {
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(bin);
+};
 
 export function CreatePage() {
   const tr = useT();

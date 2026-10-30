@@ -9,6 +9,11 @@ import { makeElysium } from "./elysium.mjs";
 import { makeMemStore } from "./elymem.mjs";
 import { checkRouter } from "./routercheck.mjs";
 
+if (process.argv[2] === "images") {
+  // picture discovery for other launchpads (imgprobe.mjs), then stop
+  await import("./imgprobe.mjs");
+  process.exit(0);
+}
 const RPC = process.argv[2] || process.env.ELYSIUM_RPC || "https://rpc-live.boxa.club";
 const store = makeMemStore();
 const ely = makeElysium({ rpc: RPC, step: 2000, log: console.log, progress: true }, store);

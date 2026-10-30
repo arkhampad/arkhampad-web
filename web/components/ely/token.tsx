@@ -10,6 +10,8 @@ import { TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
 import { EChart } from "./chart";
 import { Burst, Confetti } from "@/components/celebrate";
+import { ShareButton } from "./share";
+import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
 import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
 import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, quote, sell, toWei, tokenBalance, TradeFail, chainToken } from "@/lib/elytrade";
 
@@ -180,11 +182,19 @@ function Holders({ t }: { t: EToken }) {
   );
 }
 
-function About({ t }: { t: EToken }) {
+function About({ t, links }: { t: EToken; links: CoinLinks }) {
   const tr = useT();
+  const desc = t.description || links.description;
   return (
     <div className="e-about">
-      {t.description && <p>{t.description}</p>}
+      {desc && <p>{desc}</p>}
+      {(links.x || links.telegram || links.website) && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 0 12px" }}>
+          {links.x && <a className="e-btn" href={links.x} target="_blank" rel="noopener noreferrer nofollow">X {links.xHandle ?? ""}</a>}
+          {links.telegram && <a className="e-btn" href={links.telegram} target="_blank" rel="noopener noreferrer nofollow">Telegram</a>}
+          {links.website && <a className="e-btn" href={links.website} target="_blank" rel="noopener noreferrer nofollow">{tr("Website")}</a>}
+        </div>
+      )}
       <dl>
         <div><dt>{tr("Contract")}</dt><dd><Copy text={t.address} /></dd></div>
         <div><dt>{tr("Creator")}</dt><dd>{t.creator ? <Copy text={t.creator} /> : "—"}</dd></div>
@@ -208,6 +218,7 @@ export function TokenPage() {
   const [tab, setTab] = useState<"trades" | "holders" | "about">("trades");
   const [sheet, setSheet] = useState<"buy" | "sell" | null>(null);
   const [fresh, setFresh] = useState(params.get("new") === "1");
+  const links = useCoinLinks(t ?? null);
 
   useEffect(() => { if (t) document.title = `${t.symbol} · ${money((t.mcap_hype ?? 0) * usd)} · ArkhamPad`; }, [t, usd]);
   useEffect(() => {
@@ -249,8 +260,6 @@ export function TokenPage() {
     );
   }
 
-  const shareText = `$${t.symbol} on Elysium, ${money((t.mcap_hype ?? 0) * usd)} market cap. Trading it on @Arkhampad`;
-  const shareUrl = `https://arkhampad.com/t/?a=${t.address}`;
 
   return (
     <main className="e-in e-page e-tokpage">
@@ -270,9 +279,7 @@ export function TokenPage() {
               <b className="num">{money((t.mcap_hype ?? 0) * usd)}</b>
               <span className={`e-pill ${upDown(t.change24)}`}>{pct(t.change24)} {tr("24h")}</span>
             </div>
-            <a className="e-btn e-icon e-share" href={`https://x.com/intent/post?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer" aria-label="Share on X" title="Share on X">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M17.8 3h3.1l-6.8 7.7L22 21h-6.2l-4.9-6.3L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z" /></svg>
-            </a>
+            <ShareButton t={t} links={links} mcap={money((t.mcap_hype ?? 0) * usd)} />
           </section>
 
           <section className="e-tstats">
@@ -289,7 +296,7 @@ export function TokenPage() {
             </div>
             {tab === "trades" && <Trades t={t} usd={usd} />}
             {tab === "holders" && <Holders t={t} />}
-            {tab === "about" && <About t={t} />}
+            {tab === "about" && <About t={t} links={links} />}
           </section>
         </div>
 
@@ -317,9 +324,9 @@ export function TokenPage() {
               <code className="num">{t.address}</code>
               <Copy text={t.address} label={tr("Copy CA")} />
             </div>
-            <a className="e-go" style={{ display: "grid", placeItems: "center", textDecoration: "none" }} href={`https://x.com/intent/post?text=${encodeURIComponent(`I just launched $${t.symbol} on Elysium. Liquidity locked forever, trading live now on @Arkhampad\n\nCA: ${t.address}`)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer">{tr("Share on X")}</a>
+            <ShareButton t={t} links={links} mcap={money((t.mcap_hype ?? 0) * usd)} fresh big />
             <div className="e-cta-btns" style={{ justifyContent: "center" }}>
-              <Copy text={`$${t.symbol} is live on Elysium\nCA: ${t.address}\n${shareUrl}`} label={tr("Copy for Telegram")} />
+              <Copy text={telegramText(t, links)} label={tr("Copy for Telegram")} />
               <button type="button" className="e-copy" onClick={() => { setFresh(false); history.replaceState(null, "", `/t/?a=${t.address}`); }}>{tr("Go to my coin")}</button>
             </div>
           </div>
