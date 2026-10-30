@@ -6,6 +6,7 @@ import type { Address, Hex } from "viem";
 import { defineChain } from "viem";
 import { base, baseSepolia, bsc } from "viem/chains";
 import { LIVE, robinhoodTestnet, type Signer, type TypedData } from "@/lib/chain";
+import { ELY_RPC_LIST } from "@/lib/elytrade";
 
 // Mainnets the embedded wallet must know, or it can't send a transaction there.
 const robinhood = defineChain({
@@ -15,7 +16,7 @@ const robinhood = defineChain({
 // Elysium (Kinetiq's chain on Hyperliquid) and HyperEVM, where HYPE is bridged from.
 export const elysium = defineChain({
   id: 99901, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
-  rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_ELY_RPC || "https://rpc-live.boxa.club"] } },
+  rpcUrls: { default: { http: ELY_RPC_LIST } },
 });
 const hyperevm = defineChain({
   id: 999, name: "HyperEVM", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },

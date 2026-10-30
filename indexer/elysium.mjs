@@ -62,8 +62,11 @@ function decodeString(res) {
   }
 }
 
+export const OWN_RPC = "https://arkhampad.com/api/ely-rpc";
+
 export function makeRpc(urls, log = console.log) {
-  const list = String(urls).split(",").map((u) => u.trim()).filter(Boolean);
+  // our own Cloudflare doorway is always the last backup, so one node blocking us never stops the indexer
+  const list = [...new Set([...String(urls).split(",").map((u) => u.trim()).filter(Boolean), OWN_RPC])];
   let id = 0;
   let at = 0;
   return async function rpc(method, params = []) {
@@ -71,7 +74,7 @@ export function makeRpc(urls, log = console.log) {
     for (let i = 0; i < list.length * 3; i++) {
       const url = list[(at + i) % list.length];
       try {
-        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(20_000) });
+        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(8_000) });
         const j = await r.json();
         if (j.error) throw new Error(`${method}: ${j.error.message}`);
         at = (at + i) % list.length;
@@ -79,7 +82,7 @@ export function makeRpc(urls, log = console.log) {
       } catch (e) {
         last = e;
         if (/range|too many|limit/i.test(e.message) && method === "eth_getLogs") throw e;
-        await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+        if (i % list.length === list.length - 1) await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
       }
     }
     throw last;

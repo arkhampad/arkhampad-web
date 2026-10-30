@@ -9,7 +9,7 @@ import { createPublicClient, encodeFunctionData, fallback, formatUnits, http, pa
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { usePoll } from "@/lib/ely";
-import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC, balanceChanged, ely, fromWei, toWei } from "@/lib/elytrade";
+import { ELY_CHAIN as ELY_CHAIN_ID, balanceChanged, ely, elyRpc, fromWei, toWei } from "@/lib/elytrade";
 
 const HYPEREVM = 999;
 const HYPEREVM_RPC = "https://rpc.hyperliquid.xyz/evm";
@@ -261,8 +261,7 @@ async function confirmedCount(): Promise<bigint> {
     const last = logs[logs.length - 1] as unknown as { topics: Hex[] } | undefined;
     if (last) {
       const blockHash = last.topics[2];
-      const res = await fetch(ELY_RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBlockByHash", params: [blockHash, false] }) });
-      const blk = ((await res.json()) as { result?: { sendCount?: Hex } }).result;
+      const blk = await elyRpc<{ sendCount?: Hex } | null>("eth_getBlockByHash", [blockHash, false]);
       return blk?.sendCount ? BigInt(blk.sendCount) : 0n;
     }
   }

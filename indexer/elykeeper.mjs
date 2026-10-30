@@ -2,7 +2,7 @@
 // since the last round (launcher.collectMany). The launcher pays each coin's creator 30% and the
 // ArkhamPad treasury 70%, in native HYPE and in the coin. Anyone may call collect; this wallet only
 // pays the gas. Runs when KEEPER_KEY (a private key with a little HYPE on Elysium) is set on Railway.
-import { createPublicClient, createWalletClient, defineChain, http, parseAbi } from "viem";
+import { createPublicClient, createWalletClient, defineChain, fallback, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 const ABI = parseAbi(["function collectMany(address[] list)"]);
@@ -10,10 +10,12 @@ const EVERY_MS = 30 * 60_000;
 const BATCH = 25;
 
 export async function keeperLoop({ rpc, launcher, key, pool, log }) {
-  const chain = defineChain({ id: 99901, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
+  const urls = [...new Set([...String(rpc).split(",").map((u) => u.trim()).filter(Boolean), "https://arkhampad.com/api/ely-rpc"])];
+  const transport = () => fallback(urls.map((u) => http(u, { timeout: 10_000, retryCount: 1 })));
+  const chain = defineChain({ id: 99901, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: urls } } });
   const account = privateKeyToAccount(key.startsWith("0x") ? key : `0x${key}`);
-  const pub = createPublicClient({ chain, transport: http(rpc) });
-  const wallet = createWalletClient({ chain, account, transport: http(rpc) });
+  const pub = createPublicClient({ chain, transport: transport() });
+  const wallet = createWalletClient({ chain, account, transport: transport() });
   log(`keeper: collecting creator fees every 30 min from ${account.address}`);
   let since = new Date(Date.now() - 24 * 3600_000);
   for (;;) {

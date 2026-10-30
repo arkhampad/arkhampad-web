@@ -2,12 +2,39 @@
 // Trading any Elysium token from the user's own wallet, through the ArkhamPad router
 // (contracts-elysium/src/ArkhamRouter.sol). One router works for every launchpad: Uniswap v3 style
 // pools (called directly) and v4 style pools (through their pool manager). Pay and receive HYPE.
-import { createPublicClient, decodeErrorResult, encodeFunctionData, http, parseAbi, type Address, type Hex } from "viem";
+import { createPublicClient, decodeErrorResult, encodeFunctionData, fallback, http, parseAbi, type Address, type Hex } from "viem";
 import type { Signer } from "./chain";
 import type { EToken } from "./ely";
 
 export const ELY_CHAIN = 99901;
-export const ELY_RPC = process.env.NEXT_PUBLIC_ELY_RPC || "https://rpc-live.boxa.club";
+/**
+ * Elysium nodes, fastest first, re-ranked every minute; when one is slow or refuses us the next one
+ * answers within a few seconds. Last in line is our own doorway (/api/ely-rpc on Cloudflare), which
+ * has its own list of nodes. Change the list with NEXT_PUBLIC_ELY_RPCS (comma-separated).
+ */
+export const ELY_RPCS = (process.env.NEXT_PUBLIC_ELY_RPCS || process.env.NEXT_PUBLIC_ELY_RPC || "https://rpc-live.boxa.club,https://rpc.ronspad.fun").split(",").map((u) => u.trim()).filter(Boolean);
+const OWN_RPC = "https://arkhampad.com/api/ely-rpc";
+export const ELY_RPC_LIST = [...ELY_RPCS, OWN_RPC];
+export const ELY_RPC = ELY_RPCS[0];
+
+let rpcAt = 0;
+/** One raw JSON-RPC call with the same fail-over (for calls viem has no helper for). */
+export async function elyRpc<T = unknown>(method: string, params: unknown[]): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < ELY_RPC_LIST.length; i++) {
+    const url = ELY_RPC_LIST[(rpcAt + i) % ELY_RPC_LIST.length];
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(5000) });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error.message);
+      rpcAt = (rpcAt + i) % ELY_RPC_LIST.length;
+      return j.result as T;
+    } catch (e) {
+      last = e;
+    }
+  }
+  throw last;
+}
 /** Set once the router is deployed (Cloudflare env NEXT_PUBLIC_ELY_ROUTER). */
 export const ROUTER = (process.env.NEXT_PUBLIC_ELY_ROUTER || "") as Address | "";
 export const ELY_EXPLORER = process.env.NEXT_PUBLIC_ELY_EXPLORER || "";
@@ -15,8 +42,8 @@ export const ELY_EXPLORER = process.env.NEXT_PUBLIC_ELY_EXPLORER || "";
 let client: ReturnType<typeof createPublicClient> | null = null;
 export const ely = () =>
   (client ??= createPublicClient({
-    chain: { id: ELY_CHAIN, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [ELY_RPC] } } },
-    transport: http(ELY_RPC, { batch: true, retryCount: 2 }),
+    chain: { id: ELY_CHAIN, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: ELY_RPC_LIST } } },
+    transport: fallback(ELY_RPC_LIST.map((u) => http(u, { batch: { wait: 10 }, retryCount: 1, timeout: 5000 })), { rank: { interval: 60_000, sampleCount: 5, timeout: 2500 }, retryCount: 1 }),
   }));
 
 const POOL = "(uint8 venue,address target,address token,address hype,bool tokenIs0,uint24 fee,int24 tickSpacing,address hooks)";
