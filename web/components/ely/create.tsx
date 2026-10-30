@@ -9,7 +9,7 @@ import { decodeEventLog, encodeFunctionData, parseAbi, type Address, type Hex } 
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { fetchHypeUsd, money, usePoll } from "@/lib/ely";
-import { ELY_CHAIN, ely, fromWei, hypeBalance, rememberToken, toWei } from "@/lib/elytrade";
+import { ELY_CHAIN, NONCE_HELP, ely, fromWei, hypeBalance, rememberToken, toWei } from "@/lib/elytrade";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
 const START_MC = 60; // HYPE, whole supply
@@ -198,6 +198,7 @@ export function CreatePage() {
       // keep the real reason in the console and on screen (short), so a failed launch can be diagnosed
       console.error("launch failed", e);
       const why = String((e as { shortMessage?: string })?.shortMessage || m).split("\n")[0].slice(0, 140);
+      if (/nonce/i.test(m)) { setMsg(NONCE_HELP); return; }
       if (!/insufficient|reject|denied|cancel/i.test(m)) { setMsg(`Launch failed: ${why}`); return; }
       setMsg(/insufficient/i.test(m) ? (buyWei > 0n ? "Not enough HYPE for the first buy and gas." : "You need a little HYPE on Elysium for gas.") : /reject|denied|cancel/i.test(m) ? "Cancelled." : "Launch failed. Nothing was spent except gas. Please try again.");
     } finally {

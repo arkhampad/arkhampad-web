@@ -118,8 +118,11 @@ function findRevertData(e: unknown): Hex | null {
 }
 
 export class TradeFail extends Error {}
+/** MetaMask keeps its own transaction counter; when a node was a block behind it can get stuck one behind. */
+export const NONCE_HELP = "Your wallet's transaction counter is out of date. In MetaMask: Settings → Advanced → Clear activity tab data, then refresh and try again. Your funds are not affected.";
 const nice = (e: unknown) => {
   const m = String((e as Error)?.message ?? e);
+  if (/nonce/i.test(m)) return NONCE_HELP;
   if (/insufficient funds/i.test(m)) return "Not enough HYPE for this trade and gas.";
   if (/rejected|denied|cancel/i.test(m)) return "Cancelled.";
   if (/Slippage|TooLittle|minOut/i.test(m)) return "Price moved. Try again or raise slippage.";
