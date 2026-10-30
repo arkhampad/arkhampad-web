@@ -165,7 +165,7 @@ export function CreatePage() {
       r.push(`/t/?a=${coin.toLowerCase()}&new=1`);
     } catch (e) {
       const m = String((e as Error)?.message ?? "");
-      setMsg(/insufficient/i.test(m) ? "Not enough HYPE for the first buy and gas." : /reject|denied|cancel/i.test(m) ? "Cancelled." : "Launch failed. Nothing was spent except gas. Please try again.");
+      setMsg(/insufficient/i.test(m) ? (buyWei > 0n ? "Not enough HYPE for the first buy and gas." : "You need a little HYPE on Elysium for gas.") : /reject|denied|cancel/i.test(m) ? "Cancelled." : "Launch failed. Nothing was spent except gas. Please try again.");
     } finally {
       setBusy(null);
     }
@@ -177,6 +177,8 @@ export function CreatePage() {
   else if (!LAUNCHER) { label = "Launching opens soon"; disabled = true; }
   else if (!ok) { label = "Add a name and ticker"; disabled = true; }
   else if (hype != null && buyWei > 0n && buyWei > hype) { label = "Not enough HYPE"; disabled = true; }
+  // no HYPE at all: launching still costs a little gas, so point to Add money instead of failing
+  else if (hype === 0n) { label = "Add HYPE for gas first"; disabled = true; }
   if (busy) label = busy;
 
   return (
