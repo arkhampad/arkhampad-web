@@ -97,10 +97,13 @@ export function makeRpc(urls, log = console.log) {
     if (Date.now() - checked > 60_000) await pickMain().catch(() => {});
     // after a fail-over, go back to the main node every 2 minutes
     if (at !== main && Date.now() - since > 120_000) { at = main; since = Date.now(); }
-    for (let i = 0; i < list.length * 3; i++) {
+    // a log read gets one round over the nodes (the caller retries with a smaller range right away);
+    // other calls get three rounds
+    const rounds = method === "eth_getLogs" ? 1 : 3;
+    for (let i = 0; i < list.length * rounds; i++) {
       const url = list[(at + i) % list.length];
       try {
-        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(method === "eth_getLogs" ? 20_000 : 8_000) });
+        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(method === "eth_getLogs" ? 12_000 : 8_000) });
         const j = await r.json();
         if (j.error) throw new Error(`${method}: ${j.error.message}`);
         if (at !== (at + i) % list.length) since = Date.now();
@@ -605,7 +608,7 @@ export function makeElysium(cfg, store) {
         if (span > 10) {
           span = Math.max(10, Math.floor(span / 2));
           log(`elysium: reading ${span} blocks at a time (${e.message})`);
-          await new Promise((r) => setTimeout(r, 1500));
+          await new Promise((r) => setTimeout(r, 500));
           continue;
         }
         throw e;

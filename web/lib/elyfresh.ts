@@ -20,19 +20,45 @@ export const isFresh = (t: EToken) => {
 const signed = (h: string) => { const v = BigInt(`0x${h}`); return v >= 1n << 255n ? v - (1n << 256n) : v; };
 const word = (data: string, i: number) => data.slice(2 + i * 64, 2 + (i + 1) * 64);
 
-async function fromBlock(t: EToken): Promise<number> {
-  const head = Number(BigInt(await elyRpc<string>("eth_blockNumber", [])));
-  const born = Number((t as unknown as { created_block?: number | string | null }).created_block ?? 0);
-  return born > 0 && head - born < 200_000 ? Math.max(0, born - 2) : Math.max(0, head - 20_000);
-}
-async function logs(filter: Record<string, unknown>, from: number): Promise<Log[]> {
-  try {
-    return await elyRpc<Log[]>("eth_getLogs", [{ ...filter, fromBlock: `0x${from.toString(16)}`, toBlock: "latest" }]);
-  } catch {
-    // a node that limits the range: the last few thousand blocks are enough for a coin this young
-    const head = Number(BigInt(await elyRpc<string>("eth_blockNumber", [])));
-    return elyRpc<Log[]>("eth_getLogs", [{ ...filter, fromBlock: `0x${Math.max(from, head - 3000).toString(16)}`, toBlock: "latest" }]);
+const head = async () => Number(BigInt(await elyRpc<string>("eth_blockNumber", [])));
+const STEP = 1500; // blocks per read: small enough that busy public nodes still answer
+const bornMemo = new Map<string, number>();
+const hexb = (n: number) => `0x${n.toString(16)}`;
+
+/** Logs in [from, to], read in small windows (busy nodes refuse big ranges). */
+async function logs(filter: Record<string, unknown>, from: number, to: number): Promise<Log[]> {
+  const out: Log[] = [];
+  for (let a = from; a <= to; a += STEP) {
+    const b = Math.min(to, a + STEP - 1);
+    let got: Log[] | null = null;
+    for (let i = 0; i < 3 && !got; i++) got = await elyRpc<Log[]>("eth_getLogs", [{ ...filter, fromBlock: hexb(a), toBlock: hexb(b) }]).catch(() => null);
+    if (got) out.push(...got);
   }
+  return out;
+}
+
+/**
+ * The block the coin was made in: from the index when it has it, otherwise found by walking back from the
+ * tip in small windows until the coin's first transfer (its mint) turns up. Remembered per coin.
+ */
+async function bornAt(t: EToken, tip: number): Promise<number> {
+  const k = t.address.toLowerCase();
+  const known = Number((t as unknown as { created_block?: number | string | null }).created_block ?? 0);
+  if (known > 0) return known;
+  if (bornMemo.has(k)) return bornMemo.get(k)!;
+  try { const v = Number(localStorage.getItem(`ap_born_${k}`)); if (v > 0) { bornMemo.set(k, v); return v; } } catch {}
+  let first = 0;
+  for (let b = tip; b > 0 && tip - b < 60_000; b -= STEP) {
+    const a = Math.max(0, b - STEP + 1);
+    const got = await elyRpc<Log[]>("eth_getLogs", [{ address: t.address, topics: [TRANSFER], fromBlock: hexb(a), toBlock: hexb(b) }]).catch(() => null);
+    if (got === null) continue;
+    if (got.length) first = Number(BigInt(got[0].blockNumber));
+    else if (first) break; // an empty window before the earliest transfer we found: that was the mint
+  }
+  const born = first || Math.max(0, tip - 6000);
+  bornMemo.set(k, born);
+  try { if (first) localStorage.setItem(`ap_born_${k}`, String(first)); } catch {}
+  return born;
 }
 
 const memo = new Map<string, { at: number; trades: ETrade[]; holders: EHolder[] }>();
@@ -44,10 +70,11 @@ export async function chainActivity(t: EToken): Promise<{ trades: ETrade[]; hold
   const k = t.address.toLowerCase();
   const hit = memo.get(k);
   if (hit && Date.now() - hit.at < 3000) return hit;
-  const from = await fromBlock(t);
+  const tip = await head();
+  const from = Math.max(0, (await bornAt(t, tip)) - 1);
   const [swaps, moves] = await Promise.all([
-    logs({ address: t.pool, topics: [SWAP] }, from),
-    logs({ address: t.address, topics: [TRANSFER] }, from),
+    logs({ address: t.pool, topics: [SWAP] }, from, tip),
+    logs({ address: t.address, topics: [TRANSFER] }, from, tip),
   ]);
   const dec = 10 ** (t.decimals ?? 18);
 
