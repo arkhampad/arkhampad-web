@@ -6,7 +6,7 @@ import type { Address, Hex } from "viem";
 import { defineChain } from "viem";
 import { arbitrum, base, baseSepolia, bsc, mainnet, optimism, polygon } from "viem/chains";
 import { LIVE, robinhoodTestnet, type Signer, type TypedData } from "@/lib/chain";
-import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC_LIST } from "@/lib/elytrade";
+import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC_LIST, USER_NO } from "@/lib/elytrade";
 
 /** The next nonce for `addr` on Elysium: the highest "pending" count any of our nodes reports. */
 // "latest", not "pending": a node can keep a transaction it never passed on in its own queue, and counting
@@ -133,14 +133,27 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
         };
         if (!elysium) return send();
         const nonce = tx.nonce ?? (await nextNonce(w.address as Address));
+        // A hiccup on the way to the network ("busy", a dropped connection) or a node that hasn't seen the
+        // transaction just before this one yet ("nonce too high"): send the very same transaction again,
+        // with the same nonce, a moment later. Same nonce means it can never go through twice.
+        const sendSteady = async (n?: number) => {
+          for (let i = 0; ; i++) {
+            try { return await send(n); } catch (e) {
+              const m = String((e as Error)?.message ?? e);
+              const hiccup = /HTTP request failed|network is busy|failed to fetch|fetch failed|timed? ?out|network error|load failed|nonce too high|future/i.test(m) && !USER_NO.test(m);
+              if (!hiccup || n == null || i >= 3) throw e;
+              await new Promise((r) => setTimeout(r, 900 + i * 600));
+            }
+          }
+        };
         try {
-          const h = await send(nonce ?? undefined);
+          const h = await sendSteady(nonce ?? undefined);
           if (nonce != null) noteSent(w.address, nonce);
           return h;
         } catch (e) {
           const m = String((e as Error)?.message ?? e);
           const want = m.match(/expected\s+(\d+)/i)?.[1];
-          if (/nonce/i.test(m)) {
+          if (/nonce/i.test(m) && !/nonce too high|future/i.test(m)) {
             if (w.walletClientType !== "privy") {
               // MetaMask & co. ignore the nonce we pass and use their own node: point them at our doorway
               // (it always reports the newest count), then try once more

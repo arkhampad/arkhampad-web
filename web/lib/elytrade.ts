@@ -318,10 +318,25 @@ export async function buy(signer: Signer, t: EToken, hypeIn: bigint, minOut: big
     try { gas = ((await ely().estimateGas({ account: signer.address, to: ROUTER, data, value: hypeIn })) * 13n) / 10n; } catch { gas = 600_000n; }
     const hash = await signer.sendTx(ELY_CHAIN, { to: ROUTER, data, value: hypeIn, gas });
     rememberToken(t.address);
+    prepareSell(signer, p.token);
     return track(hash, t.address);
   } catch (e) {
     throw e instanceof TradeFail ? e : new TradeFail(nice(e));
   }
+}
+
+/**
+ * Built-in wallet: right after a buy, give the router permission to sell this coin (one tiny transaction,
+ * sent in the background, no pop-up). The later sale is then a single transaction, with no approval racing
+ * ahead of it through nodes that are a few seconds behind. Failing here costs nothing: sell() approves itself.
+ */
+function prepareSell(signer: Signer, token: Address) {
+  if (!signer.embedded || !ROUTER) return;
+  (async () => {
+    const allowed = await ely().readContract({ address: token, abi: ERC20, functionName: "allowance", args: [signer.address, ROUTER as Address] }).catch(() => null);
+    if (allowed == null || allowed > MAX / 2n) return;
+    await signer.sendTx!(ELY_CHAIN, { to: token, data: encodeFunctionData({ abi: ERC20, functionName: "approve", args: [ROUTER as Address, MAX] }), gas: 80_000n });
+  })().catch(() => {});
 }
 
 export async function sell(signer: Signer, t: EToken, amountIn: bigint, minOut: bigint, onStep?: (s: string) => void): Promise<SentTrade> {
