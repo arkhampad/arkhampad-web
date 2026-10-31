@@ -430,9 +430,13 @@ async function elysiumLoop() {
   const rpc = (process.env.ELYSIUM_RPC || "").trim();
   if (!rpc || process.env.ONCE) return;
   let launcher = (process.env.ELY_LAUNCHER || "").trim();
-  if (!launcher) {
-    try { launcher = JSON.parse(fs.readFileSync(new URL("../contracts-elysium/deployments/99901.json", import.meta.url), "utf8")).launcher || ""; } catch {}
-  }
+  // ArkhamPad's own pool factory (for the fast lane); mainnet's from the deploy record
+  let factory = (process.env.ELY_FACTORY || "0x75656d8d2a59293dbda4178f11af6ee506ef60dd").trim().toLowerCase();
+  try {
+    const d = JSON.parse(fs.readFileSync(new URL("../contracts-elysium/deployments/99901.json", import.meta.url), "utf8"));
+    if (!launcher) launcher = d.launcher || "";
+    if (d.factory) factory = String(d.factory).toLowerCase();
+  } catch {}
   const key = (process.env.KEEPER_KEY || "").trim();
   if (key && launcher) {
     import("./elykeeper.mjs").then(({ keeperLoop }) => keeperLoop({ rpc, launcher, key, pool, log })).catch((e) => log(`keeper: ${e.message}`));
@@ -440,7 +444,7 @@ async function elysiumLoop() {
   for (;;) {
     try {
       const store = await makePgStore(pool);
-      await makeElysium({ rpc, launcher, log }, store).loop();
+      await makeElysium({ rpc, launcher, factory, log }, store).loop();
     } catch (e) {
       log(`elysium: ${e.message}; restarting in 30 s`);
       await sleep(30_000);

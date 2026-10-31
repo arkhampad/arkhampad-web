@@ -457,9 +457,12 @@ export function makeElysium(cfg, store) {
     await store.upsertToken(t);
   }
 
-  async function scanPools(from, to) {
+  // only: { factory } = just ArkhamPad's own pool factory (the fast lane), else every launchpad
+  async function scanPools(from, to, only) {
     const q = { fromBlock: hex(from), toBlock: hex(to) };
-    const [v3, v4, cl] = await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3PoolCreated] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Initialize] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clInitialize] }]).catch(() => [])]);
+    const [v3, v4, cl] = only
+      ? [only.factory ? await rpc("eth_getLogs", [{ ...q, address: only.factory, topics: [T.v3PoolCreated] }]) : [], [], []]
+      : await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3PoolCreated] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Initialize] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clInitialize] }]).catch(() => [])]);
     const jobs = [];
     for (const l of v3) jobs.push(async () => {
       const t0 = addrTopic(l.topics[1]);
@@ -498,9 +501,13 @@ export function makeElysium(cfg, store) {
     await pool(jobs, 12);
   }
 
-  async function scanTrades(from, to) {
+  // only: { pools } = just these v3 pools (ArkhamPad's, the fast lane), else every pool on the chain
+  async function scanTrades(from, to, only) {
     const q = { fromBlock: hex(from), toBlock: hex(to) };
-    const [v3, v4, cl] = await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clSwap] }]).catch(() => [])]);
+    if (only && !only.pools.length) return 0;
+    const [v3, v4, cl] = only
+      ? [await rpc("eth_getLogs", [{ ...q, address: only.pools, topics: [T.v3Swap] }]), [], []]
+      : await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clSwap] }]).catch(() => [])]);
     const tokens = store.tokens();
     const out = [];
     const add = async (l, token, tokenDelta, hypeDelta, sqrt, userSideNegativeIsPaid) => {
@@ -560,13 +567,18 @@ export function makeElysium(cfg, store) {
     return out.length;
   }
 
-  async function scanTransfers(from, to) {
-    const logs = await rpc("eth_getLogs", [{ fromBlock: hex(from), toBlock: hex(to), topics: [T.transfer] }]);
+  // Balances are added up, so each transfer must be counted exactly once: once the fast lane runs, it
+  // alone counts ArkhamPad coins' transfers and the full scan skips them.
+  let fastOn = false;
+  async function scanTransfers(from, to, only) {
+    if (only && !only.tokens.length) return 0;
+    const logs = await rpc("eth_getLogs", [{ fromBlock: hex(from), toBlock: hex(to), ...(only ? { address: only.tokens } : {}), topics: [T.transfer] }]);
     const tokens = store.tokens();
     const list = [];
     for (const l of logs) {
       const token = lc(l.address);
       if (!tokens.has(token) || l.topics.length < 3) continue;
+      if (!only && fastOn && tokens.get(token).ours) continue;
       list.push({ token, from: addrTopic(l.topics[1]), to: addrTopic(l.topics[2]), value: BigInt(l.data === "0x" ? 0 : l.data).toString() });
     }
     if (list.length) await store.applyTransfers(list);
@@ -626,6 +638,49 @@ export function makeElysium(cfg, store) {
 
   let statsAt = 0;
   let pageStatsAt = 0;
+
+  // ---------------------------------------------------------------- fast lane: ArkhamPad's own coins
+  // Oct 31: the chain got busy and the public nodes refused the full scan (every swap of every pool), so
+  // for hours nothing new showed on the site, ArkhamPad's own coins included. This lane reads only our
+  // factory, our pools and our coins: tiny reads the nodes answer even when busy, every 2 seconds. A coin
+  // launched here shows up with its trades and holders within seconds, however far the full scan lags.
+  const factoryOf = () => cfg.factory || [...store.tokens().values()].find((t) => t.ours && t.venue === "v3" && t.manager)?.manager || null;
+  let fastSpan = 1500;
+  async function fastOnce() {
+    const tip = Number(await rpc("eth_blockNumber"));
+    if (tip > tipNow) tipNow = tip;
+    let last = Number((await store.getState("ely_fast_block")) ?? (await store.getState("ely_block")) ?? -1);
+    if (last < 0) return;
+    fastOn = true;
+    while (last < tip) {
+      const to = Math.min(tip, last + fastSpan);
+      try {
+        await scanPools(last + 1, to, { factory: factoryOf() });
+        const ours = [...store.tokens().values()].filter((t) => t.ours && t.venue === "v3" && t.pool);
+        await scanTrades(last + 1, to, { pools: ours.map((t) => t.pool) });
+        await scanTransfers(last + 1, to, { tokens: ours.map((t) => t.address) });
+      } catch (e) {
+        if (fastSpan > 20) { fastSpan = Math.max(20, Math.floor(fastSpan / 2)); await new Promise((r) => setTimeout(r, 300)); continue; }
+        throw e;
+      }
+      if (fastSpan < 1500) fastSpan = Math.min(1500, Math.ceil(fastSpan * 1.5));
+      last = to;
+      await store.setState("ely_fast_block", last);
+    }
+    // the lists' numbers (market cap, volume, holders) can't wait for the full scan either
+    if (Date.now() - statsAt > 60_000) {
+      statsAt = Date.now();
+      await hypeUsd();
+      await store.refreshStats();
+    }
+  }
+  async function fastLoop() {
+    log("elysium: fast lane for ArkhamPad coins on");
+    for (;;) {
+      try { await fastOnce(); } catch (e) { log(`elysium: fast lane ${e.message}`); await new Promise((r) => setTimeout(r, 5000)); }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
   // Watchdog: the saved block must keep moving (or be at the chain tip). If it hasn't for 10 minutes,
   // the process exits and Railway starts it fresh (Oct 31: it stood still for 3 hours, unnoticed).
   let movedAt = Date.now();
@@ -633,11 +688,13 @@ export function makeElysium(cfg, store) {
   const STUCK_MS = 10 * 60_000;
   const startWatch = () => { const watch = setInterval(async () => {
     try {
-      const at = Number((await store.getState("ely_block")) ?? -1);
-      if (at !== seen || (tipNow && at >= tipNow - 5)) { seen = at; movedAt = Date.now(); return; }
+      // either lane moving counts (the full scan may crawl on a busy chain while ours keeps up)
+      const at = Number((await store.getState("ely_block")) ?? -1) + Number((await store.getState("ely_fast_block")) ?? 0) * 1e9;
+      const fast = Number((await store.getState("ely_fast_block")) ?? -1);
+      if (at !== seen || (tipNow && (fast >= tipNow - 50))) { seen = at; movedAt = Date.now(); return; }
     } catch {}
     if (Date.now() - movedAt > STUCK_MS) {
-      log(`elysium: WATCHDOG no progress for ${Math.round((Date.now() - movedAt) / 60_000)} min (block ${seen}, tip ${tipNow}); restarting`);
+      log(`elysium: WATCHDOG no progress for ${Math.round((Date.now() - movedAt) / 60_000)} min (tip ${tipNow}); restarting`);
       clearInterval(watch);
       setTimeout(() => process.exit(1), 500);
     }
@@ -645,6 +702,7 @@ export function makeElysium(cfg, store) {
   async function loop() {
     log(`elysium: indexing every HYPE pair (launcher ${launcher || "not set"})`);
     startWatch();
+    if (launcher) fastLoop();
     for (;;) {
       try {
         const n = await syncOnce();
