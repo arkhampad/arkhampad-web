@@ -5,7 +5,7 @@ import type { Signer } from "./chain";
 import { ELY_CHAIN, ely, nice, waitReceipt } from "./elytrade";
 
 /** Set after /ops deploys the contract (or Cloudflare env NEXT_PUBLIC_ELY_PIONEER). */
-export const PIONEER = (process.env.NEXT_PUBLIC_ELY_PIONEER || "") as Address | "";
+export const PIONEER = (process.env.NEXT_PUBLIC_ELY_PIONEER || "0xf567815133c4b478c5c3b1ef04eac6114656f822") as Address | "";
 export const MAX_SUPPLY = 10_000;
 export const PIONEER_ABI = parseAbi([
   "function mint() returns (uint256)",
