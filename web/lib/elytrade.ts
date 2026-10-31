@@ -294,6 +294,24 @@ export function rememberToken(token: string) {
   } catch {}
   balanceChanged();
 }
+/**
+ * A coin launched in this browser a moment ago, built from its Launched event. The token page and the
+ * Discover board show it at once, before the indexer (or a lagging node) knows it. Kept 15 minutes.
+ */
+export function savePending(t: EToken) {
+  try {
+    const all = JSON.parse(localStorage.getItem("ap_pending") || "{}") as Record<string, EToken & { _at: number }>;
+    all[t.address.toLowerCase()] = { ...t, _at: Date.now() };
+    localStorage.setItem("ap_pending", JSON.stringify(all));
+  } catch {}
+}
+export function pendingTokens(): EToken[] {
+  try {
+    const all = JSON.parse(localStorage.getItem("ap_pending") || "{}") as Record<string, EToken & { _at: number }>;
+    return Object.values(all).filter((t) => Date.now() - t._at < 15 * 60_000);
+  } catch { return []; }
+}
+export const pendingToken = (a: string) => pendingTokens().find((t) => t.address.toLowerCase() === a.toLowerCase()) ?? null;
 export function recentTokens(): string[] {
   try { return JSON.parse(localStorage.getItem("ap_recent_tokens") || "[]"); } catch { return []; }
 }

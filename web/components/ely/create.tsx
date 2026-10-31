@@ -9,7 +9,8 @@ import { decodeEventLog, encodeFunctionData, parseAbi, type Address, type Hex } 
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { fetchHypeUsd, money, usePoll } from "@/lib/ely";
-import { ELY_CHAIN, NONCE_HELP, USER_NO, SlowTx, waitReceipt, ely, fromWei, hypeBalance, cachedHype, rememberToken, toWei } from "@/lib/elytrade";
+import { ELY_CHAIN, NONCE_HELP, USER_NO, SlowTx, savePending, waitReceipt, ely, fromWei, hypeBalance, cachedHype, rememberToken, toWei } from "@/lib/elytrade";
+import type { EToken } from "@/lib/ely";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
 const START_MC = 60; // HYPE, whole supply
@@ -189,14 +190,28 @@ export function CreatePage() {
       const rc = await waitReceipt(hash as Hex, 150_000);
       if (rc.status !== "success") throw new Error("failed");
       let coin: string | null = null;
+      type LaunchEv = { coin: string; creator: string; pool: string; name: string; symbol: string; startMc: bigint; firstBuyOut: bigint };
+      let ev = null as LaunchEv | null;
       for (const l of rc.logs) {
         try {
           const d = decodeEventLog({ abi: ABI, data: l.data, topics: l.topics });
-          if (d.eventName === "Launched") coin = (d.args as { coin: string }).coin;
+          if (d.eventName === "Launched") { ev = d.args as unknown as LaunchEv; coin = ev.coin; }
         } catch {}
       }
       if (!coin) throw new Error("no coin");
       rememberToken(coin);
+      // show the new coin right away (page + Discover board), even before the indexer has it
+      const e1 = ev as LaunchEv | null;
+      if (e1) {
+        const mc = Number(e1.startMc) / 1e18;
+        const mcap = mc > 0.01 && mc < 1e7 ? mc : null;
+        savePending({
+          address: coin.toLowerCase(), name: e1.name, symbol: e1.symbol, decimals: 18, supply: (10n ** 27n).toString(), image: img || `/api/ely-img?a=${coin.toLowerCase()}`,
+          description: desc.trim() || null, launchpad: "ArkhamPad", venue: "v3", pool: String(e1.pool).toLowerCase(), manager: null, whype: null, token_is0: false,
+          fee: 10000, tick_spacing: 200, hooks: null, creator: me.toLowerCase(), ours: true, created_at: new Date().toISOString(),
+          price_hype: mcap ? mcap / 1e9 : null, mcap_hype: mcap, vol24_hype: 0, buys24: 0, sells24: 0, change24: 0, holders: 1, top10_pct: null, last_trade_at: null,
+        } as unknown as EToken);
+      }
       r.push(`/t/?a=${coin.toLowerCase()}&new=1`);
     } catch (e) {
       const m = String((e as Error)?.message ?? "");

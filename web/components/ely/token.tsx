@@ -13,7 +13,7 @@ import { Burst, Confetti } from "@/components/celebrate";
 import { ShareButton } from "./share";
 import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
 import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
-import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, SlowTx, SLOW_HELP } from "@/lib/elytrade";
+import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, pendingToken, SlowTx, SLOW_HELP } from "@/lib/elytrade";
 
 const GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays for gas on "Max"
 const supplyOf = (t: EToken) => Number(BigInt(t.supply || "0")) / 10 ** (t.decimals ?? 18);
@@ -231,7 +231,9 @@ export function TokenPage() {
   const a = (params.get("a") || "").toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(a);
   // a coin launched a moment ago may not be indexed yet: read it from the chain until it is
-  const t = usePoll(async () => (valid ? ((await fetchToken(a).catch(() => null)) ?? (await chainToken(a))) : null), 15_000, [a]);
+  // a coin launched here a moment ago: the launch's own record fills in until a node / the indexer has it
+  const pend = valid ? pendingToken(a) : null;
+  const t = usePoll(async () => (valid ? ((await fetchToken(a).catch(() => null)) ?? (await chainToken(a)) ?? pendingToken(a)) : null), pend ? 5000 : 15_000, [a]) ?? pend ?? undefined;
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const trades = usePoll(async () => (valid ? fetchTrades(a, 1500) : []), 15_000, [a]);
   const [tab, setTab] = useState<"trades" | "holders" | "about">("trades");
