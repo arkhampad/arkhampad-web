@@ -180,7 +180,7 @@ export function CreatePage() {
       const data = encodeFunctionData({ abi: ABI, functionName: "launch", args: [meta.name, meta.symbol, uri, me, minOut] });
       setBusy("Launching…");
       const hash = await w.signer.sendTx(ELY_CHAIN, { to: LAUNCHER, data, value: fee + buyWei });
-      setBusy("Confirming…");
+      setBusy("Confirming… (up to a minute)");
       const rc = await ely().waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000, pollingInterval: 400 });
       if (rc.status !== "success") throw new Error("failed");
       let coin: string | null = null;

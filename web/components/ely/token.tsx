@@ -71,18 +71,25 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
 
   async function go() {
     if (!w.signedIn || !w.signer) return w.login();
+    (document.activeElement as HTMLElement | null)?.blur?.(); // close the phone keyboard
     setMsg(null);
     try {
       const q = out ?? (await quote(t, side === "buy", inWei));
       if (q === null) throw new TradeFail("This token can't be traded here right now.");
       const min = (q * BigInt(100 - slip)) / 100n;
-      if (side === "buy") { setBusy(tr("Buying…")); await buy(w.signer, t, inWei, min); }
-      else { setBusy(tr("Selling…")); await sell(w.signer, t, inWei, min, (x) => setBusy(tr(x))); }
-      setMsg({ ok: true, text: side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) }) });
+      const sent = side === "buy"
+        ? (setBusy(tr("Buying…")), await buy(w.signer, t, inWei, min))
+        : (setBusy(tr("Selling…")), await sell(w.signer, t, inWei, min, (x) => setBusy(tr(x))));
+      const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) });
+      // the network has it: show it now, confirm in the background
+      setMsg({ ok: true, text: `${done} · ${tr("confirming…")}` });
       setVal("");
       setExact(null);
-      setTick((x) => x + 1);
-      onDone?.();
+      setBusy(null);
+      sent.confirmed.then(
+        () => { setMsg({ ok: true, text: `${done} ✓` }); setTick((x) => x + 1); onDone?.(); },
+        (e) => setMsg({ ok: false, text: tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.") }),
+      );
     } catch (e) {
       setMsg({ ok: false, text: tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.") });
     } finally {
@@ -113,16 +120,16 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
         </span>
         <span className="dim num" style={{ fontSize: 12.5 }}>≈ {money(inUsd)}</span>
       </label>
-      <div className="e-quick">{quick.map((q) => <button key={q.l} type="button" onClick={() => { if (!q.v) return; setVal(q.v); setExact(q.x); }} disabled={!q.v}>{q.l}</button>)}</div>
+      <div className="e-quick">{quick.map((q) => <button key={q.l} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { if (!q.v) return; setVal(q.v); setExact(q.x); }} disabled={!q.v}>{q.l}</button>)}</div>
       <div className="e-recv">
         <span className="muted">{tr("You get")}</span>
         <b className="num">{estOut > 0 ? `≈ ${amt(estOut)} ${side === "buy" ? sym : "HYPE"}` : "—"}</b>
       </div>
       <div className="e-slip">
         <span className="dim">{tr("Slippage")}</span>
-        <div className="e-seg">{[1, 3, 5, 10].map((s) => <button key={s} type="button" className={slip === s ? "on" : ""} onClick={() => setSlip(s)}>{s}%</button>)}</div>
+        <div className="e-seg">{[1, 3, 5, 10].map((s) => <button key={s} type="button" className={slip === s ? "on" : ""} onMouseDown={(e) => e.preventDefault()} onClick={() => setSlip(s)}>{s}%</button>)}</div>
       </div>
-      <button type="button" className={`e-go ${side}`} disabled={disabled && w.signedIn} onClick={go}>{label}</button>
+      <button type="button" className={`e-go ${side}`} disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={go}>{label}</button>
       {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
       {w.signedIn && hype === 0n && side === "buy" && <Link href="/bridge/" className="e-hint">{tr("No HYPE on Elysium yet.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}
     </div>

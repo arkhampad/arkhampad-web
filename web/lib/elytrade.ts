@@ -137,36 +137,61 @@ const nice = (e: unknown) => {
   return `Trade failed: ${short}`;
 };
 async function wait(hash: Hex) {
-  const r = await ely().waitForTransactionReceipt({ hash, timeout: 60_000, pollingInterval: 400 });
+  const r = await ely().waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 500 });
   if (r.status !== "success") throw new TradeFail("Trade failed on chain. Nothing was spent except gas.");
   return hash;
 }
 
-export async function buy(signer: Signer, t: EToken, hypeIn: bigint, minOut: bigint): Promise<Hex> {
+/**
+ * A sent trade. `hash` is known as soon as the network accepted it (a second or two); `confirmed` settles
+ * when a public node has it in a block, which on Elysium can take another 20-40 seconds. The page shows
+ * the trade at once and reports a failure later if the chain rejects it.
+ */
+export type SentTrade = { hash: Hex; confirmed: Promise<void> };
+const track = (hash: Hex, token: string): SentTrade => {
+  const confirmed = wait(hash).then(() => { rememberToken(token); balanceChanged(); }, (e) => { throw e instanceof TradeFail ? e : new TradeFail(nice(e)); });
+  confirmed.catch(() => {});
+  return { hash, confirmed };
+};
+
+export async function buy(signer: Signer, t: EToken, hypeIn: bigint, minOut: bigint): Promise<SentTrade> {
   const p = poolArg(t);
   if (!ROUTER || !p || !signer.sendTx) throw new TradeFail("Trading for this token opens soon.");
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
   try {
     const data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "buy", args: [p, minOut, deadline] });
     let gas: bigint | undefined;
-    try { gas = ((await ely().estimateGas({ account: signer.address, to: ROUTER, data, value: hypeIn })) * 13n) / 10n; } catch { gas = undefined; }
-    const h = await wait(await signer.sendTx(ELY_CHAIN, { to: ROUTER, data, value: hypeIn, gas }));
+    try { gas = ((await ely().estimateGas({ account: signer.address, to: ROUTER, data, value: hypeIn })) * 13n) / 10n; } catch { gas = 600_000n; }
+    const hash = await signer.sendTx(ELY_CHAIN, { to: ROUTER, data, value: hypeIn, gas });
     rememberToken(t.address);
-    return h;
+    return track(hash, t.address);
   } catch (e) {
     throw e instanceof TradeFail ? e : new TradeFail(nice(e));
   }
 }
 
-export async function sell(signer: Signer, t: EToken, amountIn: bigint, minOut: bigint, onStep?: (s: string) => void): Promise<Hex> {
+export async function sell(signer: Signer, t: EToken, amountIn: bigint, minOut: bigint, onStep?: (s: string) => void): Promise<SentTrade> {
   const p = poolArg(t);
   if (!ROUTER || !p || !signer.sendTx) throw new TradeFail("Trading for this token opens soon.");
   try {
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
+    const data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "sell", args: [p, amountIn, minOut, deadline] });
     const allowed = await ely().readContract({ address: p.token, abi: ERC20, functionName: "allowance", args: [signer.address, ROUTER] });
+    const approveData = encodeFunctionData({ abi: ERC20, functionName: "approve", args: [ROUTER, MAX] });
     if (allowed < amountIn) {
       onStep?.("Approving…");
-      await wait(await signer.sendTx(ELY_CHAIN, { to: p.token, data: encodeFunctionData({ abi: ERC20, functionName: "approve", args: [ROUTER, MAX] }), gas: 80_000n }));
-      // the node that estimates the sell may be a block behind: wait until it sees the approval
+      if (signer.embedded && signer.nextNonce) {
+        // built-in wallet: approval and sale go out back to back with consecutive nonces; the sequencer
+        // runs them in order, so there's no waiting for the approval to show up on a node first
+        const n = await signer.nextNonce();
+        if (n != null) {
+          await signer.sendTx(ELY_CHAIN, { to: p.token, data: approveData, gas: 80_000n, nonce: n });
+          onStep?.("Selling…");
+          const hash = await signer.sendTx(ELY_CHAIN, { to: ROUTER, data, gas: 600_000n, nonce: n + 1 });
+          return track(hash, t.address);
+        }
+      }
+      await wait(await signer.sendTx(ELY_CHAIN, { to: p.token, data: approveData, gas: 80_000n }));
       for (let i = 0; i < 25; i++) {
         const now = await ely().readContract({ address: p.token, abi: ERC20, functionName: "allowance", args: [signer.address, ROUTER] }).catch(() => 0n);
         if (now >= amountIn) break;
@@ -174,13 +199,10 @@ export async function sell(signer: Signer, t: EToken, amountIn: bigint, minOut: 
       }
     }
     onStep?.("Selling…");
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
-    const data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "sell", args: [p, amountIn, minOut, deadline] });
-    let gas: bigint | undefined;
+    let gas: bigint;
     try { gas = ((await ely().estimateGas({ account: signer.address, to: ROUTER, data })) * 13n) / 10n; } catch { gas = 600_000n; }
-    const h = await wait(await signer.sendTx(ELY_CHAIN, { to: ROUTER, data, gas }));
-    rememberToken(t.address);
-    return h;
+    const hash = await signer.sendTx(ELY_CHAIN, { to: ROUTER, data, gas });
+    return track(hash, t.address);
   } catch (e) {
     throw e instanceof TradeFail ? e : new TradeFail(nice(e));
   }

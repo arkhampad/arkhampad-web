@@ -176,7 +176,11 @@ export type Signer = {
   address: Address;
   signTypedData: (chainId: number, typed: TypedData) => Promise<Hex>;
   /** Sends a transaction from the user's wallet (only needed for one-time approvals on networks without permit). */
-  sendTx?: (chainId: number, tx: { to: Address; data: Hex; value?: bigint; gas?: bigint }) => Promise<Hex>;
+  sendTx?: (chainId: number, tx: { to: Address; data: Hex; value?: bigint; gas?: bigint; nonce?: number }) => Promise<Hex>;
+  /** Built-in (Privy) wallet: we choose the nonce ourselves, so two transactions can go out back to back. */
+  embedded?: boolean;
+  /** The next nonce this wallet will use on Elysium (counts transactions sent but not yet visible on the nodes). */
+  nextNonce?: () => Promise<number | null>;
 };
 export type TypedData = { domain: Record<string, unknown>; types: Record<string, { name: string; type: string }[]>; primaryType: string; message: Record<string, unknown> };
 

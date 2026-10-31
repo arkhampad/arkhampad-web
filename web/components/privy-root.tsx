@@ -11,6 +11,21 @@ import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC_LIST } from "@/lib/elytrade";
 /** The next nonce for `addr` on Elysium: the highest "pending" count any of our nodes reports. */
 // "latest", not "pending": a node can keep a transaction it never passed on in its own queue, and counting
 // it would leave a gap that holds every later transaction back. Mined count, highest across nodes.
+// Elysium's public nodes see a new transaction only some seconds after the sequencer took it, so two
+// trades in a row would get the same count. Remember what we sent (for 3 minutes) and count past it.
+const sentNonce = new Map<string, { n: number; at: number }>();
+const noteSent = (addr: string, n: number) => {
+  const k = addr.toLowerCase();
+  const was = sentNonce.get(k);
+  if (!was || n >= was.n) sentNonce.set(k, { n, at: Date.now() });
+};
+async function nextNonce(addr: Address): Promise<number | null> {
+  const fresh = await freshNonce(addr);
+  const mine = sentNonce.get(addr.toLowerCase());
+  const local = mine && Date.now() - mine.at < 180_000 ? mine.n + 1 : -1;
+  const n = Math.max(fresh ?? -1, local);
+  return n >= 0 ? n : null;
+}
 async function freshNonce(addr: Address): Promise<number | null> {
   const counts = await Promise.all(
     ELY_RPC_LIST.map(async (url) => {
@@ -79,7 +94,9 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
     if (!address) return null;
     return {
       address,
-      sendTx: async (chainId: number, tx: { to: Address; data: Hex; value?: bigint; gas?: bigint }) => {
+      embedded: wallet?.walletClientType === "privy",
+      nextNonce: () => nextNonce(address as Address),
+      sendTx: async (chainId: number, tx: { to: Address; data: Hex; value?: bigint; gas?: bigint; nonce?: number }) => {
         const w = walletRef.current;
         if (!w) throw new Error("Wallet not ready. Please try again.");
         // On Elysium some nodes run a block behind and hand out an old nonce ("wrong nonce: expected 15,
@@ -96,9 +113,11 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
           return (await provider.request({ method: "eth_sendTransaction", params: [{ from: w.address, to: tx.to, data: tx.data, ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), ...(tx.gas ? { gas: `0x${tx.gas.toString(16)}` } : {}), ...(nonce != null ? { nonce: `0x${nonce.toString(16)}` } : {}) }] })) as Hex;
         };
         if (!elysium) return send();
-        const nonce = await freshNonce(w.address as Address);
+        const nonce = tx.nonce ?? (await nextNonce(w.address as Address));
         try {
-          return await send(nonce ?? undefined);
+          const h = await send(nonce ?? undefined);
+          if (nonce != null) noteSent(w.address, nonce);
+          return h;
         } catch (e) {
           const m = String((e as Error)?.message ?? e);
           const want = m.match(/expected\s+(\d+)/i)?.[1];
@@ -111,7 +130,10 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
                 await provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: `0x${ELY_CHAIN_ID.toString(16)}`, chainName: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: ["https://arkhampad.com/api/ely-rpc"] }] });
               } catch {}
             }
-            return send(want ? Number(want) : (await freshNonce(w.address as Address)) ?? undefined);
+            const again = want ? Number(want) : (await freshNonce(w.address as Address)) ?? undefined;
+            const h = await send(again);
+            if (again != null) noteSent(w.address, again);
+            return h;
           }
           throw e;
         }
@@ -131,7 +153,7 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
         return (await provider.request({ method: "eth_signTypedData_v4", params: [w.address, JSON.stringify(typed)] })) as Hex;
       },
     };
-  }, [address]);
+  }, [address, wallet?.walletClientType]);
   // Privy may hand out new login/logout functions on every render: keep them in refs and
   // report to the page only when something real changes (ready, address, signer).
   const loginRef = useRef(login);
