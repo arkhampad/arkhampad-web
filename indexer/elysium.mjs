@@ -141,7 +141,7 @@ export function priceFromSqrt(sqrtX96, tokenIs0, decToken = 18, decHype = 18) {
 export function makeElysium(cfg, store) {
   const rpc = typeof cfg.rpc === "function" ? cfg.rpc : makeRpc(cfg.rpc);
   const log = cfg.log || console.log;
-  const step = cfg.step || 2000;
+  const step = cfg.step || 1000; // one public node refuses log reads over 1,000 blocks
   let progressLogAt = 0;
   let span = step; // blocks per read right now: shrinks when the nodes are busy, grows back after
   const launcher = lc(cfg.launcher);
@@ -645,7 +645,7 @@ export function makeElysium(cfg, store) {
   // factory, our pools and our coins: tiny reads the nodes answer even when busy, every 2 seconds. A coin
   // launched here shows up with its trades and holders within seconds, however far the full scan lags.
   const factoryOf = () => cfg.factory || [...store.tokens().values()].find((t) => t.ours && t.venue === "v3" && t.manager)?.manager || null;
-  let fastSpan = 1500;
+  let fastSpan = 1000;
   async function fastOnce() {
     const tip = Number(await rpc("eth_blockNumber"));
     if (tip > tipNow) tipNow = tip;
@@ -659,11 +659,13 @@ export function makeElysium(cfg, store) {
         const ours = [...store.tokens().values()].filter((t) => t.ours && t.venue === "v3" && t.pool);
         await scanTrades(last + 1, to, { pools: ours.map((t) => t.pool) });
         await scanTransfers(last + 1, to, { tokens: ours.map((t) => t.address) });
+        // pictures and descriptions of new coins (normally filled after a full scan, which may be lagging)
+        backfillMeta().catch(() => {});
       } catch (e) {
         if (fastSpan > 20) { fastSpan = Math.max(20, Math.floor(fastSpan / 2)); await new Promise((r) => setTimeout(r, 300)); continue; }
         throw e;
       }
-      if (fastSpan < 1500) fastSpan = Math.min(1500, Math.ceil(fastSpan * 1.5));
+      if (fastSpan < 1000) fastSpan = Math.min(1000, Math.ceil(fastSpan * 1.5));
       last = to;
       await store.setState("ely_fast_block", last);
     }

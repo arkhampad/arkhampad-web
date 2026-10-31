@@ -19,6 +19,9 @@ export async function onRequestGet({ request, env, waitUntil }) {
     const r = await fetch(`${base}/rest/v1/ely_tokens?select=image&address=eq.${a}&limit=1`, { headers: { apikey: k, authorization: `Bearer ${k}` } });
     img = (await r.json())?.[0]?.image || null;
   } catch {}
+  // not in the index yet (a coin launched a moment ago): read the picture from the coin's own on-chain
+  // metadata, so a new ArkhamPad coin has its logo everywhere from the first second
+  if (!img) img = await chainImage(a).catch(() => null);
   let res;
   const m = typeof img === "string" && img.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
   if (m) {
@@ -34,4 +37,25 @@ export async function onRequestGet({ request, env, waitUntil }) {
   }
   waitUntil(cache.put(key, res.clone()));
   return res;
+}
+
+const NODES = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
+async function chainImage(a) {
+  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: a, data: "0x3c130d90" }, "latest"] }); // tokenURI()
+  const hex = await Promise.any(NODES.map(async (u) => {
+    const r = await fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(5000) });
+    const j = await r.json();
+    if (typeof j?.result !== "string" || j.result.length < 130) throw new Error("none");
+    return j.result;
+  }));
+  // ABI string: offset, length, bytes
+  const len = parseInt(hex.slice(66, 130), 16);
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = parseInt(hex.slice(130 + i * 2, 132 + i * 2), 16);
+  const uri = new TextDecoder().decode(bytes);
+  if (!uri.startsWith("data:application/json")) return null;
+  const raw = uri.slice(uri.indexOf(",") + 1);
+  const text = uri.includes(";base64,") ? new TextDecoder().decode(Uint8Array.from(atob(raw), (c) => c.charCodeAt(0))) : decodeURIComponent(raw);
+  const image = JSON.parse(text)?.image;
+  return typeof image === "string" && /^(data:image\/|https:\/\/|ipfs:\/\/)/.test(image) ? image : null;
 }
