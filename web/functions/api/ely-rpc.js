@@ -71,6 +71,23 @@ export async function onRequestPost({ request, env, waitUntil }) {
     const first = outs.find(Boolean);
     if (first) return reply(first);
   }
+  // any other single read: ask every node at once, answer with the first good reply (a busy node used to
+  // cost 4 s before the next was tried, and wallets make several of these per transaction)
+  if (!sending && !Array.isArray(calls)) {
+    const tries = upstreams.map(async (url) => {
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(6000) });
+      const out = await r.text();
+      let j = null;
+      try { j = JSON.parse(out); } catch {}
+      if (!j) throw new Error(`${new URL(url).host} ${r.status}`);
+      if (j.error) throw Object.assign(new Error("rpc"), { out, busy: /rate limit|too many|capacity|-32005/i.test(out) });
+      return out;
+    });
+    const good = await Promise.any(tries).catch((e) => e);
+    if (typeof good === "string") { waitUntil?.(Promise.allSettled(tries)); return reply(good); }
+    const real = (good?.errors || []).find((x) => x?.out && !x.busy);
+    if (real) return reply(real.out);
+  }
   const why = [];
   let rpcError = null;
   for (const url of upstreams) {

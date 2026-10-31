@@ -26,6 +26,24 @@ async function nextNonce(addr: Address): Promise<number | null> {
   const n = Math.max(fresh ?? -1, local);
   return n >= 0 ? n : null;
 }
+// The fee for the built-in wallet, worked out here (cached 30 s) so the wallet doesn't have to make its own
+// round trips to the network for it on every transaction.
+let feeAt = 0;
+let feeWei: bigint | null = null;
+async function elyFee(): Promise<bigint | null> {
+  if (feeWei != null && Date.now() - feeAt < 30_000) return feeWei;
+  try {
+    const gp = await Promise.any(ELY_RPC_LIST.map(async (url) => {
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_gasPrice", params: [] }), signal: AbortSignal.timeout(2500) });
+      const j = await r.json();
+      if (typeof j?.result !== "string") throw new Error("no");
+      return BigInt(j.result);
+    }));
+    feeWei = gp * 3n; // plenty of room if the base fee moves; only what's used is charged
+    feeAt = Date.now();
+  } catch {}
+  return feeWei;
+}
 async function freshNonce(addr: Address): Promise<number | null> {
   const counts = await Promise.all(
     ELY_RPC_LIST.map(async (url) => {
@@ -105,7 +123,8 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
         const elysium = chainId === ELY_CHAIN_ID;
         const send = async (nonce?: number) => {
           if (w.walletClientType === "privy") {
-            const { hash } = await sendRef.current({ to: tx.to, data: tx.data, value: tx.value, chainId, ...(tx.gas ? { gasLimit: tx.gas } : {}), ...(nonce != null ? { nonce } : {}) }, { address: w.address, uiOptions: { showWalletUIs: false } });
+            const fee = elysium ? await elyFee() : null;
+            const { hash } = await sendRef.current({ to: tx.to, data: tx.data, value: tx.value, chainId, ...(tx.gas ? { gasLimit: tx.gas } : {}), ...(nonce != null ? { nonce } : {}), ...(fee ? { type: 2, maxFeePerGas: fee, maxPriorityFeePerGas: 0n } : {}) }, { address: w.address, uiOptions: { showWalletUIs: false } });
             return hash as Hex;
           }
           if (Number(String(w.chainId).split(":").pop()) !== chainId) await w.switchChain(chainId);

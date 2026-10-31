@@ -2,7 +2,7 @@
 // Trading any Elysium token from the user's own wallet, through the ArkhamPad router
 // (contracts-elysium/src/ArkhamRouter.sol). One router works for every launchpad: Uniswap v3 style
 // pools (called directly) and v4 style pools (through their pool manager). Pay and receive HYPE.
-import { createPublicClient, decodeErrorResult, encodeFunctionData, fallback, http, parseAbi, type Address, type Hex } from "viem";
+import { createPublicClient, custom, decodeErrorResult, encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import type { Signer } from "./chain";
 import type { EToken } from "./ely";
 
@@ -42,12 +42,35 @@ export async function elyRpc<T = unknown>(method: string, params: unknown[]): Pr
 export const ROUTER = (process.env.NEXT_PUBLIC_ELY_ROUTER || "") as Address | "";
 export const ELY_EXPLORER = process.env.NEXT_PUBLIC_ELY_EXPLORER || "";
 
+/**
+ * Every read goes to all nodes at once and the first good answer wins. (One after another, a slow or busy
+ * node cost 5-10 s per read before the next was tried: that was most of the "Buying…" / "Selling…" wait.)
+ * If every node refuses, the first node's error is passed on (e.g. "execution reverted").
+ */
+let rid = 0;
+async function raceCall(method: string, params: unknown) {
+  const ask = async (url: string) => {
+    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++rid, method, params }), signal: AbortSignal.timeout(6000) });
+    const j = await r.json();
+    if (j.error) throw Object.assign(new Error(j.error.message || "rpc error"), { code: j.error.code, data: j.error.data, rpc: true });
+    if (!("result" in j)) throw new Error("no answer");
+    return j.result;
+  };
+  try {
+    return await Promise.any(ELY_RPC_LIST.map(ask));
+  } catch (e) {
+    const errs = (e as AggregateError).errors ?? [e];
+    throw errs.find((x: { rpc?: boolean }) => x?.rpc) ?? errs[0];
+  }
+}
+const raceTransport = custom({ request: ({ method, params }) => raceCall(method, params) });
+
 let client: ReturnType<typeof createPublicClient> | null = null;
 export const ely = () =>
   (client ??= createPublicClient({
     chain: { id: ELY_CHAIN, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: ELY_RPC_LIST } } },
     pollingInterval: 400,
-    transport: fallback(ELY_RPC_LIST.map((u) => http(u, { batch: { wait: 10 }, retryCount: 1, timeout: 5000 })), { rank: false, retryCount: 1 }),
+    transport: raceTransport,
   }));
 
 const POOL = "(uint8 venue,address target,address token,address hype,bool tokenIs0,uint24 fee,int24 tickSpacing,address hooks)";

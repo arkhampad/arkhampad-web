@@ -53,7 +53,7 @@ export function Feel() {
     return () => document.removeEventListener("pointerdown", on);
   }, []);
 
-  // pull down from the top of the page to reload
+  // pull down from the top of the page to refresh
   useEffect(() => {
     let startY = -1;
     let dist = 0;
@@ -70,7 +70,9 @@ export function Feel() {
       if (startY >= 0 && dist * 0.55 >= 70) {
         setLoading(true);
         haptic("strong");
-        setTimeout(() => location.reload(), 150);
+        // refresh the data in place: a full reload would restart sign-in and blank the page for seconds
+        try { window.dispatchEvent(new Event("ap:balance")); } catch {}
+        setTimeout(() => { setLoading(false); setPull(0); }, 900);
       } else setPull(0);
       startY = -1;
     };
