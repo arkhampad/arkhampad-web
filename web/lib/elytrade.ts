@@ -2,7 +2,7 @@
 // Trading any Elysium token from the user's own wallet, through the ArkhamPad router
 // (contracts-elysium/src/ArkhamRouter.sol). One router works for every launchpad: Uniswap v3 style
 // pools (called directly) and v4 style pools (through their pool manager). Pay and receive HYPE.
-import { createPublicClient, custom, decodeErrorResult, encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
+import { createPublicClient, custom, decodeErrorResult, decodeFunctionResult, encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import type { Signer } from "./chain";
 import type { EToken } from "./ely";
 
@@ -95,6 +95,8 @@ const MAX = (1n << 256n) - 1n;
 
 export type PoolArg = { venue: number; target: Address; token: Address; hype: Address; tokenIs0: boolean; fee: number; tickSpacing: number; hooks: Address };
 export function poolArg(t: EToken): PoolArg | null {
+  // Ascend's PancakeSwap Infinity pools need Ascend's own router (not wired up yet): shown, not tradable here
+  if (t.venue === "cl") return null;
   const v4 = t.venue === "v4";
   const target = (v4 ? t.manager : t.pool) as Address | null;
   if (!target || !/^0x[0-9a-f]{40}$/i.test(target) || t.whype == null) return null;
@@ -156,7 +158,9 @@ export async function tokenBalance(token: Address, addr: Address) {
 }
 
 /** Expected output (wei of the other side) for `amountIn`; null when this pool can't be traded here. */
-export async function quote(t: EToken, isBuy: boolean, amountIn: bigint): Promise<bigint | null> {
+/** Tokens whose quote only worked as a dry run of the real trade (taxed / fee-on-transfer coins). */
+export const taxedTokens = new Set<string>();
+export async function quote(t: EToken, isBuy: boolean, amountIn: bigint, from?: Address | null): Promise<bigint | null> {
   const p = poolArg(t);
   if (!ROUTER || !p || amountIn <= 0n) return null;
   try {
@@ -171,10 +175,61 @@ export async function quote(t: EToken, isBuy: boolean, amountIn: bigint): Promis
         if (d.errorName === "Quote") return d.args[0] as bigint;
       } catch {}
     }
-    return null;
   }
+  // The pool refused the plain quote (some taxed coins block transfers to the router during a quote).
+  // Dry-run the real trade from the visitor's wallet instead: it returns what actually arrives after any
+  // tax. Changes nothing on chain.
+  if (!from) return null;
+  try {
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
+    const { result } = isBuy
+      ? await ely().simulateContract({ account: from, address: ROUTER, abi: ROUTER_ABI, functionName: "buy", args: [p, 0n, deadline], value: amountIn })
+      : await ely().simulateContract({ account: from, address: ROUTER, abi: ROUTER_ABI, functionName: "sell", args: [p, amountIn, 0n, deadline] });
+    const got = result as bigint;
+    if (got > 0n) { taxedTokens.add(t.address.toLowerCase()); return got; }
+  } catch {}
+  return null;
 }
-function findRevertData(e: unknown): Hex | null {
+/**
+ * Can this coin be sold back here? A tiny helper contract (never deployed: put at a throwaway address for
+ * one eth_call through a state override) buys 0.01 HYPE of the coin through our router and sells it
+ * straight back. true = sellable, false = the sell reverted (taxed / blocked coin: a buyer could get
+ * stuck), null = couldn't check (node without state overrides, pool problem...): then nothing is blocked.
+ * Cached per coin for 10 minutes. Source: contracts-elysium/test-helpers/SellCheck.sol.
+ */
+const SELL_CHECK_CODE = "0x608060405260043610610020575f3560e01c8063ecac1fc91461002b575f80fd5b3661002757005b5f80fd5b348015610036575f80fd5b5061004a61004536600461029b565b61006b565b60408051931515845260208401929092529082015260600160405180910390f35b5f80806001600160a01b038616633ab1706085878461008c426102586102e2565b6040518563ffffffff1660e01b81526004016100aa9392919061040c565b60206040518083038185885af11580156100c6573d5f803e3d5ffd5b50505050506040513d601f19601f820116820180604052508101906100eb919061042e565b91505f6100fe6060870160408801610445565b6040516370a0823160e01b81523060048201526001600160a01b0391909116906370a0823190602401602060405180830381865afa158015610142573d5f803e3d5ffd5b505050506040513d601f19601f82011682018060405250810190610166919061042e565b90506101786060870160408801610445565b60405163095ea7b360e01b81526001600160a01b0389811660048301525f196024830152919091169063095ea7b3906044016020604051808303815f875af11580156101c6573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906101ea9190610465565b506001600160a01b03871663ce432c2487835f610209426102586102e2565b6040518563ffffffff1660e01b81526004016102289493929190610480565b6020604051808303815f875af1925050508015610262575060408051601f3d908101601f1916820190925261025f9181019061042e565b60015b61026e575f9350610276565b801515945091505b5093509350939050565b80356001600160a01b0381168114610296575f80fd5b919050565b5f805f8385036101408112156102af575f80fd5b6102b885610280565b9350610100601f19820112156102cc575f80fd5b5060208401915061012084013590509250925092565b8082018082111561030157634e487b7160e01b5f52601160045260245ffd5b92915050565b8015158114610314575f80fd5b50565b803561029681610307565b803562ffffff81168114610296575f80fd5b8035600281900b8114610296575f80fd5b803560ff8116808214610356575f80fd5b83525061036560208201610280565b6001600160a01b0316602083015261037f60408201610280565b6001600160a01b0316604083015261039960608201610280565b6001600160a01b031660608301526103b360808201610317565b151560808301526103c660a08201610322565b62ffffff1660a08301526103dc60c08201610334565b6103eb60c084018260020b9052565b506103f860e08201610280565b6001600160a01b03811660e0840152505050565b610140810161041b8286610345565b6101008201939093526101200152919050565b5f6020828403121561043e575f80fd5b5051919050565b5f60208284031215610455575f80fd5b61045e82610280565b9392505050565b5f60208284031215610475575f80fd5b815161045e81610307565b610160810161048f8287610345565b8461010083015283610120830152826101408301529594505050505056fea264697066735822122094a473006a2a37807b9bd1bb7623f376c025fa6c165021406743f2657e6f945264736f6c634300081a0033" as Hex;
+const SELL_CHECK_AT = "0x00000000000000000000000000000000a5e11c4e" as Address;
+const SELL_CHECK_ABI = parseAbi([
+  `function check(address router, ${POOL} p, uint256 buyWei) returns (bool ok, uint256 bought, uint256 back)`,
+]);
+const sellMemo = new Map<string, { ok: boolean | null; at: number }>();
+export async function sellable(t: EToken): Promise<boolean | null> {
+  const p = poolArg(t);
+  if (!ROUTER || !p || t.ours) return null;
+  const k = t.address.toLowerCase();
+  const memo = sellMemo.get(k);
+  if (memo && Date.now() - memo.at < 600_000) return memo.ok;
+  const buyWei = 10n ** 16n; // 0.01 HYPE
+  const data = encodeFunctionData({ abi: SELL_CHECK_ABI, functionName: "check", args: [ROUTER, p, buyWei] });
+  const params = [
+    { from: "0x000000000000000000000000000000000000dEaD", to: SELL_CHECK_AT, data },
+    "latest",
+    { [SELL_CHECK_AT]: { code: SELL_CHECK_CODE, balance: "0xde0b6b3a7640000" } }, // 1 HYPE for the test buy
+  ];
+  const ask = async (url: string) => {
+    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params }), signal: AbortSignal.timeout(6000) });
+    const j = await r.json();
+    if (typeof j?.result !== "string" || j.result === "0x") throw new Error("no answer");
+    const [ok, bought] = decodeFunctionResult({ abi: SELL_CHECK_ABI, functionName: "check", data: j.result as Hex }) as readonly [boolean, bigint, bigint];
+    if (bought === 0n) throw new Error("buy gave nothing"); // can't judge the sell
+    return ok;
+  };
+  let ok: boolean | null = null;
+  try { ok = await Promise.any([...DIRECT, OWN_RPC].map(ask)); } catch { ok = null; }
+  sellMemo.set(k, { ok, at: Date.now() });
+  return ok;
+}
+export function findRevertData(e: unknown): Hex | null {
   let cur = e as { data?: unknown; cause?: unknown; walk?: unknown } | undefined;
   for (let i = 0; cur && i < 8; i++) {
     const d = (cur as { data?: unknown }).data;
@@ -191,7 +246,7 @@ export class TradeFail extends Error {}
 export const USER_NO = /user (rejected|denied|cancel)|rejected by (the )?user|denied by (the )?user|cancelled by (the )?user|request was cancel/i;
 export const SLOW_HELP = "Sent, but the network is slow to confirm right now. Check your balance in a minute before trying again.";
 export const NONCE_HELP = "Your wallet's transaction counter is out of date. In MetaMask: Settings → Advanced → Clear activity tab data, then refresh and try again. Your funds are not affected.";
-const nice = (e: unknown) => {
+export const nice = (e: unknown) => {
   const m = String((e as Error)?.message ?? e);
   if (/nonce/i.test(m)) return NONCE_HELP;
   if (e instanceof SlowTx || /timed out|timeout/i.test(m)) return SLOW_HELP;
@@ -235,7 +290,7 @@ export async function waitReceipt(hash: Hex, ms = 120_000): Promise<RawReceipt> 
   }
   throw new SlowTx(SLOW_HELP);
 }
-async function wait(hash: Hex) {
+export async function wait(hash: Hex) {
   const r = await waitReceipt(hash);
   if (r.status !== "success") throw new TradeFail("Trade failed on chain. Nothing was spent except gas.");
   return hash;
@@ -247,7 +302,7 @@ async function wait(hash: Hex) {
  * the trade at once and reports a failure later if the chain rejects it.
  */
 export type SentTrade = { hash: Hex; confirmed: Promise<void> };
-const track = (hash: Hex, token: string): SentTrade => {
+export const track = (hash: Hex, token: string): SentTrade => {
   const confirmed = wait(hash).then(() => { rememberToken(token); balanceChanged(); }, (e) => { throw e instanceof TradeFail || e instanceof SlowTx ? e : new TradeFail(nice(e)); });
   confirmed.catch(() => {});
   return { hash, confirmed };

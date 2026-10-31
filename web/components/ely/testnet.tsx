@@ -189,22 +189,37 @@ export function TestnetPage() {
 
   const list = useMemo(() => coins ?? [], [coins]);
 
+  // our own faucet: a little test HYPE for any signed-in wallet, also email sign-ups with an empty wallet
+  const [drip, setDrip] = useState<string | null>(null);
+  async function getTest() {
+    if (!me) return;
+    setDrip("…");
+    try {
+      const r = await fetch("/api/ely-faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: me }) });
+      const j = (await r.json().catch(() => ({}))) as { error?: string; amount?: string };
+      setDrip(r.ok ? `Sent ${j.amount ?? "0.002"} test HYPE. It arrives in a few seconds.` : j.error || "Couldn't send test HYPE right now.");
+    } catch {
+      setDrip("Couldn't send test HYPE right now.");
+    }
+  }
+
   return (
-    <main className="e-in e-page">
-      <div className="e-panel" style={{ padding: "14px 16px", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <span style={{ fontSize: 14 }}>
-          <b>{tr("Testnet")}</b> · {tr("Practice with free test HYPE. Nothing here has real value.")}
-        </span>
-        <Link href="/" className="e-btn pri">{tr("Trade for real on Elysium →")}</Link>
+    <main className="e-in e-page e-testnet">
+      <div className="e-tn-banner" role="note">
+        <b>TESTNET</b> · {tr("Free test money")} · {tr("Nothing here is real")}
       </div>
 
       <section className="e-hero">
         <div>
           <span className="e-eyebrow">{tr("Elysium testnet")}</span>
-          <h1>{tr("Try ArkhamPad on testnet")}</h1>
-          <p>{tr("Launch a coin, buy it and sell it with free test HYPE. Same contracts as the real site.")}</p>
+          <h1>{tr("Practice on Elysium for free.")}</h1>
+          <p><b>{tr("Every testnet launch and trade counts toward the ArkhamPad airdrop.")}</b></p>
+          <p>{tr("Get free test HYPE, launch a coin, buy it and sell it. Same contracts as the real site.")}</p>
+          <a href="https://arkhampad.com/" className="e-btn e-tn-real">{tr("Ready for the real thing?")} → arkhampad.com</a>
         </div>
       </section>
+
+      {ready ? <TestBoard me={me} /> : <div className="e-panel e-tn-soon">{tr("Testnet opening soon. Get your wallet ready and come back in a bit.")}</div>}
 
       <div className="e-bridge">
         <section className="e-panel">
@@ -214,10 +229,12 @@ export function TestnetPage() {
               {tr("Balance")}: <b>{bal != null ? `${fromWei(bal).toFixed(4)} test HYPE` : w.signedIn ? "…" : "—"}</b>
             </p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {w.signedIn && me && <button type="button" className="e-btn pri" disabled={drip === "…"} onClick={getTest}>{tr(drip === "…" ? "Sending…" : "Get test HYPE")}</button>}
               <a className="e-btn" href={FAUCET} target="_blank" rel="noopener noreferrer">{tr("Open faucet")}</a>
               {me && <button type="button" className="e-btn" onClick={() => navigator.clipboard?.writeText(me)}>{tr("Copy my address")}</button>}
               {!w.signedIn && <button type="button" className="e-btn pri" onClick={w.login}>{tr("Log in")}</button>}
             </div>
+            {drip && drip !== "…" && <div className="e-msg" role="status">{tr(drip)}</div>}
 
             <h3 className="e-ph" style={{ marginTop: 18 }}>{tr("2. Launch a test coin")}</h3>
             <label className="e-field"><span>{tr("Name")}</span><input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="Moon Otter" autoComplete="off" /></label>
@@ -270,5 +287,61 @@ export function TestnetPage() {
         </aside>
       </div>
     </main>
+  );
+}
+
+type Board = { ready: boolean; error?: string; wallets?: number; launches?: number; trades?: number; top?: { address: string; launches: number; trades: number }[]; me?: { launches: number; trades: number; launchesToday: number; tradesToday: number } | null };
+
+/** Testnet leaderboard + today's task (counted from the testnet chain by /api/ely-test-board, cached 5 min). */
+function TestBoard({ me }: { me: Address | null }) {
+  const tr = useT();
+  const [b, setB] = useState<Board | null>(null);
+  useEffect(() => {
+    let on = true;
+    const load = async () => {
+      try {
+        const q = new URLSearchParams({ launcher: LAUNCHER || "", router: ROUTER || "", from: String(FROM), ...(me ? { me } : {}) });
+        const r = await fetch(`/api/ely-test-board?${q}`);
+        const j = (await r.json()) as Board;
+        if (on) setB(j);
+      } catch { if (on) setB({ ready: true, error: "x" }); }
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { on = false; clearInterval(id); };
+  }, [me]);
+  const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+  const lt = b?.me?.launchesToday ?? 0;
+  const tt = b?.me?.tradesToday ?? 0;
+  const done = lt >= 1 && tt >= 3;
+  return (
+    <div className="e-tn-grid">
+      <section className="e-panel e-tn-task">
+        <h3 className="e-ph">{tr("Today's task")}</h3>
+        <p style={{ margin: "0 0 10px" }}>{tr("Launch 1 coin + make 3 trades.")}</p>
+        {me ? (
+          <div className="e-tn-progress">
+            <span className={lt >= 1 ? "ok" : ""}>{Math.min(lt, 1)}/1 {tr("launch")}</span>
+            <span className={tt >= 3 ? "ok" : ""}>{Math.min(tt, 3)}/3 {tr("trades")}</span>
+            {done && <b className="ok">✓ {tr("Done for today")}</b>}
+          </div>
+        ) : <p className="dim" style={{ margin: 0 }}>{tr("Log in to track your progress.")}</p>}
+        {b?.me && <p className="dim" style={{ margin: "10px 0 0", fontSize: 13 }}>{tr("All time")}: {b.me.launches} {tr("launches")} · {b.me.trades} {tr("trades")}</p>}
+      </section>
+      <section className="e-panel e-tn-board">
+        <h3 className="e-ph">{tr("Testnet leaderboard")}{b?.wallets ? <span className="dim" style={{ fontWeight: 400, fontSize: 13 }}> · {b.wallets} {tr("wallets")}</span> : null}</h3>
+        {!b ? <p className="dim">{tr("Loading…")}</p> : b.error ? <p className="dim">{tr("Leaderboard is loading. Check back in a minute.")}</p> : !b.top?.length ? <p className="dim">{tr("Nobody yet. Be first on the board.")}</p> : (
+          <ol className="e-tn-list">
+            {b.top.map((r, i) => (
+              <li key={r.address} className={me && r.address === me.toLowerCase() ? "me" : ""}>
+                <span className="n">{i + 1}</span>
+                <span className="num">{short(r.address)}</span>
+                <span className="dim">{r.launches} {tr("launches")} · {r.trades} {tr("trades")}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </div>
   );
 }

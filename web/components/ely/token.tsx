@@ -13,12 +13,24 @@ import { Burst, Confetti } from "@/components/celebrate";
 import { ShareButton } from "./share";
 import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
 import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
-import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, pendingToken, SlowTx } from "@/lib/elytrade";
+import { ascendBuy, ascendQuote, ascendSell, isAscend, quoteToken, type QuoteToken } from "@/lib/ascend";
+import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, pendingToken, SlowTx, taxedTokens, sellable } from "@/lib/elytrade";
 
 const GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays for gas on "Max"
 const supplyOf = (t: EToken) => Number(BigInt(t.supply || "0")) / 10 ** (t.decimals ?? 18);
 const upDown = (v: number | null | undefined) => ((v ?? 0) >= 0 ? "up" : "down");
 const amt = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toLocaleString("en-US", { maximumFractionDigits: n < 1 ? 6 : 2 }));
+
+/** A short address you can tap to copy in full; shows "Copied" for a moment. */
+function CopyAddr({ a }: { a: string }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <button type="button" className="e-addrcopy num" title={a} aria-label={`Copy ${a}`}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigator.clipboard?.writeText(a).then(() => { setOk(true); setTimeout(() => setOk(false), 1400); }).catch(() => {}); }}>
+      {ok ? "Copied" : short(a)}
+    </button>
+  );
+}
 
 function Copy({ text, label }: { text: string; label?: string }) {
   const [ok, setOk] = useState(false);
@@ -43,7 +55,14 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
   useEffect(() => setSide(side0), [side0]);
   const dec = t.decimals ?? 18;
   const addr = w.address as Address | null;
-  const hypeRead = usePoll(async () => (addr ? hypeBalance(addr) : null), 6000, [addr, tick]) ?? cachedHype(addr);
+  // what this coin is bought with: HYPE for most pools; USDC on Ascend's pools
+  const asc = isAscend(t);
+  const HYPE_Q: QuoteToken = { address: "0x0000000000000000000000000000000000000000", symbol: "HYPE", decimals: 18, native: true, usd: false };
+  const qt = usePoll(async () => (asc ? quoteToken(t) : HYPE_Q), 600_000, [t.address, asc]) ?? HYPE_Q;
+  const qDec = qt.decimals;
+  const qSym = qt.symbol;
+  const qNative = qt.native;
+  const hypeRead = usePoll(async () => (addr ? (qNative ? hypeBalance(addr) : tokenBalance(qt.address, addr)) : null), 6000, [addr, tick, qt.address]) ?? (qNative ? cachedHype(addr) : undefined);
   const balRead = usePoll(async () => (addr ? tokenBalance(t.address as Address, addr) : null), 6000, [addr, t.address, tick]);
   // right after a trade the nodes still show the old balances for a while: show the expected ones until then
   const [after, setAfter] = useState<{ hype: bigint; bal: bigint; until: number } | null>(null);
@@ -53,31 +72,38 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
   // a % / Max button sets the exact on-chain amount (typing a number clears it), so 100% never ends up a
   // hair above the real balance because of rounding
   const [exact, setExact] = useState<bigint | null>(null);
-  const inWei = exact ?? toWei(val, side === "buy" ? 18 : dec);
-  const tradable = canTrade(t);
+  const inWei = exact ?? toWei(val, side === "buy" ? qDec : dec);
+  const tradable = canTrade(t) || asc;
+  const getQuote = (isBuy: boolean, amount: bigint) => (asc ? ascendQuote(t, isBuy, amount, addr) : quote(t, isBuy, amount, addr));
 
+  // other launchpads' coins: make sure a buyer can sell back here before letting them buy (taxed coins)
+  const unsellable = usePoll(async () => (!asc && !t.ours && canTrade(t) ? (await sellable(t)) === false : false), 600_000, [t.address, asc]) ?? false;
   const [noRoute, setNoRoute] = useState(false);
   useEffect(() => {
     setOut(null);
     if (!tradable || inWei <= 0n) return;
     let on = true;
     const id = setTimeout(async () => {
-      const q = await quote(t, side === "buy", inWei).catch(() => null);
+      const q = await getQuote(side === "buy", inWei).catch(() => null);
       if (!on) return;
       setOut(q);
       setNoRoute(q === null);
     }, 250);
     return () => { on = false; clearTimeout(id); };
-  }, [inWei, side, t, tradable]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inWei, side, t, tradable, addr, asc]);
 
-  const price = t.price_hype ?? 0;
-  const estOut = out !== null ? fromWei(out, side === "buy" ? dec : 18) : price > 0 && inWei > 0n ? (side === "buy" ? fromWei(inWei) / price : fromWei(inWei, dec) * price) : 0;
-  const inUsd = side === "buy" ? fromWei(inWei) * usd : fromWei(inWei, dec) * price * usd;
+  // price in what the coin is bought with (HYPE, or USD on a USDC pool)
+  const price = (t.price_hype ?? 0) * (qt.usd ? usd : 1);
+  const estOut = out !== null ? fromWei(out, side === "buy" ? dec : qDec) : price > 0 && inWei > 0n ? (side === "buy" ? fromWei(inWei, qDec) / price : fromWei(inWei, dec) * price) : 0;
+  const perQ = qt.usd ? 1 : usd;
+  const inUsd = side === "buy" ? fromWei(inWei, qDec) * perQ : fromWei(inWei, dec) * price * perQ;
   const sym = t.symbol;
   const short1 = side === "buy" ? hype != null && inWei > hype : bal != null && inWei > bal;
 
+  const keep = qNative ? GAS_KEEP : 0n; // HYPE keeps a little for gas; USDC can all go
   const quick = side === "buy"
-    ? [{ l: "0.1", v: "0.1", x: null as bigint | null }, { l: "0.5", v: "0.5", x: null }, { l: "1", v: "1", x: null }, (() => { const x = hype != null && hype > GAS_KEEP ? hype - GAS_KEEP : 0n; return { l: tr("Max"), v: hype != null ? trim(formatUnits(x, 18)) : "", x: hype != null ? x : null }; })()]
+    ? [...(qt.usd ? ["5", "10", "50"] : ["0.1", "0.5", "1"]).map((v) => ({ l: v, v, x: null as bigint | null })), (() => { const x = hype != null && hype > keep ? hype - keep : 0n; return { l: tr("Max"), v: hype != null ? trim(formatUnits(x, qDec)) : "", x: hype != null ? x : null }; })()]
     : [25, 50, 75, 100].map((p) => { const x = bal != null ? (bal * BigInt(p)) / 100n : null; return { l: `${p}%`, v: x != null ? trim(formatUnits(x, dec)) : "", x }; });
 
   // one trade at a time: the button is locked from the first tap until the network has taken the trade
@@ -91,12 +117,15 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
     setMsg(null);
     setBusy(tr(side === "buy" ? "Buying…" : "Selling…"));
     try {
-      const q = out ?? (await quote(t, side === "buy", inWei));
+      const q = out ?? (await getQuote(side === "buy", inWei));
       if (q === null) throw new TradeFail("This token can't be traded here right now.");
       const min = (q * BigInt(100 - slip)) / 100n;
       const amountIn = inWei;
-      const sent = side === "buy" ? await buy(w.signer, t, amountIn, min) : await sell(w.signer, t, amountIn, min, (x) => setBusy(tr(x)));
-      const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) });
+      const step = (x: string) => setBusy(tr(x));
+      const sent = asc
+        ? side === "buy" ? await ascendBuy(w.signer, t, amountIn, min, step) : await ascendSell(w.signer, t, amountIn, min, step)
+        : side === "buy" ? await buy(w.signer, t, amountIn, min) : await sell(w.signer, t, amountIn, min, step);
+      const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : qNative ? tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) }) : `${tr("Sold for")} ${fromWei(q, qDec).toFixed(qt.usd ? 2 : 4)} ${qSym}`;
       // the network has it: show the result and the new balances now
       const h0 = hype ?? 0n;
       const b0 = bal ?? 0n;
@@ -130,10 +159,11 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
   let label = tr(side === "buy" ? "Buy {sym}" : "Sell {sym}", { sym });
   let disabled = !!busy;
   if (!w.signedIn) label = tr("Log in to trade");
-  else if (!ROUTER) { label = tr("Trading opens soon"); disabled = true; }
+  else if (!ROUTER && !asc) { label = tr("Trading opens soon"); disabled = true; }
   else if (!tradable || (noRoute && inWei > 0n)) { label = tr("Not tradable here yet"); disabled = true; }
+  else if (side === "buy" && unsellable) { label = tr("Can't be sold here"); disabled = true; }
   else if (inWei <= 0n) { label = tr("Enter an amount"); disabled = true; }
-  else if (short1) { label = tr(side === "buy" ? "Not enough HYPE" : "Not enough {sym}", { sym }); disabled = true; }
+  else if (short1) { label = side === "buy" ? (qNative ? tr("Not enough HYPE") : `${tr("Not enough")} ${qSym}`) : tr("Not enough {sym}", { sym }); disabled = true; }
   if (busy) label = busy;
 
   return (
@@ -143,25 +173,28 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
         <button type="button" className={side === "sell" ? "on sell" : ""} onClick={() => { setSide("sell"); setVal(""); setExact(null); }}>{tr("Sell")}</button>
       </div>
       <label className="e-amt">
-        <span className="e-amt-top"><span>{tr(side === "buy" ? "You pay" : "You sell")}</span><span className="dim">{tr("Balance")} {side === "buy" ? (hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—") : bal != null ? `${amt(fromWei(bal, dec))} ${sym}` : "—"}</span></span>
+        <span className="e-amt-top"><span>{tr(side === "buy" ? "You pay" : "You sell")}</span><span className="dim">{tr("Balance")} {side === "buy" ? (hype != null ? `${fromWei(hype, qDec).toFixed(qt.usd ? 2 : 4)} ${qSym}` : "—") : bal != null ? `${amt(fromWei(bal, dec))} ${sym}` : "—"}</span></span>
         <span className="e-amt-row">
           <input inputMode="decimal" placeholder="0" value={val} onChange={(e) => { setExact(null); setVal(e.target.value.replace(/[^0-9.,]/g, "")); }} aria-label="Amount" autoComplete="off" />
-          <b>{side === "buy" ? "HYPE" : sym}</b>
+          <b>{side === "buy" ? qSym : sym}</b>
         </span>
         <span className="dim num" style={{ fontSize: 12.5 }}>≈ {money(inUsd)}</span>
       </label>
       <div className="e-quick">{quick.map((q) => <button key={q.l} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { if (!q.v) return; setVal(q.v); setExact(q.x); }} disabled={!q.v}>{q.l}</button>)}</div>
       <div className="e-recv">
         <span className="muted">{tr("You get")}</span>
-        <b className="num">{estOut > 0 ? `≈ ${amt(estOut)} ${side === "buy" ? sym : "HYPE"}` : "—"}</b>
+        <b className="num">{estOut > 0 ? `≈ ${amt(estOut)} ${side === "buy" ? sym : qSym}` : "—"}</b>
       </div>
+      {taxedTokens.has(t.address.toLowerCase()) && <div className="e-hint" style={{ marginBottom: 8 }}>{tr("This coin takes a tax on every trade. The amount shown is what you get after it.")}</div>}
       <div className="e-slip">
         <span className="dim">{tr("Slippage")}</span>
         <div className="e-seg">{[1, 3, 5, 10].map((s) => <button key={s} type="button" className={slip === s ? "on" : ""} onMouseDown={(e) => e.preventDefault()} onClick={() => setSlip(s)}>{s}%</button>)}</div>
       </div>
       <button type="button" className={`e-go ${side}`} disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={go}>{label}</button>
       {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
-      {w.signedIn && hype === 0n && side === "buy" && <Link href="/bridge/" className="e-hint">{tr("No HYPE on Elysium yet.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}
+      {side === "buy" && unsellable && <div className="e-msg bad" role="status">{tr("This coin takes a tax on trades and may not be sellable here. Trade it on its own site.")}</div>}
+      {asc && !qNative && <div className="e-hint" style={{ marginTop: 8 }}>{tr("This coin trades in {q}. You pay and receive {q} on Elysium; gas is paid in HYPE.", { q: qSym })}</div>}
+      {w.signedIn && hype === 0n && side === "buy" && qNative && <Link href="/bridge/" className="e-hint">{tr("No HYPE on Elysium yet.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}
     </div>
   );
 }
@@ -187,7 +220,7 @@ function Trades({ t, usd }: { t: EToken; usd: number }) {
             <span className={`r num ${x.side === "buy" ? "up" : "down"}`}>{money(x.hype * usd)}</span>
             <span className="r num e-hide-m">{x.hype.toFixed(x.hype < 1 ? 4 : 2)}</span>
             <span className="r num">{amt(x.amount)}</span>
-            <span className="r num dim e-hide-m">{short(x.trader)}</span>
+            <span className="r num dim e-hide-m">{x.trader ? <CopyAddr a={x.trader} /> : "—"}</span>
           </Cell>
         );
       })}
@@ -209,7 +242,7 @@ function Holders({ t }: { t: EToken }) {
         return (
           <div key={h.holder} className="e-row e-hr">
             <span className="dim num">{i + 1}</span>
-            <span className="num">{short(h.holder)} {isPool(h.holder) && <span className="e-lock">{tr("Pool")}</span>}{h.holder === (t.creator || "").toLowerCase() && <span className="e-lock">{tr("Creator")}</span>}</span>
+            <span className="num"><CopyAddr a={h.holder} /> {isPool(h.holder) && <span className="e-lock">{tr("Pool")}</span>}{h.holder === (t.creator || "").toLowerCase() && <span className="e-lock">{tr("Creator")}</span>}</span>
             <span className="e-hbar"><i style={{ width: `${Math.min(100, p)}%` }} /></span>
             <span className="r num">{p.toFixed(2)}%</span>
           </div>
@@ -235,7 +268,7 @@ function About({ t, links }: { t: EToken; links: CoinLinks }) {
       <dl>
         <div><dt>{tr("Contract")}</dt><dd><Copy text={t.address} /></dd></div>
         <div><dt>{tr("Creator")}</dt><dd>{t.creator ? <Copy text={t.creator} /> : "—"}</dd></div>
-        <div><dt>{tr("Pool")}</dt><dd>{t.venue === "v4" ? "Uniswap v4" : "Uniswap v3"} · {tr("{n}% fee", { n: (t.fee ?? 0) / 10000 })}</dd></div>
+        <div><dt>{tr("Pool")}</dt><dd>{t.venue === "cl" ? "PancakeSwap Infinity" : t.venue === "v4" ? "Uniswap v4" : "Uniswap v3"} · {tr("{n}% fee", { n: (t.fee ?? 0) / 10000 })}</dd></div>
         <div><dt>{tr("Supply")}</dt><dd className="num">{compact(supplyOf(t))}</dd></div>
         <div><dt>{tr("Created")}</dt><dd>{t.created_at ? `${new Date(t.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · ${tr("{age} ago", { age: ago(t.created_at) })}` : "—"}</dd></div>
       </dl>

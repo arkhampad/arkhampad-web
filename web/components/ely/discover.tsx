@@ -8,6 +8,8 @@ import { TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
 import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchTokens, money, pct, short, usePoll, type EToken, type ETrade } from "@/lib/ely";
 import { pendingTokens } from "@/lib/elytrade";
+import { AirdropBanner } from "./airdrop";
+import { useWallet } from "@/components/wallet";
 
 type Sort = "trending" | "new" | "top" | "gainers" | "losers" | "live";
 const SORTS: { id: Sort; label: string; narrow?: boolean }[] = [
@@ -96,11 +98,14 @@ function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
 /** Coins we launched ourselves while testing: real and tradable, but never featured on the board. */
 const HIDE = new Set((process.env.NEXT_PUBLIC_ELY_HIDE || "0x5031015cee9dac6a30ebc63336194d5df13e981a,0xb1493ce70b1436744a90df0e687f05d7cbef21c8").toLowerCase().split(",").map((x) => x.trim()));
 
+/** Our own team's wallets: coins they launch anywhere (e.g. on Ascend) also show on the board. */
+const TEAM = new Set((process.env.NEXT_PUBLIC_ELY_TEAM_CREATORS || "").toLowerCase().split(",").map((x) => x.trim()).filter(Boolean));
+
 /** The ArkhamPad board: the newest coins launched here, first thing on Discover, so fresh launches get seen. */
 function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
   const tr = useT();
   const known = new Set(tokens.map((t) => t.address.toLowerCase()));
-  const ours = [...tokens, ...pendingTokens().filter((t) => !known.has(t.address.toLowerCase()))].filter((t) => t.ours && !HIDE.has(t.address.toLowerCase())).sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0")).slice(0, 12);
+  const ours = [...tokens, ...pendingTokens().filter((t) => !known.has(t.address.toLowerCase()))].filter((t) => (t.ours || TEAM.has((t.creator || "").toLowerCase())) && !HIDE.has(t.address.toLowerCase())).sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0")).slice(0, 12);
   return (
     <section className="e-board">
       <div className="e-sec-h">
@@ -196,6 +201,7 @@ function Row({ t, i, usd, w }: { t: EToken; i: number; usd: number; w: Win }) {
 
 export function Discover() {
   const tr = useT();
+  const w = useWallet();
   const params = useSearchParams();
   const r = useRouter();
   const tokens = usePoll(fetchTokens, 30_000);
@@ -229,6 +235,7 @@ export function Discover() {
         </div>
       </section>
 
+      <AirdropBanner signedIn={w.signedIn} />
       <Board tokens={tokens ?? []} usd={usd} />
       <Hot tokens={tokens ?? []} usd={usd} />
 

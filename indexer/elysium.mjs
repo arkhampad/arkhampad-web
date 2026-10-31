@@ -11,6 +11,9 @@ const T = {
   v4Initialize: "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438",
   v3Swap: "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67",
   v4Swap: "0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f",
+  // PancakeSwap Infinity CL pool managers (Ascend runs on these): different event shapes from Uniswap v4
+  clInitialize: "0x426cc62fe6a33a40ba2788c2c87a9c34ee4582b95bc9fa5a7bb7ae70b750b99c",
+  clSwap: "0x04206ad2b7c0f463bff3dd4f33c5735b0f2957a351e4f79763a4fa9e775dd237",
   transfer: "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
 };
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -136,10 +139,28 @@ export function makeElysium(cfg, store) {
   const launcher = lc(cfg.launcher);
   const symbolCache = new Map(); // address -> symbol ("" when not a token)
   const isHypeWrap = new Map(); // address -> bool (a WHYPE: symbol WHYPE and wraps native)
+  // USD stablecoins some launchpads pair with instead of HYPE (Ascend: USDC). Env ELY_USD_QUOTES (comma list).
+  // Such a pool's prices and trade sizes are turned into HYPE with the current HYPE price, so every list,
+  // chart and stat stays in HYPE.
+  const usdQuotes = new Set(String(process.env.ELY_USD_QUOTES || "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => /^0x[0-9a-f]{40}$/.test(x)));
+  const quoteDec = new Map();
+  let usdPerHype = 0;
+  async function decOf(a) {
+    if (!quoteDec.has(a)) { const d = await call(a, SEL.decimals); quoteDec.set(a, d && d !== "0x" ? Number(BigInt(d)) : 18); }
+    return quoteDec.get(a);
+  }
+  async function hypePerQuote(q) {
+    if (!usdQuotes.has(q)) return 1;
+    if (!(usdPerHype > 0)) await hypeUsd();
+    return usdPerHype > 0 ? 1 / usdPerHype : 0;
+  }
   const txTo = new Map(); // tx hash -> to (who made the pool)
   const txFrom = new Map(); // tx hash -> from (the trader)
   const launchpadOf = new Map(Object.entries(KNOWN_CONTRACTS)); // contract -> name
   if (launcher) launchpadOf.set(launcher, "ArkhamPad");
+  // Ascend (Elysium's partner launchpad) contracts, so its coins are labelled "Ascend": pool managers and
+  // launchpads, comma-separated (testnet addresses until Nov 9, then mainnet's)
+  for (const a of String(process.env.ASCEND_CONTRACTS || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)) launchpadOf.set(a, "Ascend");
   const poolIndex = new Map(); // v3 pool address or v4 "manager:id" -> token address
 
   const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]).catch(() => "0x");
@@ -246,7 +267,7 @@ export function makeElysium(cfg, store) {
     let fixed = 0;
     for (const t of todo) {
       const info = t.symbol === "?" || t.name === "Unknown" ? await tokenInfo(t.address).catch(() => null) : null;
-      const tx = t.created_block ? await rpc("eth_getLogs", [{ fromBlock: hex(Number(t.created_block)), toBlock: hex(Number(t.created_block)), address: t.manager, topics: [[T.v3PoolCreated, T.v4Initialize]] }]).catch(() => []) : [];
+      const tx = t.created_block ? await rpc("eth_getLogs", [{ fromBlock: hex(Number(t.created_block)), toBlock: hex(Number(t.created_block)), address: t.manager, topics: [[T.v3PoolCreated, T.v4Initialize, T.clInitialize]] }]).catch(() => []) : [];
       const hash = tx.find((l) => (l.topics || []).some((x) => x && x.toLowerCase().includes(t.address.slice(2).toLowerCase())) || (l.topics?.[1] || "").toLowerCase() === String(t.pool).toLowerCase())?.transactionHash;
       const maker = !t.maker && hash ? await txField(txTo, hash, "to") : t.maker;
       const creator = !t.creator && hash ? await txField(txFrom, hash, "from") : t.creator;
@@ -390,6 +411,7 @@ export function makeElysium(cfg, store) {
   }
 
   async function addPool(p) {
+    if (p.hype !== ZERO && !quoteDec.has(p.hype) && !usdQuotes.has(p.hype)) quoteDec.set(p.hype, 18); // WHYPE
     // p: { token, hype, venue: 'v3'|'v4', pool, manager, fee, tickSpacing, hooks, tokenIs0, block, tx, sqrt }
     const tokens = store.tokens();
     const known = tokens.get(p.token);
@@ -421,7 +443,7 @@ export function makeElysium(cfg, store) {
       ours: !!launcher && maker === launcher,
       created_block: p.block,
       created_at: new Date(await timeOf(p.block)).toISOString(),
-      price_hype: p.sqrt ? priceFromSqrt(p.sqrt, p.tokenIs0, info.decimals) : null,
+      price_hype: p.sqrt ? priceFromSqrt(p.sqrt, p.tokenIs0, info.decimals, p.hype === ZERO ? 18 : await decOf(p.hype)) * (await hypePerQuote(p.hype)) : null,
     };
     poolIndex.set(p.venue === "v3" ? p.pool : `${p.manager}:${p.pool}`, p.token);
     await store.upsertToken(t);
@@ -429,7 +451,7 @@ export function makeElysium(cfg, store) {
 
   async function scanPools(from, to) {
     const q = { fromBlock: hex(from), toBlock: hex(to) };
-    const [v3, v4] = await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3PoolCreated] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Initialize] }])]);
+    const [v3, v4, cl] = await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3PoolCreated] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Initialize] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clInitialize] }]).catch(() => [])]);
     const jobs = [];
     for (const l of v3) jobs.push(async () => {
       const t0 = addrTopic(l.topics[1]);
@@ -452,13 +474,25 @@ export function makeElysium(cfg, store) {
       const token = h0 ? c1 : c0;
       await addPool({ token, hype: h0 ? c0 : c1, venue: "v4", pool: l.topics[1].toLowerCase(), manager: lc(l.address), fee: Number(uintAt(l.data, 0)), tickSpacing: Number(intAt(l.data, 1)), hooks: addrWord(l.data, 2), sqrt: uintAt(l.data, 3), tokenIs0: !h0, block: Number(l.blockNumber), tx: l.transactionHash });
     });
+    // PancakeSwap Infinity CL: data = hooks, fee, parameters (tick spacing in bits 16..39), sqrtPriceX96, tick
+    for (const l of cl) jobs.push(async () => {
+      const c0 = addrTopic(l.topics[2]);
+      const c1 = addrTopic(l.topics[3]);
+      const h0 = usdQuotes.has(c0) || (await hypeWrap(c0));
+      const h1 = usdQuotes.has(c1) || (await hypeWrap(c1));
+      if (h0 === h1) return;
+      const token = h0 ? c1 : c0;
+      const params = uintAt(l.data, 2);
+      const spacing = Number(BigInt.asIntN(24, (params >> 16n) & 0xffffffn));
+      await addPool({ token, hype: h0 ? c0 : c1, venue: "cl", pool: l.topics[1].toLowerCase(), manager: lc(l.address), fee: Number(uintAt(l.data, 1)), tickSpacing: spacing, hooks: addrWord(l.data, 0), sqrt: uintAt(l.data, 3), tokenIs0: !h0, block: Number(l.blockNumber), tx: l.transactionHash });
+    });
     // WHYPE symbols first (shared by many pools), then the pools in parallel
     await pool(jobs, 12);
   }
 
   async function scanTrades(from, to) {
     const q = { fromBlock: hex(from), toBlock: hex(to) };
-    const [v3, v4] = await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Swap] }])]);
+    const [v3, v4, cl] = await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clSwap] }]).catch(() => [])]);
     const tokens = store.tokens();
     const out = [];
     const add = async (l, token, tokenDelta, hypeDelta, sqrt, userSideNegativeIsPaid) => {
@@ -467,7 +501,10 @@ export function makeElysium(cfg, store) {
       // v3 amounts are the pool's side (positive = pool received); v4 the swapper's side (negative = paid)
       const sold = userSideNegativeIsPaid ? tokenDelta < 0n : tokenDelta > 0n;
       const abs = (x) => (x < 0n ? -x : x);
-      const hype = Number(abs(hypeDelta)) / 1e18;
+      const q = t.whype || ZERO;
+      const qDec = q === ZERO ? 18 : await decOf(q);
+      const toHype = await hypePerQuote(q);
+      const hype = (Number(abs(hypeDelta)) / 10 ** qDec) * toHype;
       const amount = Number(abs(tokenDelta)) / 10 ** (t.decimals ?? 18);
       if (!(hype > 0) || !(amount > 0)) return;
       out.push({
@@ -479,7 +516,7 @@ export function makeElysium(cfg, store) {
         side: sold ? "sell" : "buy",
         hype,
         amount,
-        price_hype: priceFromSqrt(sqrt, t.token_is0, t.decimals ?? 18),
+        price_hype: priceFromSqrt(sqrt, t.token_is0, t.decimals ?? 18, qDec) * toHype,
         trader: recent(Number(l.blockNumber)) ? await txField(txFrom, l.transactionHash, "from") : addrTopic(l.topics[2]),
       });
     };
@@ -493,6 +530,15 @@ export function makeElysium(cfg, store) {
       jobs.push(() => add(l, token, t.token_is0 ? a0 : a1, t.token_is0 ? a1 : a0, uintAt(l.data, 2), false));
     }
     for (const l of v4) {
+      const token = poolIndex.get(`${lc(l.address)}:${l.topics[1].toLowerCase()}`);
+      if (!token) continue;
+      const t = tokens.get(token);
+      const a0 = intAt(l.data, 0);
+      const a1 = intAt(l.data, 1);
+      jobs.push(() => add(l, token, t.token_is0 ? a0 : a1, t.token_is0 ? a1 : a0, uintAt(l.data, 2), true));
+    }
+    // CL swaps: same first three words as v4 (amount0, amount1, sqrtPriceX96), swapper's side like v4
+    for (const l of cl) {
       const token = poolIndex.get(`${lc(l.address)}:${l.topics[1].toLowerCase()}`);
       if (!token) continue;
       const t = tokens.get(token);
@@ -524,7 +570,7 @@ export function makeElysium(cfg, store) {
       const r = await fetch("https://api.hyperliquid.xyz/info", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }), signal: AbortSignal.timeout(10_000) });
       const j = await r.json();
       const v = Number(j?.HYPE);
-      if (v > 0) await store.setMeta("hype_usd", v);
+      if (v > 0) { usdPerHype = v; await store.setMeta("hype_usd", v); }
       return v;
     } catch {
       return null;

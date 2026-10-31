@@ -40,7 +40,7 @@ export type EToken = {
   image: string | null;
   description: string | null;
   launchpad: string | null;
-  venue: "v3" | "v4";
+  venue: "v3" | "v4" | "cl"; // cl = PancakeSwap Infinity CL (Ascend)
   pool: string;
   manager: string | null;
   whype: string | null;
