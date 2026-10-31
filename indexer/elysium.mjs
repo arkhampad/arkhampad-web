@@ -142,6 +142,7 @@ export function makeElysium(cfg, store) {
   const rpc = typeof cfg.rpc === "function" ? cfg.rpc : makeRpc(cfg.rpc);
   const log = cfg.log || console.log;
   const step = cfg.step || 2000;
+  let progressLogAt = 0;
   let span = step; // blocks per read right now: shrinks when the nodes are busy, grows back after
   const launcher = lc(cfg.launcher);
   const symbolCache = new Map(); // address -> symbol ("" when not a token)
@@ -616,6 +617,8 @@ export function makeElysium(cfg, store) {
       if (span < step) span = Math.min(step, Math.ceil(span * 1.5));
       last = to;
       await store.setState("ely_block", last);
+      // while catching up, one line a minute so the logs show it moving
+      if (tip - last > 50 && Date.now() - progressLogAt > 60_000) { progressLogAt = Date.now(); log(`elysium: catching up, block ${last} of ${tip} (${tip - last} to go, ${span} per read)`); }
       if (cfg.progress) log(`elysium: block ${last}/${tip}, ${store.tokens().size} tokens`);
     }
     return last - startAt;
