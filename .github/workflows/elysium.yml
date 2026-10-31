@@ -2,7 +2,8 @@ name: Elysium
 
 # Started by hand. status: deployer balances. bridge: moves HYPE from HyperEVM to Elysium through
 # Elysium's official bridge (Orbit Inbox). deploy: WHYPE + Uniswap v3 + ArkhamPad launcher + a smoke
-# coin on Elysium mainnet, addresses saved to contracts-elysium/deployments/99901.json.
+# coin on Elysium (mainnet, or testnet when the rpc input is a testnet RPC), addresses saved to
+# contracts-elysium/deployments/<chain id>.json (99901 mainnet, 99801 testnet).
 on:
   workflow_dispatch:
     inputs:
@@ -23,7 +24,7 @@ on:
       start_mc:
         description: "deploy: start market cap of a new coin, in HYPE"
         required: false
-        default: "60"
+        default: "30"
       smoke:
         description: "deploy: smoke-test coin's first buy, in HYPE"
         required: false
@@ -102,14 +103,14 @@ jobs:
           export SMOKE_BUY=$(cast to-wei "$IN_SMOKE")
           export CREATOR_BPS=3000
           forge script script/DeployAll.s.sol --rpc-url "$ELY_RPC" --broadcast --slow --gas-estimate-multiplier 300
-          cat deployments/99901.json
+          cat "deployments/$(cast chain-id --rpc-url "$ELY_RPC").json"
 
       - name: Save addresses
         if: inputs.action == 'deploy'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add deployments/99901.json
-          git commit -m "Elysium mainnet deploy"
+          git add deployments/*.json
+          git commit -m "Elysium deploy ($(ls -t deployments/*.json | head -1))"
           for i in 1 2 3 4 5; do git pull --rebase && git push && exit 0; sleep 10; done
           exit 1
