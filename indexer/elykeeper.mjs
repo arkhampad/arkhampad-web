@@ -63,7 +63,7 @@ async function referrals({ pool, pub, wallet, account, floor, log }) {
 const BATCH = 25;
 
 export async function keeperLoop({ rpc, launcher, key, pool, log }) {
-  const urls = [...new Set([...String(rpc).split(",").map((u) => u.trim()).filter(Boolean), "https://arkhampad.com/api/ely-rpc"])];
+  const urls = [...new Set(["https://rpc-live.elysp.com", ...String(rpc).split(",").map((u) => u.trim()).filter(Boolean), "https://arkhampad.com/api/ely-rpc"])];
   const transport = () => fallback(urls.map((u) => http(u, { timeout: 10_000, retryCount: 1 })));
   const chain = defineChain({ id: 99901, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: urls } } });
   const account = privateKeyToAccount(key.startsWith("0x") ? key : `0x${key}`);

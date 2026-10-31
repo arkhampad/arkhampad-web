@@ -2,7 +2,7 @@
 // to this address; it forwards each JSON-RPC call to the first Elysium node that answers, trying the
 // next one after a short timeout. Swapping or adding nodes is one Cloudflare variable (ELY_UPSTREAMS,
 // comma-separated), with no site change, and upstream nodes only ever see Cloudflare, not our users.
-const DEFAULT = ["https://rpc-live.boxa.club", "https://rpc.ronspad.fun"];
+const DEFAULT = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club", "https://rpc.ronspad.fun"];
 const ALLOWED = /^(eth_(chainId|blockNumber|getBalance|call|estimateGas|gasPrice|maxPriorityFeePerGas|feeHistory|getCode|getLogs|getBlockByNumber|getBlockByHash|getTransactionByHash|getTransactionReceipt|getTransactionCount|sendRawTransaction|getStorageAt)|net_version|web3_clientVersion)$/;
 const TIMEOUT = 4000;
 
@@ -22,7 +22,7 @@ export async function onRequestPost({ request, env }) {
   if (!list.length || list.length > 50 || list.some((c) => !ALLOWED.test(String(c?.method)))) {
     return reply({ jsonrpc: "2.0", id: null, error: { code: -32601, message: "method not allowed" } }, 400);
   }
-  const upstreams = (env.ELY_UPSTREAMS ? String(env.ELY_UPSTREAMS).split(",") : DEFAULT).map((u) => u.trim()).filter(Boolean);
+  const upstreams = [...new Set([...(env.ELY_UPSTREAMS ? String(env.ELY_UPSTREAMS).split(",") : []), ...DEFAULT].map((u) => u.trim()).filter(Boolean))];
   // Wallets pick the next nonce from eth_getTransactionCount. A node a block behind returns an old count
   // and the wallet's next transaction is rejected ("wrong nonce"). So for that call we ask every node and
   // answer with the highest count, and block-number reads also get the newest head.

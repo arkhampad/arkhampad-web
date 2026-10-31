@@ -12,9 +12,12 @@ export const ELY_CHAIN = 99901;
  * answers within a few seconds. Last in line is our own doorway (/api/ely-rpc on Cloudflare), which
  * has its own list of nodes. Change the list with NEXT_PUBLIC_ELY_RPCS (comma-separated).
  */
-export const ELY_RPCS = (process.env.NEXT_PUBLIC_ELY_RPCS || process.env.NEXT_PUBLIC_ELY_RPC || "https://rpc-live.boxa.club,https://rpc.ronspad.fun").split(",").map((u) => u.trim()).filter(Boolean);
+// ElysPump's node first (Oct 31: the others stopped seeing new blocks), then whatever the variable lists.
+const MAIN_RPCS = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club", "https://rpc.ronspad.fun"];
+export const ELY_RPCS = [...new Set([MAIN_RPCS[0], ...(process.env.NEXT_PUBLIC_ELY_RPCS || process.env.NEXT_PUBLIC_ELY_RPC || "").split(",").map((u) => u.trim()).filter(Boolean), ...MAIN_RPCS.slice(1)])];
 const OWN_RPC = "https://arkhampad.com/api/ely-rpc";
-export const ELY_RPC_LIST = [...ELY_RPCS, OWN_RPC];
+// our doorway second: it asks every node and answers with the newest head, so a stuck node can't hide new blocks
+export const ELY_RPC_LIST = [ELY_RPCS[0], OWN_RPC, ...ELY_RPCS.slice(1)];
 export const ELY_RPC = ELY_RPCS[0];
 
 let rpcAt = 0;
@@ -44,7 +47,7 @@ export const ely = () =>
   (client ??= createPublicClient({
     chain: { id: ELY_CHAIN, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: ELY_RPC_LIST } } },
     pollingInterval: 400,
-    transport: fallback(ELY_RPC_LIST.map((u) => http(u, { batch: { wait: 10 }, retryCount: 1, timeout: 5000 })), { rank: { interval: 60_000, sampleCount: 5, timeout: 2500 }, retryCount: 1 }),
+    transport: fallback(ELY_RPC_LIST.map((u) => http(u, { batch: { wait: 10 }, retryCount: 1, timeout: 5000 })), { rank: false, retryCount: 1 }),
   }));
 
 const POOL = "(uint8 venue,address target,address token,address hype,bool tokenIs0,uint24 fee,int24 tickSpacing,address hooks)";

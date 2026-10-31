@@ -9,11 +9,13 @@ import { LIVE, robinhoodTestnet, type Signer, type TypedData } from "@/lib/chain
 import { ELY_CHAIN as ELY_CHAIN_ID, ELY_RPC_LIST } from "@/lib/elytrade";
 
 /** The next nonce for `addr` on Elysium: the highest "pending" count any of our nodes reports. */
+// "latest", not "pending": a node can keep a transaction it never passed on in its own queue, and counting
+// it would leave a gap that holds every later transaction back. Mined count, highest across nodes.
 async function freshNonce(addr: Address): Promise<number | null> {
   const counts = await Promise.all(
     ELY_RPC_LIST.map(async (url) => {
       try {
-        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getTransactionCount", params: [addr, "pending"] }), signal: AbortSignal.timeout(2500) });
+        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getTransactionCount", params: [addr, "latest"] }), signal: AbortSignal.timeout(2500) });
         const j = await r.json();
         return j?.result ? parseInt(j.result, 16) : -1;
       } catch {

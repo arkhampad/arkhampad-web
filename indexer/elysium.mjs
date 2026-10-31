@@ -63,17 +63,37 @@ function decodeString(res) {
 }
 
 export const OWN_RPC = "https://arkhampad.com/api/ely-rpc";
+// always in the list, whatever ELYSIUM_RPC says
+const EXTRA_RPCS = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club", "https://rpc.ronspad.fun"];
 
 export function makeRpc(urls, log = console.log) {
   // our own Cloudflare doorway is always the last backup, so one node blocking us never stops the indexer
-  const list = [...new Set([...String(urls).split(",").map((u) => u.trim()).filter(Boolean), OWN_RPC])];
+  const list = [...new Set([...String(urls).split(",").map((u) => u.trim()).filter(Boolean), ...EXTRA_RPCS, OWN_RPC])];
   let id = 0;
   let at = 0;
   let since = Date.now();
+  let main = 0; // the node with the newest head, re-checked every minute (a stuck node still answers, just with old blocks)
+  let checked = 0;
+  const pickMain = async () => {
+    checked = Date.now();
+    const heads = await Promise.all(list.map(async (u) => {
+      try {
+        const r = await fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }), signal: AbortSignal.timeout(5_000) });
+        const j = await r.json();
+        return j.result ? Number(BigInt(j.result)) : -1;
+      } catch { return -1; }
+    }));
+    const best = Math.max(...heads);
+    if (best < 0) return;
+    const pick = heads.findIndex((h) => h >= best - 2);
+    if (pick !== main) log(`rpc: now using ${list[pick]} (heads ${list.map((u, i) => `${new URL(u).host}=${heads[i]}`).join(", ")})`);
+    main = pick; at = pick; since = Date.now();
+  };
   return async function rpc(method, params = []) {
     let last;
-    // after a fail-over, go back to the first (main) node every 2 minutes
-    if (at !== 0 && Date.now() - since > 120_000) { at = 0; since = Date.now(); }
+    if (Date.now() - checked > 60_000) await pickMain().catch(() => {});
+    // after a fail-over, go back to the main node every 2 minutes
+    if (at !== main && Date.now() - since > 120_000) { at = main; since = Date.now(); }
     for (let i = 0; i < list.length * 3; i++) {
       const url = list[(at + i) % list.length];
       try {
