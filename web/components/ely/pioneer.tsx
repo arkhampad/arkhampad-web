@@ -7,7 +7,7 @@ import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { usePoll } from "@/lib/ely";
 import { inviteLink } from "@/lib/referral";
-import { MAX_SUPPLY, MintFail, PIONEER, SAMPLES, TIERS, artPng, mintPioneer, pad, pioneerArt, pioneerState, tierOf } from "@/lib/pioneer";
+import { BANNERS_UNTIL, MAX_SUPPLY, MintFail, PIONEER, SAMPLES, TIERS, artPng, mintPioneer, pad, pioneerArt, pioneerState, tierOf } from "@/lib/pioneer";
 
 const XIcon = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M17.8 3h3.1l-6.8 7.7L22 21h-6.2l-4.9-6.3L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z" /></svg>;
 const sample = (id: number) => `/genesis/sample-${id}.svg`;
@@ -28,6 +28,10 @@ export function PioneerBanner() {
   const tr = useT();
   const st = usePoll(() => pioneerState(null).catch(() => null), 30_000);
   const left = st ? MAX_SUPPLY - st.minted : null;
+  // gone from mainnet night on: the pages stay about coins (checked after load, so the static page matches)
+  const [over, setOver] = useState(false);
+  useEffect(() => { setOver(Date.now() >= BANNERS_UNTIL); }, []);
+  if (over) return null;
   return (
     <Link href="/genesis/" className="e-airdrop e-pio-banner">
       <img src={sample(42)} alt="" width={44} height={44} />

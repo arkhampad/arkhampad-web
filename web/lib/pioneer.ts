@@ -5,7 +5,7 @@ import type { Signer } from "./chain";
 import { ELY_CHAIN, ely, nice, waitReceipt } from "./elytrade";
 
 /** Set after /ops deploys the contract (or Cloudflare env NEXT_PUBLIC_ELY_PIONEER). */
-export const PIONEER = (process.env.NEXT_PUBLIC_ELY_GENESIS || "") as Address | "";
+export const PIONEER = (process.env.NEXT_PUBLIC_ELY_GENESIS || "0x43c9234bb8be8e4f5aa03d14ee3d12213ef92562") as Address | "";
 export const MAX_SUPPLY = 10_000;
 export const PIONEER_ABI = parseAbi([
   "function mint() returns (uint256)",
@@ -84,3 +84,6 @@ export async function artPng(src: string, size = 1000): Promise<Blob | null> {
     return null;
   }
 }
+
+/** The Genesis banners leave Discover and You when Elysium mainnet officially opens (Nov 9, 00:00 Istanbul). */
+export const BANNERS_UNTIL = Date.parse("2026-11-08T21:00:00Z");
