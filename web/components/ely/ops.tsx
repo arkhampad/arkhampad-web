@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import { encodeFunctionData, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { ELY_CHAIN, ELY_EXPLORER, ROUTER, ely, waitReceipt } from "@/lib/elytrade";
+import { PIONEER } from "@/lib/pioneer";
+import { PIONEER_CODE } from "@/lib/pioneer-code";
 import { fetchHypeUsd, fetchOurCoinsVolume, fetchTokensByAddress, money, usePoll, type EOurCoin } from "@/lib/ely";
 
 const START_BLOCK = 65000n; // just before the mainnet deploy
@@ -177,6 +179,47 @@ const ABI = parseAbi([
 type S = { owner: Address; treasury: Address; startMc: bigint; creatorBps: number; launchFee: bigint; paused: boolean };
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
+/** One-time: put the Pioneer NFT contract on Elysium from the Admin wallet (no keys anywhere). */
+function PioneerDeploy({ isOwner }: { isOwner: boolean }) {
+  const w = useWallet();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [addr, setAddr] = useState<string | null>(null);
+  async function go() {
+    if (!w.signer?.sendTx) return w.login();
+    setBusy(true);
+    setMsg("Confirm in your wallet…");
+    try {
+      const hash = (await w.signer.sendTx(ELY_CHAIN, { data: PIONEER_CODE as Hex, gas: 8_000_000n })) as Hex;
+      setMsg("Waiting for Elysium… (up to 2 minutes)");
+      const r = await waitReceipt(hash, 180_000);
+      if (r.status === "success" && r.contractAddress) { setAddr(r.contractAddress); setMsg("Deployed. Send this address to Claude:"); }
+      else setMsg(`Failed on chain. Transaction: ${hash}`);
+    } catch (e) {
+      setMsg(/reject|denied|cancel/i.test(String((e as Error)?.message)) ? "Cancelled." : `Failed: ${String((e as Error)?.message ?? e).split("\n")[0].slice(0, 160)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="e-panel"><div className="e-trade">
+      <h3 style={{ margin: 0 }}>Pioneer NFT</h3>
+      {PIONEER ? (
+        <p>Live at <b className="num">{PIONEER}</b>. Mint page: <a href="/pioneer/" style={{ color: "var(--e-teal)" }}>/pioneer</a></p>
+      ) : (
+        <>
+          <p className="dim" style={{ fontSize: 14 }}>10,000 free badges, one per wallet. Press once with the Admin wallet; it costs a little HYPE for gas. Nobody can change the contract afterwards.</p>
+          {!w.signedIn ? <button type="button" className="e-go" onClick={w.login}>Log in with the Admin wallet</button>
+            : !isOwner ? <p className="e-msg bad">Switch to the Admin wallet first.</p>
+            : !addr && <button type="button" className="e-go" disabled={busy} onClick={go}>{busy ? "Deploying…" : "Deploy the Pioneer NFT contract"}</button>}
+          {msg && <div className="e-msg" role="status">{msg}</div>}
+          {addr && <code className="num" style={{ display: "block", padding: 12, borderRadius: 10, background: "var(--e-raise)", userSelect: "all", wordBreak: "break-all", fontSize: 16 }}>{addr}</code>}
+        </>
+      )}
+    </div></section>
+  );
+}
+
 export function OpsPage() {
   const w = useWallet();
   const [s, setS] = useState<S | null>(null);
@@ -262,6 +305,7 @@ export function OpsPage() {
           </>
         )}
       </div></section>
+      <PioneerDeploy isOwner={isOwner} />
     </main>
   );
 }

@@ -9,6 +9,7 @@ import { useT } from "@/lib/i18n";
 import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchTokens, money, pct, short, usePoll, type EToken, type ETrade } from "@/lib/ely";
 import { pendingTokens } from "@/lib/elytrade";
 import { AirdropBanner } from "./airdrop";
+import { PioneerBanner } from "./pioneer";
 import { useWallet } from "@/components/wallet";
 
 type Sort = "trending" | "new" | "top" | "gainers" | "losers" | "live";
@@ -235,6 +236,7 @@ export function Discover() {
         </div>
       </section>
 
+      <PioneerBanner />
       <AirdropBanner signedIn={w.signedIn} />
       <Board tokens={tokens ?? []} usd={usd} />
       <Hot tokens={tokens ?? []} usd={usd} />

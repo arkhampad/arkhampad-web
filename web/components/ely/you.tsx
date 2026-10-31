@@ -8,6 +8,7 @@ import { useT } from "@/lib/i18n";
 import { waitingBalances } from "./bridge";
 import { InviteCard } from "./invite";
 import { AirdropCard } from "./airdrop";
+import { PioneerBanner } from "./pioneer";
 import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHoldings, fetchHypeUsd, fetchMyTrades, fetchTokensByAddress, money, pct, short, usePoll } from "@/lib/ely";
 import { ELY_CHAIN, chainToken, ely, fromWei, hypeBalance, cachedHype, recentTokens, tokenBalance } from "@/lib/elytrade";
@@ -198,6 +199,8 @@ export function YouPage() {
           <p className="e-note" style={{ padding: "0 16px 14px" }}>{tr("Your 30% of the trading fees is sent to your wallet automatically every 30 minutes, in HYPE and in your coin. You can also collect it now.")}</p>
         </section>
       )}
+
+      <PioneerBanner />
 
       <AirdropCard me={me} />
 

@@ -264,7 +264,7 @@ export const nice = (e: unknown) => {
   const short = String((e as { shortMessage?: string })?.shortMessage || m).split("\n")[0].slice(0, 120);
   return `Trade failed: ${short}`;
 };
-export type RawReceipt = { status: "success" | "reverted"; logs: { address: Address; data: Hex; topics: [Hex, ...Hex[]] }[] };
+export type RawReceipt = { status: "success" | "reverted"; logs: { address: Address; data: Hex; topics: [Hex, ...Hex[]] }[]; contractAddress?: Address | null };
 /**
  * Waits for a transaction by asking every node at once, every 700 ms; the first node that has it wins.
  * (The public Elysium nodes catch up with the chain at different speeds; one may lag another by a minute.)
@@ -277,14 +277,14 @@ export async function waitReceipt(hash: Hex, ms = 120_000): Promise<RawReceipt> 
     const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getTransactionReceipt", params: [hash] }), signal: AbortSignal.timeout(4000) });
     const j = await r.json();
     if (!j?.result) throw new Error("not yet");
-    return j.result as { status: Hex; logs: RawReceipt["logs"] };
+    return j.result as { status: Hex; logs: RawReceipt["logs"]; contractAddress?: Address | null };
   };
   let round = 0;
   while (Date.now() < end) {
     try {
       // the nodes directly every round; our doorway (which asks them all again) only every 5th
       const r = await Promise.any((round++ % 5 === 4 ? ELY_RPC_LIST : DIRECT).map(ask));
-      return { status: r.status === "0x1" ? "success" : "reverted", logs: r.logs ?? [] };
+      return { status: r.status === "0x1" ? "success" : "reverted", logs: r.logs ?? [], contractAddress: r.contractAddress ?? null };
     } catch {}
     await new Promise((r) => setTimeout(r, 700));
   }

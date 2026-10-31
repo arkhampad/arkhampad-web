@@ -176,7 +176,7 @@ export type Signer = {
   address: Address;
   signTypedData: (chainId: number, typed: TypedData) => Promise<Hex>;
   /** Sends a transaction from the user's wallet (only needed for one-time approvals on networks without permit). */
-  sendTx?: (chainId: number, tx: { to: Address; data: Hex; value?: bigint; gas?: bigint; nonce?: number }) => Promise<Hex>;
+  sendTx?: (chainId: number, tx: { to?: Address; data: Hex; value?: bigint; gas?: bigint; nonce?: number }) => Promise<Hex>;
   /** Built-in (Privy) wallet: we choose the nonce ourselves, so two transactions can go out back to back. */
   embedded?: boolean;
   /** The next nonce this wallet will use on Elysium (counts transactions sent but not yet visible on the nodes). */
@@ -1012,7 +1012,7 @@ export async function vapidKey(): Promise<string | null> {
 
 
 /** Dev wallet (local tests): send a transaction with a plain private-key account. */
-export async function sendWithAccount(account: import("viem").Account, chainId: number, tx: { to: Address; data: Hex }) {
+export async function sendWithAccount(account: import("viem").Account, chainId: number, tx: { to?: Address; data: Hex }) {
   const n = netOf(chainId);
   if (!n) throw new TradeError("Unknown network");
   const chain = defineChain({ id: n.id, name: n.name, nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [n.rpc] } } });

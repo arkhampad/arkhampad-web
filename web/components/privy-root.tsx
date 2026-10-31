@@ -114,7 +114,7 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
       address,
       embedded: wallet?.walletClientType === "privy",
       nextNonce: () => nextNonce(address as Address),
-      sendTx: async (chainId: number, tx: { to: Address; data: Hex; value?: bigint; gas?: bigint; nonce?: number }) => {
+      sendTx: async (chainId: number, tx: { to?: Address; data: Hex; value?: bigint; gas?: bigint; nonce?: number }) => {
         const w = walletRef.current;
         if (!w) throw new Error("Wallet not ready. Please try again.");
         // On Elysium some nodes run a block behind and hand out an old nonce ("wrong nonce: expected 15,
@@ -129,7 +129,7 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
           }
           if (Number(String(w.chainId).split(":").pop()) !== chainId) await w.switchChain(chainId);
           const provider = await w.getEthereumProvider();
-          return (await provider.request({ method: "eth_sendTransaction", params: [{ from: w.address, to: tx.to, data: tx.data, ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), ...(tx.gas ? { gas: `0x${tx.gas.toString(16)}` } : {}), ...(nonce != null ? { nonce: `0x${nonce.toString(16)}` } : {}) }] })) as Hex;
+          return (await provider.request({ method: "eth_sendTransaction", params: [{ from: w.address, ...(tx.to ? { to: tx.to } : {}), data: tx.data, ...(tx.value ? { value: `0x${tx.value.toString(16)}` } : {}), ...(tx.gas ? { gas: `0x${tx.gas.toString(16)}` } : {}), ...(nonce != null ? { nonce: `0x${nonce.toString(16)}` } : {}) }] })) as Hex;
         };
         if (!elysium) return send();
         const nonce = tx.nonce ?? (await nextNonce(w.address as Address));
