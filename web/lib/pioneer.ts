@@ -28,9 +28,10 @@ export const tierOf = (id: number) => (id <= 100 ? "Founder" : id <= 1000 ? "Van
 export async function pioneerState(me?: string | null) {
   if (!PIONEER) return null;
   const c = { address: PIONEER as Address, abi: PIONEER_ABI } as const;
+  // each read on its own: one slow node answer must not hide the other (or the mint button)
   const [minted, mine] = await Promise.all([
-    ely().readContract({ ...c, functionName: "totalSupply" }),
-    me ? ely().readContract({ ...c, functionName: "idOf", args: [me as Address] }) : Promise.resolve(0n),
+    ely().readContract({ ...c, functionName: "totalSupply" }).catch(() => 0n),
+    me ? ely().readContract({ ...c, functionName: "idOf", args: [me as Address] }).catch(() => 0n) : Promise.resolve(0n),
   ]);
   return { minted: Number(minted), mine: Number(mine) };
 }

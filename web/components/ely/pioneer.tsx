@@ -119,7 +119,7 @@ export function PioneerPage() {
   let label = tr("Mint for free");
   if (!w.signedIn) label = tr("Log in to mint");
   else if (busy) label = tr("Minting…");
-  else if (!PIONEER || !st) label = tr("Opening in a moment");
+  else if (!PIONEER) label = tr("Opening in a moment");
   else if (soldOut) label = tr("All 10,000 minted");
 
   return (
@@ -144,7 +144,7 @@ export function PioneerPage() {
               <button type="button" className="e-btn pri e-early-share" onClick={share}><XIcon />{tr("Share on X")}</button>
             </div>
           ) : (
-            <button type="button" className="e-go e-pio-go" onClick={mint} disabled={busy || (w.signedIn && (!PIONEER || !st || soldOut))}>{label}</button>
+            <button type="button" className="e-go e-pio-go" onClick={mint} disabled={busy || (w.signedIn && (!PIONEER || soldOut))}>{label}</button>
           )}
           {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
           {note && <span className="dim" style={{ fontSize: 13 }}>{note}</span>}
