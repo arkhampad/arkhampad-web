@@ -21,7 +21,7 @@ const signed = (h: string) => { const v = BigInt(`0x${h}`); return v >= 1n << 25
 const word = (data: string, i: number) => data.slice(2 + i * 64, 2 + (i + 1) * 64);
 
 const head = async () => Number(BigInt(await elyRpc<string>("eth_blockNumber", [])));
-const STEP = 1500; // blocks per read: small enough that busy public nodes still answer
+const STEP = 900; // blocks per read: one public node refuses more than 1,000
 const bornMemo = new Map<string, number>();
 const hexb = (n: number) => `0x${n.toString(16)}`;
 

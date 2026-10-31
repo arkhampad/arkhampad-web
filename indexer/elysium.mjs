@@ -646,6 +646,7 @@ export function makeElysium(cfg, store) {
   // launched here shows up with its trades and holders within seconds, however far the full scan lags.
   const factoryOf = () => cfg.factory || [...store.tokens().values()].find((t) => t.ours && t.venue === "v3" && t.manager)?.manager || null;
   let fastSpan = 1000;
+  let fastLogAt = 0;
   async function fastOnce() {
     const tip = Number(await rpc("eth_blockNumber"));
     if (tip > tipNow) tipNow = tip;
@@ -662,13 +663,15 @@ export function makeElysium(cfg, store) {
         // pictures and descriptions of new coins (normally filled after a full scan, which may be lagging)
         backfillMeta().catch(() => {});
       } catch (e) {
-        if (fastSpan > 20) { fastSpan = Math.max(20, Math.floor(fastSpan / 2)); await new Promise((r) => setTimeout(r, 300)); continue; }
+        if (fastSpan > 20) { fastSpan = Math.max(20, Math.floor(fastSpan / 2)); log(`elysium: fast lane reading ${fastSpan} blocks (${e.message})`); await new Promise((r) => setTimeout(r, 300)); continue; }
         throw e;
       }
       if (fastSpan < 1000) fastSpan = Math.min(1000, Math.ceil(fastSpan * 1.5));
       last = to;
       await store.setState("ely_fast_block", last);
+      if (tip - last > 30 && Date.now() - fastLogAt > 60_000) { fastLogAt = Date.now(); log(`elysium: fast lane at block ${last} of ${tip}`); }
     }
+    if (Date.now() - fastLogAt > 10 * 60_000) { fastLogAt = Date.now(); log(`elysium: fast lane up to date (block ${last})`); }
     // the lists' numbers (market cap, volume, holders) can't wait for the full scan either
     if (Date.now() - statsAt > 60_000) {
       statsAt = Date.now();
