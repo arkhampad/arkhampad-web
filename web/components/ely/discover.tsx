@@ -155,7 +155,7 @@ function TradeItem({ x, t, usd }: { x: ETrade; t?: EToken; usd: number }) {
   );
 }
 function TradeList({ byAddr, usd, n = 24 }: { byAddr: Map<string, EToken>; usd: number; n?: number }) {
-  const trades = usePoll(() => fetchLiveTrades(n), 4000);
+  const trades = usePoll(() => fetchLiveTrades(n), 6000);
   return (
     <ul>
       {(trades ?? []).map((x) => <TradeItem key={`${x.tx}-${x.log_index}`} x={x} t={byAddr.get(x.token)} usd={usd} />)}
@@ -196,7 +196,7 @@ export function Discover() {
   const tr = useT();
   const params = useSearchParams();
   const r = useRouter();
-  const tokens = usePoll(fetchTokens, 15_000);
+  const tokens = usePoll(fetchTokens, 30_000);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const [sort, setSort] = useState<Sort>("trending");
   const [win, setWin] = useState<Win>("24h");

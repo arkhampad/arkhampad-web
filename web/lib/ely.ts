@@ -75,7 +75,7 @@ const LIST_COLS = "address,name,symbol,decimals,supply,launchpad,venue,pool,mana
 export async function fetchTokens(): Promise<EToken[]> {
   if (MOCK) return (await mock()).tokens;
   // with the short-window columns when the database has them (db/027), without them otherwise
-  const pick = (cols: string) => rest<EToken[]>(`ely_tokens?select=${cols}&price_hype=not.is.null&order=vol24_hype.desc&limit=2000`, 10);
+  const pick = (cols: string) => rest<EToken[]>(`ely_tokens?select=${cols}&price_hype=not.is.null&order=vol24_hype.desc&limit=2000`, 30);
   let list: EToken[];
   try { list = await pick(`${LIST_COLS},${WINDOW_COLS}`); } catch { list = await pick(LIST_COLS); }
   return list.map(withImg);
@@ -92,11 +92,11 @@ export async function fetchHypeUsd(): Promise<number> {
 }
 export async function fetchLiveTrades(limit = 30): Promise<ETrade[]> {
   if (MOCK) return (await mock()).trades.slice(0, limit);
-  return rest<ETrade[]>(`ely_trades?select=${TR_COLS}&order=at.desc,id.desc&limit=${limit}`, 3);
+  return rest<ETrade[]>(`ely_trades?select=${TR_COLS}&order=at.desc,id.desc&limit=${limit}`, 5);
 }
 export async function fetchTrades(token: string, limit = 1500): Promise<ETrade[]> {
   if (MOCK) return (await mock()).trades.filter((t: ETrade) => t.token === token).slice(0, limit);
-  return rest<ETrade[]>(`ely_trades?select=${TR_COLS}&token=eq.${token.toLowerCase()}&order=at.desc,id.desc&limit=${limit}`, limit > 200 ? 8 : 4);
+  return rest<ETrade[]>(`ely_trades?select=${TR_COLS}&token=eq.${token.toLowerCase()}&order=at.desc,id.desc&limit=${limit}`, limit > 200 ? 10 : 5);
 }
 export async function fetchHolders(token: string, limit = 25): Promise<EHolder[]> {
   if (MOCK) return ((await mock()) as unknown as { holders?: Record<string, EHolder[]> }).holders?.[token] ?? [];

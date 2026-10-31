@@ -1,7 +1,7 @@
 // POST /api/ely-idea  { address? } -> { name, ticker, description, picture, left }
 // One fresh meme coin idea that fits what is trending on Elysium right now. The trend list (top coins
 // by 24h volume, from our Elysium index) is refreshed every 2 hours and shared by all visitors.
-// 10 ideas per visitor per day (counted by IP and by wallet, through Supabase ely_ai_take).
+// 30 ideas per visitor per day (counted by IP and by wallet, through Supabase ely_ai_take).
 import { clean, parse } from "./ideas.js";
 
 const MODELS = [
@@ -11,7 +11,7 @@ const MODELS = [
 ];
 const TREND_TTL = 2 * 3600; // seconds
 const CACHE_KEY = "https://arkhampad.com/__cache/ely-trends-v1";
-const LIMIT = 10;
+const LIMIT = 30;
 
 // The database address is public (the site uses the same one); Cloudflare's runtime may not have the
 // NEXT_PUBLIC_* build variables, so fall back to it. Without this the daily limit never counted.

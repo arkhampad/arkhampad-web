@@ -105,7 +105,7 @@ function Account() {
 }
 
 function Ticker() {
-  const tokens = usePoll(fetchTokens, 20_000);
+  const tokens = usePoll(fetchTokens, 60_000);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const top = (tokens ?? []).slice(0, 16);
   if (!top.length) return <div className="e-ticker"><div className="e-ticker-run" style={{ height: 34 }} /></div>;

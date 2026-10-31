@@ -134,7 +134,7 @@ const trim = (v: string) => { const [a, b = ""] = v.split("."); const d = b.slic
 
 function Trades({ t, usd }: { t: EToken; usd: number }) {
   const tr = useT();
-  const trades = usePoll(() => fetchTrades(t.address, 60), 5000, [t.address]);
+  const trades = usePoll(() => fetchTrades(t.address, 60), 6000, [t.address]);
   if (!trades) return <div style={{ padding: 14, display: "grid", gap: 8 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="e-skel" style={{ height: 40 }} />)}</div>;
   if (!trades.length) return <div className="e-empty">{tr("No trades yet.")}</div>;
   return (
@@ -212,9 +212,9 @@ export function TokenPage() {
   const a = (params.get("a") || "").toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(a);
   // a coin launched a moment ago may not be indexed yet: read it from the chain until it is
-  const t = usePoll(async () => (valid ? ((await fetchToken(a).catch(() => null)) ?? (await chainToken(a))) : null), 10_000, [a]);
+  const t = usePoll(async () => (valid ? ((await fetchToken(a).catch(() => null)) ?? (await chainToken(a))) : null), 15_000, [a]);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
-  const trades = usePoll(async () => (valid ? fetchTrades(a, 1500) : []), 8000, [a]);
+  const trades = usePoll(async () => (valid ? fetchTrades(a, 1500) : []), 15_000, [a]);
   const [tab, setTab] = useState<"trades" | "holders" | "about">("trades");
   const [sheet, setSheet] = useState<"buy" | "sell" | null>(null);
   const [fresh, setFresh] = useState(params.get("new") === "1");
