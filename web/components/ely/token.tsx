@@ -12,7 +12,8 @@ import { EChart } from "./chart";
 import { Burst, Confetti } from "@/components/celebrate";
 import { ShareButton } from "./share";
 import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
-import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
+import { chainActivity, isFresh, mergeTrades } from "@/lib/elyfresh";
+import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
 import { ascendBuy, ascendQuote, ascendSell, isAscend, quoteToken, type QuoteToken } from "@/lib/ascend";
 import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, pendingToken, SlowTx, taxedTokens, sellable } from "@/lib/elytrade";
 
@@ -202,9 +203,10 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
 /** Shows an exact amount without a long tail: at most 6 decimals, trailing zeros dropped (rounded down). */
 const trim = (v: string) => { const [a, b = ""] = v.split("."); const d = b.slice(0, 6).replace(/0+$/, ""); return d ? `${a}.${d}` : a; };
 
-function Trades({ t, usd }: { t: EToken; usd: number }) {
+function Trades({ t, usd, chain }: { t: EToken; usd: number; chain?: ETrade[] | null }) {
   const tr = useT();
-  const trades = usePoll(() => fetchTrades(t.address, 60), 6000, [t.address]);
+  const db = usePoll(() => fetchTrades(t.address, 60), 6000, [t.address]);
+  const trades = useMemo(() => mergeTrades(db, chain)?.slice(0, 60) ?? (chain ? chain.slice(0, 60) : undefined), [db, chain]);
   if (!trades) return <div style={{ padding: 14, display: "grid", gap: 8 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="e-skel" style={{ height: 40 }} />)}</div>;
   if (!trades.length) return <div className="e-empty">{tr("No trades yet.")}</div>;
   return (
@@ -228,9 +230,11 @@ function Trades({ t, usd }: { t: EToken; usd: number }) {
   );
 }
 
-function Holders({ t }: { t: EToken }) {
+function Holders({ t, chain }: { t: EToken; chain?: EHolder[] | null }) {
   const tr = useT();
-  const rows = usePoll(() => fetchHolders(t.address, 30), 20000, [t.address]);
+  const db = usePoll(() => fetchHolders(t.address, 30), 20000, [t.address]);
+  // the index's list, or (a young coin it hasn't caught up with) the balances read from the chain
+  const rows = db && db.length ? db : chain?.length ? chain.slice(0, 30) : db;
   const sup = supplyOf(t) || 1;
   if (!rows) return <div style={{ padding: 14, display: "grid", gap: 8 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="e-skel" style={{ height: 36 }} />)}</div>;
   if (!rows.length) return <div className="e-empty">{tr("Holder list is loading. Check back in a minute.")}</div>;
@@ -285,9 +289,20 @@ export function TokenPage() {
   // a coin launched a moment ago may not be indexed yet: read it from the chain until it is
   // a coin launched here a moment ago: the launch's own record fills in until a node / the indexer has it
   const pend = valid ? pendingToken(a) : null;
-  const t = usePoll(async () => (valid ? ((await fetchToken(a).catch(() => null)) ?? (await chainToken(a)) ?? pendingToken(a)) : null), pend ? 5000 : 15_000, [a]) ?? pend ?? undefined;
+  const t0 = usePoll(async () => (valid ? ((await fetchToken(a).catch(() => null)) ?? (await chainToken(a)) ?? pendingToken(a)) : null), pend ? 5000 : 15_000, [a]) ?? pend ?? undefined;
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
-  const trades = usePoll(async () => (valid ? fetchTrades(a, 1500) : []), 15_000, [a]);
+  const dbTrades = usePoll(async () => (valid ? fetchTrades(a, 1500) : []), 15_000, [a]);
+  // a young coin: trades and holders straight from the chain every few seconds (the index lags a minute or two)
+  const young = !!t0 && isFresh(t0);
+  const live = usePoll(async () => (t0 && young ? chainActivity(t0).catch(() => null) : null), 4000, [t0?.address, young]);
+  // a young coin's price and market cap follow its latest trade on chain (the index catches up later)
+  const t = useMemo(() => {
+    const last = live?.trades[0];
+    if (!t0 || !last?.price_hype) return t0;
+    if (t0.last_trade_at && Date.parse(t0.last_trade_at) >= Date.parse(last.at)) return t0;
+    return { ...t0, price_hype: last.price_hype, mcap_hype: last.price_hype * supplyOf(t0) };
+  }, [t0, live]);
+  const trades = useMemo(() => mergeTrades(dbTrades, live?.trades) ?? (live ? live.trades : undefined), [dbTrades, live]);
   const [tab, setTab] = useState<"trades" | "holders" | "about">("trades");
   const [sheet, setSheet] = useState<"buy" | "sell" | null>(null);
   const [fresh, setFresh] = useState(params.get("new") === "1");
@@ -301,17 +316,18 @@ export function TokenPage() {
     return () => { document.body.style.overflow = prev; };
   }, [sheet]);
 
+  const liveVol = useMemo(() => (live?.trades ?? []).filter((x) => Date.now() - Date.parse(x.at) < 86_400_000).reduce((n, x) => n + x.hype, 0), [live]);
   const stats = useMemo(() => {
     if (!t) return [];
     return [
             { l: tr("Price"), v: tinyPrice((t.price_hype ?? 0) * usd) },
-      { l: tr("24h volume"), v: money((t.vol24_hype || 0) * usd) },
-      { l: tr("Holders"), v: compact(t.holders || 0) },
+      { l: tr("24h volume"), v: money(Math.max(t.vol24_hype || 0, liveVol) * usd) },
+      { l: tr("Holders"), v: compact(Math.max(t.holders || 0, live?.holders.length ?? 0)) },
       { l: tr("Top 10"), v: t.top10_pct == null ? "—" : `${Math.min(100, t.top10_pct).toFixed(0)}%` },
-      { l: tr("24h txns"), v: `${t.buys24 + t.sells24}` },
+      { l: tr("24h txns"), v: `${Math.max(t.buys24 + t.sells24, live?.trades.length ?? 0)}` },
       { l: tr("Age"), v: ago(t.created_at) },
     ];
-  }, [t, usd, tr]);
+  }, [t, usd, tr, live, liveVol]);
 
   if (!valid || t === null) {
     return (
@@ -367,11 +383,11 @@ export function TokenPage() {
           <section className="e-panel">
             <div className="e-bar" style={{ flexDirection: "row" }}>
               <div className="e-tabs" role="tablist">
-                {(["trades", "holders", "about"] as const).map((k) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={`e-tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{k === "trades" ? tr("Trades") : k === "holders" ? `${tr("Holders")} ${t.holders ? compact(t.holders) : ""}` : tr("About")}</button>)}
+                {(["trades", "holders", "about"] as const).map((k) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={`e-tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{k === "trades" ? tr("Trades") : k === "holders" ? `${tr("Holders")} ${Math.max(t.holders || 0, live?.holders.length ?? 0) ? compact(Math.max(t.holders || 0, live?.holders.length ?? 0)) : ""}` : tr("About")}</button>)}
               </div>
             </div>
-            {tab === "trades" && <Trades t={t} usd={usd} />}
-            {tab === "holders" && <Holders t={t} />}
+            {tab === "trades" && <Trades t={t} usd={usd} chain={live?.trades} />}
+            {tab === "holders" && <Holders t={t} chain={live?.holders} />}
             {tab === "about" && <About t={t} links={links} />}
           </section>
         </div>
