@@ -82,8 +82,29 @@ export function poolArg(t: EToken): PoolArg | null {
 }
 export const canTrade = (t: EToken) => !!ROUTER && !!poolArg(t);
 
+// The last HYPE balance we read, kept per address (memory + this browser), so every page can show it at
+// once while a fresh read is on its way.
+const balMem = new Map<string, bigint>();
+export function cachedHype(addr?: string | null): bigint | undefined {
+  if (!addr) return undefined;
+  const k = addr.toLowerCase();
+  if (balMem.has(k)) return balMem.get(k);
+  try { const v = localStorage.getItem(`ap_bal_${k}`); if (v) { balMem.set(k, BigInt(v)); return BigInt(v); } } catch {}
+  return undefined;
+}
+/** HYPE balance on Elysium: asks every node at once and takes the first answer (one slow or refusing node can't block it). */
 export async function hypeBalance(addr: Address) {
-  return ely().getBalance({ address: addr });
+  const ask = async (url: string) => {
+    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [addr, "latest"] }), signal: AbortSignal.timeout(5000) });
+    const j = await r.json();
+    if (typeof j?.result !== "string") throw new Error(j?.error?.message || "no answer");
+    return BigInt(j.result);
+  };
+  const v = await Promise.any(ELY_RPC_LIST.map(ask)).catch(() => ely().getBalance({ address: addr }));
+  const k = addr.toLowerCase();
+  balMem.set(k, v);
+  try { localStorage.setItem(`ap_bal_${k}`, v.toString()); } catch {}
+  return v;
 }
 export async function tokenBalance(token: Address, addr: Address) {
   return ely().readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [addr] });
@@ -123,12 +144,19 @@ function findRevertData(e: unknown): Hex | null {
 export class TradeFail extends Error {}
 /** MetaMask keeps its own transaction counter; when a node was a block behind it can get stuck one behind. */
 export const USER_NO = /user (rejected|denied|cancel)|rejected by (the )?user|denied by (the )?user|cancelled by (the )?user|request was cancel/i;
-export const SLOW_HELP = "The network didn't confirm this in time, so nothing happened and your HYPE is safe. Please try again in a moment.";
+export const SLOW_HELP = "Sent, but the network is slow to confirm right now. Check your balance in a minute before trying again.";
 export const NONCE_HELP = "Your wallet's transaction counter is out of date. In MetaMask: Settings → Advanced → Clear activity tab data, then refresh and try again. Your funds are not affected.";
 const nice = (e: unknown) => {
   const m = String((e as Error)?.message ?? e);
   if (/nonce/i.test(m)) return NONCE_HELP;
-  if (/timed out|timeout/i.test(m)) return SLOW_HELP;
+  if (e instanceof SlowTx || /timed out|timeout/i.test(m)) return SLOW_HELP;
+  // a node didn't answer: say which one and how, so it can be fixed
+  const he = e as { name?: string; status?: number; url?: string; details?: string };
+  if (/HTTP request failed|network is busy/i.test(m)) {
+    // which node failed and how goes to the console only; visitors just see a plain message
+    console.warn("elysium rpc", he.status, he.url, he.details, (e as { data?: unknown })?.data);
+    return "The Elysium network is busy right now. Please try again in a moment.";
+  }
   if (/insufficient funds/i.test(m)) return "Not enough HYPE for this trade and gas.";
   // only a person saying no counts as "Cancelled"; a node refusing the transaction shows its real reason
   if (USER_NO.test(m)) return "Cancelled.";
@@ -136,8 +164,32 @@ const nice = (e: unknown) => {
   const short = String((e as { shortMessage?: string })?.shortMessage || m).split("\n")[0].slice(0, 120);
   return `Trade failed: ${short}`;
 };
+export type RawReceipt = { status: "success" | "reverted"; logs: { address: Address; data: Hex; topics: [Hex, ...Hex[]] }[] };
+/**
+ * Waits for a transaction by asking every node at once, every 700 ms; the first node that has it wins.
+ * (The public Elysium nodes catch up with the chain at different speeds; one may lag another by a minute.)
+ * Throws SlowTx after `ms` (the transaction may still go through later).
+ */
+export class SlowTx extends Error {}
+export async function waitReceipt(hash: Hex, ms = 120_000): Promise<RawReceipt> {
+  const end = Date.now() + ms;
+  const ask = async (url: string) => {
+    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getTransactionReceipt", params: [hash] }), signal: AbortSignal.timeout(4000) });
+    const j = await r.json();
+    if (!j?.result) throw new Error("not yet");
+    return j.result as { status: Hex; logs: RawReceipt["logs"] };
+  };
+  while (Date.now() < end) {
+    try {
+      const r = await Promise.any(ELY_RPC_LIST.map(ask));
+      return { status: r.status === "0x1" ? "success" : "reverted", logs: r.logs ?? [] };
+    } catch {}
+    await new Promise((r) => setTimeout(r, 700));
+  }
+  throw new SlowTx(SLOW_HELP);
+}
 async function wait(hash: Hex) {
-  const r = await ely().waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 500 });
+  const r = await waitReceipt(hash);
   if (r.status !== "success") throw new TradeFail("Trade failed on chain. Nothing was spent except gas.");
   return hash;
 }
@@ -149,7 +201,7 @@ async function wait(hash: Hex) {
  */
 export type SentTrade = { hash: Hex; confirmed: Promise<void> };
 const track = (hash: Hex, token: string): SentTrade => {
-  const confirmed = wait(hash).then(() => { rememberToken(token); balanceChanged(); }, (e) => { throw e instanceof TradeFail ? e : new TradeFail(nice(e)); });
+  const confirmed = wait(hash).then(() => { rememberToken(token); balanceChanged(); }, (e) => { throw e instanceof TradeFail || e instanceof SlowTx ? e : new TradeFail(nice(e)); });
   confirmed.catch(() => {});
   return { hash, confirmed };
 };

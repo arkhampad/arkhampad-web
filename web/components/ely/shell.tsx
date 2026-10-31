@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { WalletProvider, useWallet } from "@/components/wallet";
-import { fromWei, hypeBalance } from "@/lib/elytrade";
+import { fromWei, hypeBalance, cachedHype } from "@/lib/elytrade";
 import { Feel } from "./feel";
 import { InviteConfirm } from "./invite";
 import { I18nProvider, LANGS, useI18n, useT } from "@/lib/i18n";
@@ -92,7 +92,7 @@ function Account() {
   const tr = useT();
   const me = w.address as `0x${string}` | null;
   const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
-  const hype = usePoll(async () => (me ? hypeBalance(me) : null), 15_000, [me]);
+  const hype = usePoll(async () => (me ? hypeBalance(me) : null), 15_000, [me]) ?? cachedHype(me);
   if (!w.signedIn) return <button type="button" className="e-btn pri" onClick={w.login}>{tr("Log in")}</button>;
   // your money at a glance; tap to open You (balance, coins, deposit, withdraw)
   const bal = hype != null && usd ? money(fromWei(hype) * usd) : null;

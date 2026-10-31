@@ -3,7 +3,7 @@ import { formatUnits } from "viem";
 // Token page (/t/?a=0x…): any Elysium token, from any launchpad. Chart, buy/sell, trades, holders.
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import { useWallet } from "@/components/wallet";
 import { TokenAvatar } from "./shell";
@@ -13,7 +13,7 @@ import { Burst, Confetti } from "@/components/celebrate";
 import { ShareButton } from "./share";
 import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
 import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken } from "@/lib/ely";
-import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, quote, sell, toWei, tokenBalance, TradeFail, chainToken } from "@/lib/elytrade";
+import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, SlowTx, SLOW_HELP } from "@/lib/elytrade";
 
 const GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays for gas on "Max"
 const supplyOf = (t: EToken) => Number(BigInt(t.supply || "0")) / 10 ** (t.decimals ?? 18);
@@ -43,7 +43,7 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
   useEffect(() => setSide(side0), [side0]);
   const dec = t.decimals ?? 18;
   const addr = w.address as Address | null;
-  const hype = usePoll(async () => (addr ? hypeBalance(addr) : null), 6000, [addr, tick]);
+  const hype = usePoll(async () => (addr ? hypeBalance(addr) : null), 6000, [addr, tick]) ?? cachedHype(addr);
   const bal = usePoll(async () => (addr ? tokenBalance(t.address as Address, addr) : null), 6000, [addr, t.address, tick]);
   // a % / Max button sets the exact on-chain amount (typing a number clears it), so 100% never ends up a
   // hair above the real balance because of rounding
@@ -69,31 +69,38 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
     ? [{ l: "0.1", v: "0.1", x: null as bigint | null }, { l: "0.5", v: "0.5", x: null }, { l: "1", v: "1", x: null }, (() => { const x = hype != null && hype > GAS_KEEP ? hype - GAS_KEEP : 0n; return { l: tr("Max"), v: hype != null ? trim(formatUnits(x, 18)) : "", x: hype != null ? x : null }; })()]
     : [25, 50, 75, 100].map((p) => { const x = bal != null ? (bal * BigInt(p)) / 100n : null; return { l: `${p}%`, v: x != null ? trim(formatUnits(x, dec)) : "", x }; });
 
+  // one trade at a time: the button stays locked from the first tap until the chain has the trade
+  const going = useRef(false);
   async function go() {
     if (!w.signedIn || !w.signer) return w.login();
+    if (going.current) return;
+    going.current = true;
     (document.activeElement as HTMLElement | null)?.blur?.(); // close the phone keyboard
     setMsg(null);
+    setBusy(tr(side === "buy" ? "Buying…" : "Selling…"));
     try {
       const q = out ?? (await quote(t, side === "buy", inWei));
       if (q === null) throw new TradeFail("This token can't be traded here right now.");
       const min = (q * BigInt(100 - slip)) / 100n;
-      const sent = side === "buy"
-        ? (setBusy(tr("Buying…")), await buy(w.signer, t, inWei, min))
-        : (setBusy(tr("Selling…")), await sell(w.signer, t, inWei, min, (x) => setBusy(tr(x))));
+      const sent = side === "buy" ? await buy(w.signer, t, inWei, min) : await sell(w.signer, t, inWei, min, (x) => setBusy(tr(x)));
       const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) });
-      // the network has it: show it now, confirm in the background
-      setMsg({ ok: true, text: `${done} · ${tr("confirming…")}` });
+      setBusy(tr("Confirming…"));
       setVal("");
       setExact(null);
-      setBusy(null);
-      sent.confirmed.then(
-        () => { setMsg({ ok: true, text: `${done} ✓` }); setTick((x) => x + 1); onDone?.(); },
-        (e) => setMsg({ ok: false, text: tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.") }),
-      );
+      try {
+        await sent.confirmed;
+        setMsg({ ok: true, text: `${done} ✓` });
+      } catch (e) {
+        if (e instanceof SlowTx) setMsg({ ok: true, text: tr(SLOW_HELP) });
+        else throw e;
+      }
+      setTick((x) => x + 1);
+      onDone?.();
     } catch (e) {
       setMsg({ ok: false, text: tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.") });
     } finally {
       setBusy(null);
+      going.current = false;
     }
   }
 

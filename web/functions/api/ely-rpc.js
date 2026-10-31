@@ -37,6 +37,17 @@ export async function onRequestPost({ request, env }) {
     const best = answers.reduce((a, b) => (b > a ? b : a), -1n);
     if (best >= 0n) return reply({ jsonrpc: "2.0", id: calls.id ?? null, result: `0x${best.toString(16)}` });
   }
+  // "has my transaction landed?": the nodes catch up with the chain at different speeds, so ask them all
+  // and answer with the first one that has it
+  if (!Array.isArray(calls) && (calls.method === "eth_getTransactionReceipt" || calls.method === "eth_getTransactionByHash")) {
+    const found = await Promise.any(upstreams.map(async (url) => {
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(TIMEOUT) });
+      const j = await r.json();
+      if (!j?.result) throw new Error("not found");
+      return j;
+    })).catch(() => null);
+    if (found) return reply({ ...found, id: calls.id ?? null });
+  }
   const sending = list.some((c) => c.method === "eth_sendRawTransaction");
   // a signed transaction goes to every node at once, so whichever one the wallet reads from next has it
   if (sending && !Array.isArray(calls)) {
@@ -57,15 +68,23 @@ export async function onRequestPost({ request, env }) {
     const first = outs.find(Boolean);
     if (first) return reply(first);
   }
+  const why = [];
+  let rpcError = null;
   for (const url of upstreams) {
     try {
       const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(sending ? 15000 : TIMEOUT) });
-      if (!r.ok) continue;
       const out = await r.text();
+      if (!r.ok) {
+        why.push(`${new URL(url).host} ${r.status}`);
+        // a node that refused with a proper JSON-RPC error (e.g. "execution reverted") still answered
+        if (/"error"\s*:/.test(out) && !/rate limit|too many|capacity|-32005/i.test(out)) rpcError ??= out;
+        continue;
+      }
       // a node that answers with a rate-limit / server error for every call: try the next one
       if (!sending && /"code":\s*-32(005|603)|rate limit|too many requests/i.test(out)) continue;
       return reply(out);
-    } catch { /* next node */ }
+    } catch (e) { why.push(`${new URL(url).host} ${e?.name === "TimeoutError" ? "timeout" : "down"}`); }
   }
-  return reply({ jsonrpc: "2.0", id: Array.isArray(calls) ? null : calls.id ?? null, error: { code: -32603, message: "Elysium nodes are not answering right now" } }, 503);
+  if (rpcError) return reply(rpcError);
+  return reply({ jsonrpc: "2.0", id: Array.isArray(calls) ? null : calls.id ?? null, error: { code: -32603, message: "The Elysium network is busy right now. Please try again in a moment.", data: why.join(", ") } });
 }

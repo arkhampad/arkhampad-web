@@ -9,7 +9,7 @@ import { decodeEventLog, encodeFunctionData, parseAbi, type Address, type Hex } 
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { fetchHypeUsd, money, usePoll } from "@/lib/ely";
-import { ELY_CHAIN, NONCE_HELP, USER_NO, ely, fromWei, hypeBalance, rememberToken, toWei } from "@/lib/elytrade";
+import { ELY_CHAIN, NONCE_HELP, USER_NO, SlowTx, waitReceipt, ely, fromWei, hypeBalance, cachedHype, rememberToken, toWei } from "@/lib/elytrade";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
 const START_MC = 60; // HYPE, whole supply
@@ -70,7 +70,7 @@ export function CreatePage() {
   const r = useRouter();
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const me = w.address as Address | null;
-  const hype = usePoll(async () => (me ? hypeBalance(me) : null), 6000, [me]);
+  const hype = usePoll(async () => (me ? hypeBalance(me) : null), 6000, [me]) ?? cachedHype(me);
   const [name, setName] = useState("");
   const [sym, setSym] = useState("");
   const [desc, setDesc] = useState("");
@@ -181,7 +181,7 @@ export function CreatePage() {
       setBusy("Launching…");
       const hash = await w.signer.sendTx(ELY_CHAIN, { to: LAUNCHER, data, value: fee + buyWei });
       setBusy("Confirming… (up to a minute)");
-      const rc = await ely().waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000, pollingInterval: 400 });
+      const rc = await waitReceipt(hash as Hex, 150_000);
       if (rc.status !== "success") throw new Error("failed");
       let coin: string | null = null;
       for (const l of rc.logs) {
@@ -199,7 +199,7 @@ export function CreatePage() {
       console.error("launch failed", e);
       const why = String((e as { shortMessage?: string })?.shortMessage || m).split("\n")[0].slice(0, 140);
       if (/nonce/i.test(m)) { setMsg(NONCE_HELP); return; }
-      if (/timed out|timeout/i.test(m)) { setMsg("The network didn't confirm your launch in time, so nothing happened and your HYPE is safe. Please try again in a moment."); return; }
+      if (e instanceof SlowTx || /timed out|timeout/i.test(m)) { setMsg("Your launch was sent, but the network is slow to confirm right now. It will show on your You page in a minute or two. Please don't launch it again."); return; }
       if (!/insufficient/i.test(m) && !USER_NO.test(m)) { setMsg(`Launch failed: ${why}`); return; }
       setMsg(/insufficient/i.test(m) ? (buyWei > 0n ? "Not enough HYPE for the first buy and gas." : "You need a little HYPE on Elysium for gas.") : "Cancelled.");
     } finally {

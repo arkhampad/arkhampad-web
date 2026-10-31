@@ -9,7 +9,7 @@ import { waitingBalances } from "./bridge";
 import { InviteCard } from "./invite";
 import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHoldings, fetchHypeUsd, fetchMyTrades, fetchTokensByAddress, money, pct, short, usePoll } from "@/lib/ely";
-import { ELY_CHAIN, ely, fromWei, hypeBalance, recentTokens, tokenBalance } from "@/lib/elytrade";
+import { ELY_CHAIN, ely, fromWei, hypeBalance, cachedHype, recentTokens, tokenBalance } from "@/lib/elytrade";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
 const COLLECT = parseAbi(["function collect(address coin) returns (uint256 coinAmount, uint256 nativeAmount)"]);
@@ -76,7 +76,7 @@ export function YouPage() {
   const w = useWallet();
   const me = w.address?.toLowerCase() ?? null;
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
-  const hype = usePoll(async () => (me ? hypeBalance(me as Address) : null), 5000, [me]);
+  const hype = usePoll(async () => (me ? hypeBalance(me as Address) : null), 5000, [me]) ?? cachedHype(me);
   // what you hold: the indexer's list plus anything bought or created here just now, read live from the chain
   const holdings = usePoll(async () => {
     if (!me) return null;
