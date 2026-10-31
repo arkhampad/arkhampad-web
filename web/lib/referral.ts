@@ -58,3 +58,7 @@ export async function myRefStats(addr: string): Promise<RefStats> {
   await rpc<string>("ely_ref_code", { p_addr: addr.toLowerCase() }).catch(() => null);
   return rpc<RefStats>("ely_ref_stats", { p_addr: addr.toLowerCase() });
 }
+
+/** Your early rank on ArkhamPad (db/031_ely_early.sql): null rank = no trade or launch yet. */
+export type Early = { rank: number | null; total: number; since: string | null };
+export const fetchEarly = (addr: string) => rpc<Early>("ely_early", { p_addr: addr.toLowerCase() });

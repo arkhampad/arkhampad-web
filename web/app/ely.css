@@ -625,3 +625,11 @@ html { overscroll-behavior-y: none; }
 .e-tn-list li.me { outline: 1px solid var(--e-teal); }
 .e-tn-list .n { font-weight: 800; color: var(--e-teal); }
 .e-tn-list li > span:last-child { justify-self: end; }
+
+/* early rank on You (airdrop card) */
+.e-early { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 16px 12px; padding: 16px 18px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--e-teal) 40%, transparent); background: radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--e-teal) 18%, transparent), transparent 60%), var(--e-raise); }
+.e-early-rank { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.e-early-rank small { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--e-muted); }
+.e-early-rank b { font-size: 40px; line-height: 1.05; font-weight: 900; background: linear-gradient(100deg, var(--e-text), var(--e-teal)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.e-early-rank span { font-size: 14px; color: var(--e-muted); }
+.e-early-share { display: inline-flex; align-items: center; gap: 8px; }

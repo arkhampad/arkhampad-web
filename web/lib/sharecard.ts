@@ -192,3 +192,139 @@ export async function shareCard(t: EToken, mcapUsd: string): Promise<Blob | null
   c.textAlign = "left";
   return new Promise((ok) => cv.toBlob((b) => ok(b), "image/png"));
 }
+
+/** The "early on ArkhamPad" card (1200×675): your rank, what you launched and traded, the date you started. */
+export async function earlyCard(o: { rank: number; total: number; launched: number; trades: number; volume: number; since: string | null }): Promise<Blob | null> {
+  const W = 1200, H = 675;
+  const cv = document.createElement("canvas");
+  cv.width = W;
+  cv.height = H;
+  const c = cv.getContext("2d");
+  if (!c) return null;
+  const font = (w: number, s: number) => `${w} ${s}px Inter, "Segoe UI", system-ui, -apple-system, sans-serif`;
+  const mono = (w: number, s: number) => `${w} ${s}px "JetBrains Mono", ui-monospace, Menlo, monospace`;
+  c.fillStyle = "#05080b";
+  c.fillRect(0, 0, W, H);
+  let g = c.createRadialGradient(930, 300, 10, 930, 300, 520);
+  g.addColorStop(0, "rgba(63,227,212,.32)");
+  g.addColorStop(1, "rgba(63,227,212,0)");
+  c.fillStyle = g;
+  c.fillRect(0, 0, W, H);
+  g = c.createRadialGradient(120, 720, 10, 120, 720, 560);
+  g.addColorStop(0, "rgba(124,92,255,.22)");
+  g.addColorStop(1, "rgba(124,92,255,0)");
+  c.fillStyle = g;
+  c.fillRect(0, 0, W, H);
+  // faint grid
+  c.strokeStyle = "rgba(255,255,255,.035)";
+  c.lineWidth = 1;
+  for (let x = 0; x <= W; x += 48) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
+  for (let y = 0; y <= H; y += 48) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+  // frame
+  rr(c, 24, 24, W - 48, H - 48, 28);
+  c.strokeStyle = "rgba(63,227,212,.28)";
+  c.lineWidth = 2;
+  c.stroke();
+
+  const logo = await loadImg("/icon-192.png");
+  if (logo) { c.save(); rr(c, 64, 60, 52, 52, 14); c.clip(); c.drawImage(logo, 64, 60, 52, 52); c.restore(); }
+  c.textBaseline = "middle";
+  c.fillStyle = "#eef6f5";
+  c.font = font(800, 30);
+  c.fillText("ArkhamPad", 130, 87);
+  c.font = font(700, 20);
+  const tag = "Early on Elysium";
+  const tw = c.measureText(tag).width;
+  rr(c, W - 64 - tw - 40, 66, tw + 40, 42, 21);
+  c.fillStyle = "rgba(63,227,212,.12)";
+  c.fill();
+  c.strokeStyle = "rgba(63,227,212,.55)";
+  c.lineWidth = 1.5;
+  c.stroke();
+  c.fillStyle = "#3fe3d4";
+  c.fillText(tag, W - 64 - tw - 20, 88);
+
+  // the rank
+  c.fillStyle = "#8aa0a6";
+  c.font = font(800, 22);
+  c.fillText("EARLY ARKHAMPAD USER", 64, 186);
+  const big = `#${o.rank.toLocaleString("en-US")}`;
+  let size = 190;
+  c.font = font(900, size);
+  while (c.measureText(big).width > 640 && size > 100) { size -= 10; c.font = font(900, size); }
+  const gr = c.createLinearGradient(64, 220, 64 + c.measureText(big).width, 380);
+  gr.addColorStop(0, "#ffffff");
+  gr.addColorStop(1, "#3fe3d4");
+  c.fillStyle = gr;
+  c.save();
+  c.shadowColor = "rgba(63,227,212,.45)";
+  c.shadowBlur = 40;
+  c.fillText(big, 58, 300);
+  c.restore();
+  c.fillStyle = "#c9d6d5";
+  c.font = font(700, 30);
+  c.fillText(`of ${o.total.toLocaleString("en-US")} people on ArkhamPad so far`, 64, 412);
+
+  // stats
+  const n = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toLocaleString("en-US", { maximumFractionDigits: v < 10 ? 2 : 0 });
+  const stats: [string, string][] = [[n(o.launched), "coins launched"], [n(o.trades), "trades"], [n(o.volume), "HYPE traded"]];
+  let sx = 64;
+  for (const [v, l] of stats) {
+    rr(c, sx, 470, 240, 110, 18);
+    c.fillStyle = "rgba(255,255,255,.045)";
+    c.fill();
+    c.strokeStyle = "rgba(255,255,255,.09)";
+    c.lineWidth = 1;
+    c.stroke();
+    c.fillStyle = "#ffffff";
+    c.font = mono(700, 40);
+    c.fillText(v, sx + 24, 510);
+    c.fillStyle = "#8aa0a6";
+    c.font = font(700, 19);
+    c.fillText(l, sx + 24, 552);
+    sx += 256;
+  }
+  // right side: badge
+  const bx = 960, by = 330;
+  c.save();
+  c.translate(bx, by);
+  for (let i = 0; i < 3; i++) {
+    c.beginPath();
+    c.arc(0, 0, 150 - i * 34, 0, Math.PI * 2);
+    c.strokeStyle = `rgba(63,227,212,${0.5 - i * 0.14})`;
+    c.lineWidth = 2;
+    c.stroke();
+  }
+  c.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (Math.PI / 4) * i - Math.PI / 2;
+    const r = i % 2 ? 34 : 84;
+    c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  c.closePath();
+  const sg = c.createLinearGradient(-80, -80, 80, 80);
+  sg.addColorStop(0, "#ffffff");
+  sg.addColorStop(1, "#3fe3d4");
+  c.fillStyle = sg;
+  c.shadowColor = "rgba(63,227,212,.8)";
+  c.shadowBlur = 40;
+  c.fill();
+  c.restore();
+  if (o.since) {
+    const d = new Date(o.since).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    c.fillStyle = "#8aa0a6";
+    c.font = font(700, 20);
+    c.textAlign = "center";
+    c.fillText(`Here since ${d}`, bx, by + 196);
+    c.textAlign = "left";
+  }
+  c.fillStyle = "#3fe3d4";
+  c.font = font(800, 26);
+  c.textAlign = "right";
+  c.fillText("arkhampad.com", W - 64, 620);
+  c.textAlign = "left";
+  c.fillStyle = "#6f8489";
+  c.font = font(600, 19);
+  c.fillText("Elysium's launchpad", 64, 620);
+  return new Promise((ok) => cv.toBlob((b) => ok(b), "image/png"));
+}
