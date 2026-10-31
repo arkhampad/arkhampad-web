@@ -159,10 +159,15 @@ export function CreatePage() {
     }
   }
 
+  // one launch at a time: locked from the first tap (two quick taps used to send two launches)
+  const going = useRef(false);
   async function launch() {
     if (!w.signedIn || !w.signer?.sendTx || !me) return w.login();
-    if (!LAUNCHER) return;
+    if (!LAUNCHER || going.current) return;
+    going.current = true;
+    (document.activeElement as HTMLElement | null)?.blur?.();
     setMsg(null);
+    setBusy("Launching…");
     try {
       const fee = (await ely().readContract({ address: LAUNCHER, abi: ABI, functionName: "launchFee" }).catch(() => 0n)) as bigint;
       const meta = {
@@ -204,6 +209,7 @@ export function CreatePage() {
       setMsg(/insufficient/i.test(m) ? (buyWei > 0n ? "Not enough HYPE for the first buy and gas." : "You need a little HYPE on Elysium for gas.") : "Cancelled.");
     } finally {
       setBusy(null);
+      going.current = false;
     }
   }
 
@@ -262,8 +268,8 @@ export function CreatePage() {
               <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={buy} onChange={(e) => setBuy(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="First buy in HYPE" /><b>HYPE</b></span>
               <span className="dim" style={{ fontSize: 12.5 }}>{b > 0 ? `≈ ${money(fromWei(buyWei) * usd)} · ${tr("about {p}% of the supply", { p: pctOfSupply.toFixed(1) })}` : tr("Be the first buyer of your own coin, in the same transaction.")}</span>
             </label>
-            <div className="e-quick">{["0.1", "0.5", "1", "2"].map((v) => <button key={v} type="button" onClick={() => setBuy(v)}>{v}</button>)}</div>
-            <button type="button" className="e-go" disabled={disabled && w.signedIn} onClick={launch}>{tr(label)}</button>
+            <div className="e-quick">{["0.1", "0.5", "1", "2"].map((v) => <button key={v} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(v)}>{v}</button>)}</div>
+            <button type="button" className="e-go" disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={launch}>{tr(label)}</button>
             {msg && <div className="e-msg bad" role="status">{tr(msg)}</div>}
             {w.signedIn && hype === 0n && <Link href="/bridge/" className="e-hint">{tr("You need a little HYPE on Elysium for gas.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}
           </div>

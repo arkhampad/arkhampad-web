@@ -144,7 +144,11 @@ export function makeElysium(cfg, store) {
 
   const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]).catch(() => "0x");
   async function symbol(a) {
-    if (!symbolCache.has(a)) symbolCache.set(a, decodeString(await call(a, SEL.symbol)));
+    if (!symbolCache.has(a)) {
+      const v = decodeString(await call(a, SEL.symbol));
+      if (!v) return v; // a node that hasn't seen the token yet: don't remember the blank
+      symbolCache.set(a, v);
+    }
     return symbolCache.get(a);
   }
   async function hypeWrap(a) {
@@ -154,9 +158,16 @@ export function makeElysium(cfg, store) {
   }
   async function txField(map, hash, field) {
     if (!map.has(hash)) {
-      const tx = await rpc("eth_getTransactionByHash", [hash]).catch(() => null);
-      txTo.set(hash, lc(tx?.to));
-      txFrom.set(hash, lc(tx?.from));
+      // a node a little behind may not have the transaction yet: ask again before giving up (and never
+      // remember a miss, or a brand-new ArkhamPad coin would be filed as "not ours")
+      let tx = null;
+      for (let i = 0; i < 4 && !tx; i++) {
+        if (i) await new Promise((r) => setTimeout(r, 1500 * i));
+        tx = await rpc("eth_getTransactionByHash", [hash]).catch(() => null);
+      }
+      if (!tx) return null;
+      txTo.set(hash, lc(tx.to));
+      txFrom.set(hash, lc(tx.from));
     }
     return map.get(hash);
   }
@@ -205,7 +216,12 @@ export function makeElysium(cfg, store) {
   }
 
   async function tokenInfo(a) {
-    const [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), call(a, SEL.tokenURI)]);
+    let [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), call(a, SEL.tokenURI)]);
+    // brand-new token on a node that's a few blocks behind: wait and read again
+    for (let i = 1; i <= 3 && !sym && !decodeString(name); i++) {
+      await new Promise((r) => setTimeout(r, 2000 * i));
+      [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), call(a, SEL.tokenURI)]);
+    }
     return {
       name: decodeString(name) || sym || "Unknown",
       symbol: sym || "?",
@@ -214,6 +230,33 @@ export function makeElysium(cfg, store) {
       uri: decodeString(uri) || null,
       ...(await readMeta(decodeString(uri) || null)),
     };
+  }
+
+  /**
+   * Every 2 minutes: coins from the last 2 days saved without a name or without who made them (read from a
+   * node that hadn't caught up yet) are read again, so a new ArkhamPad coin gets its name and its place on
+   * the board.
+   */
+  let repairAt = 0;
+  async function repairTokens() {
+    if (Date.now() - repairAt < 120_000) return;
+    repairAt = Date.now();
+    const since = Date.now() - 2 * 86_400_000;
+    const todo = [...store.tokens().values()].filter((t) => (t.symbol === "?" || t.name === "Unknown" || !t.maker) && Date.parse(t.created_at || 0) > since).slice(0, 30);
+    let fixed = 0;
+    for (const t of todo) {
+      const info = t.symbol === "?" || t.name === "Unknown" ? await tokenInfo(t.address).catch(() => null) : null;
+      const tx = t.created_block ? await rpc("eth_getLogs", [{ fromBlock: hex(Number(t.created_block)), toBlock: hex(Number(t.created_block)), address: t.manager, topics: [[T.v3PoolCreated, T.v4Initialize]] }]).catch(() => []) : [];
+      const hash = tx.find((l) => (l.topics || []).some((x) => x && x.toLowerCase().includes(t.address.slice(2).toLowerCase())) || (l.topics?.[1] || "").toLowerCase() === String(t.pool).toLowerCase())?.transactionHash;
+      const maker = !t.maker && hash ? await txField(txTo, hash, "to") : t.maker;
+      const creator = !t.creator && hash ? await txField(txFrom, hash, "from") : t.creator;
+      const next = { ...t };
+      if (info && info.symbol && info.symbol !== "?") Object.assign(next, info);
+      if (maker) { next.maker = maker; next.ours = !!launcher && maker === launcher; next.launchpad = launchpadFor(maker, t.manager); }
+      if (creator) next.creator = creator;
+      if (next.symbol !== t.symbol || next.maker !== t.maker || next.creator !== t.creator) { await store.upsertToken(next); fixed++; }
+    }
+    if (fixed) log(`elysium: repaired ${fixed} new coins (name / maker)`);
   }
 
   /** Once per start: pictures for tokens indexed before metadata was read. */
@@ -529,6 +572,7 @@ export function makeElysium(cfg, store) {
         const n = await syncOnce();
         backfillMeta().catch(() => {});
         backfillImages().catch(() => {});
+        repairTokens().catch((e) => log(`elysium: repair ${e.message}`));
         // list stats once a minute (each run reads the database; keeps Supabase disk use low)
         if (Date.now() - statsAt > 60_000) {
           statsAt = Date.now();

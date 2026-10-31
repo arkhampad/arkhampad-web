@@ -2,7 +2,7 @@
 import { formatUnits } from "viem";
 // Token page (/t/?a=0x…): any Elysium token, from any launchpad. Chart, buy/sell, trades, holders.
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import { useWallet } from "@/components/wallet";
@@ -226,6 +226,7 @@ function About({ t, links }: { t: EToken; links: CoinLinks }) {
 
 export function TokenPage() {
   const tr = useT();
+  const router = useRouter();
   const params = useSearchParams();
   const a = (params.get("a") || "").toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(a);
@@ -283,7 +284,7 @@ export function TokenPage() {
     <main className="e-in e-page e-tokpage">
       <div className="e-tgrid">
         <div className="e-tmain">
-          <button type="button" className="e-back" onClick={() => { if (history.length > 1 && document.referrer.startsWith(location.origin)) history.back(); else location.href = "/"; }}>
+          <button type="button" className="e-back" onClick={() => { if (history.length > 1) router.back(); else router.push("/"); }}>
             <span aria-hidden>←</span> {tr("Back")}
           </button>
           <section className="e-thead">

@@ -9,7 +9,7 @@ import { waitingBalances } from "./bridge";
 import { InviteCard } from "./invite";
 import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHoldings, fetchHypeUsd, fetchMyTrades, fetchTokensByAddress, money, pct, short, usePoll } from "@/lib/ely";
-import { ELY_CHAIN, ely, fromWei, hypeBalance, cachedHype, recentTokens, tokenBalance } from "@/lib/elytrade";
+import { ELY_CHAIN, chainToken, ely, fromWei, hypeBalance, cachedHype, recentTokens, tokenBalance } from "@/lib/elytrade";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
 const COLLECT = parseAbi(["function collect(address coin) returns (uint256 coinAmount, uint256 nativeAmount)"]);
@@ -82,7 +82,7 @@ export function YouPage() {
     if (!me) return null;
     const rows = await fetchHoldings(me).catch(() => []);
     const addrs = [...new Set([...recentTokens(), ...rows.map((r) => r.token)])];
-    const toks = await fetchTokensByAddress(addrs);
+    const toks = await Promise.all((await fetchTokensByAddress(addrs)).map(async (t) => (t.name ? t : { ...t, ...((await chainToken(t.address).catch(() => null)) ?? {}) })));
     const live = await Promise.all(toks.map(async (t) => [t.address, await tokenBalance(t.address as Address, me as Address).catch(() => null)] as const));
     const bal = new Map(live);
     return toks
@@ -101,6 +101,15 @@ export function YouPage() {
   const [copied, setCopied] = useState(false);
   const copy = () => me && navigator.clipboard?.writeText(me).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); });
 
+  if (!w.ready && !me) {
+    return (
+      <main className="e-in e-page">
+        <div className="e-skel" style={{ height: 70 }} />
+        <div className="e-skel" style={{ height: 180 }} />
+        <div className="e-skel" style={{ height: 160 }} />
+      </main>
+    );
+  }
   if (!w.signedIn || !me) {
     return (
       <main className="e-in e-page">
