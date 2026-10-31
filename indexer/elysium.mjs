@@ -620,8 +620,25 @@ export function makeElysium(cfg, store) {
 
   let statsAt = 0;
   let pageStatsAt = 0;
+  // Watchdog: the saved block must keep moving (or be at the chain tip). If it hasn't for 10 minutes,
+  // the process exits and Railway starts it fresh (Oct 31: it stood still for 3 hours, unnoticed).
+  let movedAt = Date.now();
+  let seen = -1;
+  const STUCK_MS = 10 * 60_000;
+  const startWatch = () => { const watch = setInterval(async () => {
+    try {
+      const at = Number((await store.getState("ely_block")) ?? -1);
+      if (at !== seen || (tipNow && at >= tipNow - 5)) { seen = at; movedAt = Date.now(); return; }
+    } catch {}
+    if (Date.now() - movedAt > STUCK_MS) {
+      log(`elysium: WATCHDOG no progress for ${Math.round((Date.now() - movedAt) / 60_000)} min (block ${seen}, tip ${tipNow}); restarting`);
+      clearInterval(watch);
+      setTimeout(() => process.exit(1), 500);
+    }
+  }, 60_000); };
   async function loop() {
     log(`elysium: indexing every HYPE pair (launcher ${launcher || "not set"})`);
+    startWatch();
     for (;;) {
       try {
         const n = await syncOnce();
