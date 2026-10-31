@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { encodeFunctionData, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
-import { ELY_CHAIN, ELY_EXPLORER, ROUTER, ely } from "@/lib/elytrade";
+import { ELY_CHAIN, ELY_EXPLORER, ROUTER, ely, waitReceipt } from "@/lib/elytrade";
 import { fetchHypeUsd, fetchOurCoinsVolume, fetchTokensByAddress, money, usePoll, type EOurCoin } from "@/lib/ely";
 
 const START_BLOCK = 65000n; // just before the mainnet deploy
@@ -201,15 +201,17 @@ export function OpsPage() {
   const isOwner = !!s && !!w.address && w.address.toLowerCase() === s.owner.toLowerCase();
   const routed = !!s && s.treasury.toLowerCase() === KEEPER.toLowerCase();
 
-  async function setTreasury(to: Address) {
+  // one settings write; anything not given keeps its current value
+  async function save(change: Partial<Pick<S, "treasury" | "startMc">>) {
     if (!s || !w.signer?.sendTx) return w.login();
     setBusy(true);
     setMsg("Confirm in your wallet…");
     try {
-      const data = encodeFunctionData({ abi: ABI, functionName: "setSettings", args: [to, s.startMc, s.creatorBps, s.launchFee, s.paused] });
+      const n = { ...s, ...change };
+      const data = encodeFunctionData({ abi: ABI, functionName: "setSettings", args: [n.treasury, n.startMc, n.creatorBps, n.launchFee, n.paused] });
       const hash = (await w.signer.sendTx(ELY_CHAIN, { to: LAUNCHER as Address, data })) as Hex;
       setMsg("Waiting for Elysium…");
-      const r = await ely().waitForTransactionReceipt({ hash, timeout: 90_000 });
+      const r = await waitReceipt(hash, 150_000);
       setMsg(r.status === "success" ? "Done." : "Failed on chain.");
       await load();
     } catch (e) {
@@ -218,6 +220,14 @@ export function OpsPage() {
       setBusy(false);
     }
   }
+  const setTreasury = (to: Address) => save({ treasury: to });
+
+  // starting market cap of new coins (whole supply, in HYPE); most Elysium launchpads start around 30 HYPE
+  const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
+  const [mcIn, setMcIn] = useState("");
+  const mcNow = s ? Number(s.startMc) / 1e18 : 0;
+  const mcNew = Number(mcIn.replace(",", "."));
+  const mcOk = mcNew >= 5 && mcNew <= 1000;
 
   return (
     <main className="e-in e-page">
@@ -237,6 +247,16 @@ export function OpsPage() {
               <button type="button" className="e-go" disabled={busy} onClick={() => setTreasury(TREASURY)}>Send fees straight to the treasury instead</button>
             ) : (
               <button type="button" className="e-go" disabled={busy} onClick={() => setTreasury(KEEPER)}>Turn on self-funding keeper</button>
+            )}
+            <hr style={{ border: 0, borderTop: "1px solid var(--e-line)", margin: "16px 0" }} />
+            <p>New coins start at: <b className="num">{mcNow.toLocaleString("en-US", { maximumFractionDigits: 2 })} HYPE</b>{usd ? <span className="dim"> (≈ ${(mcNow * usd).toLocaleString("en-US", { maximumFractionDigits: 0 })})</span> : null}</p>
+            <p className="dim" style={{ fontSize: 14 }}>Market cap of the whole supply when a coin launches. Most Elysium launchpads start around 30 HYPE. Only coins launched after the change are affected.</p>
+            {w.signedIn && isOwner && (
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input inputMode="decimal" placeholder="30" value={mcIn} onChange={(e) => setMcIn(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="Start market cap in HYPE" style={{ flex: "1 1 120px", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--e-line2)", background: "transparent", color: "inherit", font: "inherit" }} />
+                <span className="dim">HYPE{mcOk && usd ? ` ≈ $${(mcNew * usd).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : ""}</span>
+                <button type="button" className="e-btn pri" disabled={busy || !mcOk} onClick={() => save({ startMc: BigInt(Math.round(mcNew * 1e6)) * 10n ** 12n })}>Save start value</button>
+              </div>
             )}
             {msg && <div className="e-msg" role="status">{msg}</div>}
           </>

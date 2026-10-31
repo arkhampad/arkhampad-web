@@ -13,10 +13,11 @@ import { ELY_CHAIN, NONCE_HELP, USER_NO, SlowTx, savePending, waitReceipt, ely, 
 import type { EToken } from "@/lib/ely";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
-const START_MC = 60; // HYPE, whole supply
+const START_MC_DEFAULT = 60; // HYPE, whole supply (the live value is read from the launcher; set on /ops)
 const ABI = parseAbi([
   "function launch(string name, string symbol, string uri, address creator, uint256 minOut) payable returns (address coin, uint256 bought)",
   "function launchFee() view returns (uint256)",
+  "function startMc() view returns (uint256)",
   "event Launched(address indexed coin, address indexed creator, address pool, uint256 tokenId, string name, string symbol, string uri, uint256 startMc, uint256 firstBuyIn, uint256 firstBuyOut)",
 ]);
 
@@ -89,6 +90,7 @@ export function CreatePage() {
   const [msg, setMsg] = useState<string | null>(null);
   const file = useRef<HTMLInputElement>(null);
 
+  const START_MC = usePoll(async () => (LAUNCHER ? Number((await ely().readContract({ address: LAUNCHER, abi: ABI, functionName: "startMc" })) as bigint) / 1e18 : START_MC_DEFAULT), 300_000) ?? START_MC_DEFAULT;
   const buyWei = toWei(buy);
   const b = fromWei(buyWei) * 0.99;
   const pctOfSupply = b > 0 ? (b / (START_MC + b)) * 100 : 0;
