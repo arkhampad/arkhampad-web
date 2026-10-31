@@ -100,7 +100,7 @@ export function makeRpc(urls, log = console.log) {
     for (let i = 0; i < list.length * 3; i++) {
       const url = list[(at + i) % list.length];
       try {
-        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(8_000) });
+        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(method === "eth_getLogs" ? 20_000 : 8_000) });
         const j = await r.json();
         if (j.error) throw new Error(`${method}: ${j.error.message}`);
         if (at !== (at + i) % list.length) since = Date.now();
@@ -110,7 +110,10 @@ export function makeRpc(urls, log = console.log) {
         last = e;
         // a node that is a few blocks behind says "beyond current head": just ask the next node
         if (/beyond current head|header not found|unknown block/i.test(e.message)) continue;
-        if (/range|too many|limit/i.test(e.message) && method === "eth_getLogs") throw e;
+        // a node that is busy / rate limiting us: the next node (it's not about the range)
+        if (/rate limit|server busy|retry shortly|too many requests|capacity/i.test(e.message)) continue;
+        // the range is too big for this node: the caller asks again with a smaller one
+        if (/range|too many|limit|exceed/i.test(e.message) && method === "eth_getLogs") throw e;
         if (i % list.length === list.length - 1) await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
       }
     }
@@ -136,6 +139,7 @@ export function makeElysium(cfg, store) {
   const rpc = typeof cfg.rpc === "function" ? cfg.rpc : makeRpc(cfg.rpc);
   const log = cfg.log || console.log;
   const step = cfg.step || 2000;
+  let span = step; // blocks per read right now: shrinks when the nodes are busy, grows back after
   const launcher = lc(cfg.launcher);
   const symbolCache = new Map(); // address -> symbol ("" when not a token)
   const isHypeWrap = new Map(); // address -> bool (a WHYPE: symbol WHYPE and wraps native)
@@ -585,7 +589,7 @@ export function makeElysium(cfg, store) {
     let last = Number((await store.getState("ely_block")) ?? (cfg.startBlock ?? 0) - 1);
     const startAt = last;
     while (last < tip) {
-      let to = Math.min(tip, last + step);
+      let to = Math.min(tip, last + span);
       if (!recent(to)) {
         const [a, b] = await Promise.all([rpc("eth_getBlockByNumber", [hex(last + 1), false]), rpc("eth_getBlockByNumber", [hex(to), false])]);
         win = { from: last + 1, to, tFrom: Number(a.timestamp) * 1000, tTo: Number(b.timestamp) * 1000 };
@@ -595,13 +599,18 @@ export function makeElysium(cfg, store) {
         await scanTrades(last + 1, to);
         await scanTransfers(last + 1, to);
       } catch (e) {
-        if (step > 100 && /range|too many|limit/i.test(e.message)) {
-          to = last + Math.floor(step / 4);
-          await scanPools(last + 1, to);
-          await scanTrades(last + 1, to);
-          await scanTransfers(last + 1, to);
-        } else throw e;
+        // Oct 31: the chain got busy, every 2,000-block read was refused or timed out and the indexer
+        // stood still for hours. Now a failed read is retried right away with half the blocks (down to
+        // 10), and the size grows back once reads go through again.
+        if (span > 10) {
+          span = Math.max(10, Math.floor(span / 2));
+          log(`elysium: reading ${span} blocks at a time (${e.message})`);
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+        throw e;
       }
+      if (span < step) span = Math.min(step, Math.ceil(span * 1.5));
       last = to;
       await store.setState("ely_block", last);
       if (cfg.progress) log(`elysium: block ${last}/${tip}, ${store.tokens().size} tokens`);
