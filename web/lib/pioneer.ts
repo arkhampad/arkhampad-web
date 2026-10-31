@@ -1,11 +1,11 @@
 "use client";
-// ArkhamPad Pioneer: 10,000 free on-chain badges (contracts-elysium/src/ArkhamPioneer.sol). One per wallet.
+// ArkhamPad Genesis: 10,000 free on-chain badges (contracts-elysium/src/ArkhamGenesis.sol). One per wallet.
 import { encodeFunctionData, parseAbi, type Address } from "viem";
 import type { Signer } from "./chain";
 import { ELY_CHAIN, ely, nice, waitReceipt } from "./elytrade";
 
 /** Set after /ops deploys the contract (or Cloudflare env NEXT_PUBLIC_ELY_PIONEER). */
-export const PIONEER = (process.env.NEXT_PUBLIC_ELY_PIONEER || "0xf567815133c4b478c5c3b1ef04eac6114656f822") as Address | "";
+export const PIONEER = (process.env.NEXT_PUBLIC_ELY_GENESIS || "") as Address | "";
 export const MAX_SUPPLY = 10_000;
 export const PIONEER_ABI = parseAbi([
   "function mint() returns (uint256)",
@@ -13,7 +13,7 @@ export const PIONEER_ABI = parseAbi([
   "function idOf(address) view returns (uint256)",
   "function art(uint256 id) pure returns (string)",
 ]);
-export const SAMPLES = [42, 1052, 777, 4242, 1, 9999];
+export const SAMPLES = [42, 1094, 777, 4242, 1, 9999];
 export const pad = (n: number) => String(n).padStart(4, "0");
 
 export type Tier = { name: string; range: string; color: string };

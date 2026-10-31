@@ -81,7 +81,7 @@ export function AirdropCard({ me }: { me: string }) {
         <div><b className="num">{trades ? n(trades.length) : "—"}</b><span>{tr("trades")}</span></div>
         <div><b className="num">{trades ? n(vol) : "—"}</b><span>{tr("HYPE traded")}</span></div>
       </div>
-      <p className="e-note" style={{ padding: "0 16px 14px" }}>{tr("Everything you launch and trade on ArkhamPad counts toward the ArkhamPad airdrop. The more you do, the bigger your share.")}</p>
+      <p className="e-note" style={{ padding: "0 16px 14px" }}>{tr("Everything you launch and trade on ArkhamPad counts toward the ArkhamPad airdrop, and so does a Genesis badge. The more you do, the bigger your share.")}</p>
     </section>
   );
 }

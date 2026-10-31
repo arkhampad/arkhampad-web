@@ -179,7 +179,7 @@ const ABI = parseAbi([
 type S = { owner: Address; treasury: Address; startMc: bigint; creatorBps: number; launchFee: bigint; paused: boolean };
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-/** One-time: put the Pioneer NFT contract on Elysium from the Admin wallet (no keys anywhere). */
+/** One-time: put the Genesis NFT contract on Elysium from the Admin wallet (no keys anywhere). */
 function PioneerDeploy({ isOwner }: { isOwner: boolean }) {
   const w = useWallet();
   const [busy, setBusy] = useState(false);
@@ -203,15 +203,15 @@ function PioneerDeploy({ isOwner }: { isOwner: boolean }) {
   }
   return (
     <section className="e-panel"><div className="e-trade">
-      <h3 style={{ margin: 0 }}>Pioneer NFT</h3>
+      <h3 style={{ margin: 0 }}>Genesis NFT</h3>
       {PIONEER ? (
-        <p>Live at <b className="num">{PIONEER}</b>. Mint page: <a href="/pioneer/" style={{ color: "var(--e-teal)" }}>/pioneer</a></p>
+        <p>Live at <b className="num">{PIONEER}</b>. Mint page: <a href="/genesis/" style={{ color: "var(--e-teal)" }}>/genesis</a></p>
       ) : (
         <>
           <p className="dim" style={{ fontSize: 14 }}>10,000 free badges, one per wallet. Press once with the Admin wallet; it costs a little HYPE for gas. Nobody can change the contract afterwards.</p>
           {!w.signedIn ? <button type="button" className="e-go" onClick={w.login}>Log in with the Admin wallet</button>
             : !isOwner ? <p className="e-msg bad">Switch to the Admin wallet first.</p>
-            : !addr && <button type="button" className="e-go" disabled={busy} onClick={go}>{busy ? "Deploying…" : "Deploy the Pioneer NFT contract"}</button>}
+            : !addr && <button type="button" className="e-go" disabled={busy} onClick={go}>{busy ? "Deploying…" : "Deploy the Genesis NFT contract"}</button>}
           {msg && <div className="e-msg" role="status">{msg}</div>}
           {addr && <code className="num" style={{ display: "block", padding: 12, borderRadius: 10, background: "var(--e-raise)", userSelect: "all", wordBreak: "break-all", fontSize: 16 }}>{addr}</code>}
         </>

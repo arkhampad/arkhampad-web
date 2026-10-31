@@ -1,5 +1,5 @@
 "use client";
-// /pioneer: the free ArkhamPad Pioneer mint. Live count, a preview of the next badge (drawn by the
+// /genesis: the free ArkhamPad Genesis mint. Live count, a preview of the next badge (drawn by the
 // contract), one-tap mint, then your badge with Share on X.
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -10,7 +10,7 @@ import { inviteLink } from "@/lib/referral";
 import { MAX_SUPPLY, MintFail, PIONEER, SAMPLES, TIERS, artPng, mintPioneer, pad, pioneerArt, pioneerState, tierOf } from "@/lib/pioneer";
 
 const XIcon = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M17.8 3h3.1l-6.8 7.7L22 21h-6.2l-4.9-6.3L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z" /></svg>;
-const sample = (id: number) => `/pioneer/sample-${id}.svg`;
+const sample = (id: number) => `/genesis/sample-${id}.svg`;
 
 function useArt(id: number | null) {
   const [src, setSrc] = useState<string | null>(null);
@@ -29,10 +29,10 @@ export function PioneerBanner() {
   const st = usePoll(() => pioneerState(null).catch(() => null), 30_000);
   const left = st ? MAX_SUPPLY - st.minted : null;
   return (
-    <Link href="/pioneer/" className="e-airdrop e-pio-banner">
+    <Link href="/genesis/" className="e-airdrop e-pio-banner">
       <img src={sample(42)} alt="" width={44} height={44} />
       <span>
-        <b>{tr("Free mint: ArkhamPad Pioneer")}</b>
+        <b>{tr("Free mint: ArkhamPad Genesis")}</b>
         <small>{left != null ? tr("{n} of 10,000 left. One per wallet, free.", { n: left.toLocaleString("en-US") }) : tr("10,000 on-chain badges for the first people on Elysium. Free.")}</small>
       </span>
       <span className="e-airdrop-go" aria-hidden="true">→</span>
@@ -80,7 +80,7 @@ export function PioneerPage() {
     try {
       const id = await mintPioneer(w.signer);
       setJustMinted(id || null);
-      setMsg({ ok: true, text: id ? tr("You're Pioneer #{n}. Welcome to Elysium.", { n: pad(id) }) : tr("Minted. Your badge shows up in a moment.") });
+      setMsg({ ok: true, text: id ? tr("You're Genesis #{n}. Welcome to Elysium.", { n: pad(id) }) : tr("Minted. Your badge shows up in a moment.") });
       setTick((x) => x + 1);
     } catch (e) {
       setMsg({ ok: false, text: e instanceof MintFail ? e.message : tr("Mint failed. Please try again.") });
@@ -94,9 +94,9 @@ export function PioneerPage() {
   async function share() {
     if (!mine) return;
     setNote("");
-    const text = `I'm ArkhamPad Pioneer #${pad(mine)} on Elysium 🌟\n\n10,000 free badges, one per wallet. ${(MAX_SUPPLY - minted).toLocaleString("en-US")} left.\n\nmint yours: ${me ? inviteLink(me).replace("/?r=", "/pioneer/?r=") : "https://arkhampad.com/pioneer/"}\n\n#NFT #Elysium #FreeMint`;
+    const text = `just minted ArkhamPad Genesis #${pad(mine)} on Elysium 🌟\n\n10,000 free badges, one per wallet. ${(MAX_SUPPLY - minted).toLocaleString("en-US")} left.\n\nmint yours: ${me ? inviteLink(me).replace("/?r=", "/genesis/?r=") : "https://arkhampad.com/genesis/"}\n\n#NFT #Elysium #FreeMint`;
     const blob = chainArt ? await artPng(chainArt) : null;
-    const file = blob ? new File([blob], `arkhampad-pioneer-${pad(mine)}.png`, { type: "image/png" }) : null;
+    const file = blob ? new File([blob], `arkhampad-genesis-${pad(mine)}.png`, { type: "image/png" }) : null;
     const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
     try {
       if (/iPhone|iPad|Android/i.test(navigator.userAgent) && file && nav.canShare?.({ files: [file], text })) {
@@ -107,7 +107,7 @@ export function PioneerPage() {
     if (blob) {
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `arkhampad-pioneer-${pad(mine)}.png`;
+      a.download = `arkhampad-genesis-${pad(mine)}.png`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
       setNote(tr("Picture downloaded: add it to your post."));
@@ -127,8 +127,8 @@ export function PioneerPage() {
       <section className="e-pio-hero">
         <div className="e-pio-copy">
           <span className="e-eyebrow"><i className="e-dot" />{tr("Free mint · Elysium")}</span>
-          <h1>ArkhamPad <span>Pioneer</span></h1>
-          <p>{tr("10,000 badges for the first people on Elysium. Free, one per wallet, the art drawn fully on-chain. Every badge is one of a kind.")}</p>
+          <h1>ArkhamPad <span>Genesis</span></h1>
+          <p>{tr("The first ArkhamPad collection: 10,000 badges for the first people on Elysium. Free, one per wallet, the art drawn fully on-chain. Every badge is one of a kind.")}</p>
 
           <div className="e-pio-count">
             <div className="e-pio-bar"><i style={{ width: `${Math.max(pct, minted ? 1.2 : 0)}%` }} /></div>
@@ -148,10 +148,10 @@ export function PioneerPage() {
           )}
           {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
           {note && <span className="dim" style={{ fontSize: 13 }}>{note}</span>}
-          <p className="e-note">{mine ? tr("It's in your wallet. You can keep it or sell it on any NFT market on Elysium.") : tr("You only pay the network fee, a fraction of a cent. No email list, no catch.")}</p>
+          <p className="e-note">{mine ? tr("It's in your wallet. You can keep it or sell it on any NFT market on Elysium.") : tr("You only pay the network fee, a fraction of a cent. Counts toward the ArkhamPad airdrop.")}</p>
         </div>
         <div className="e-pio-art">
-          <img src={art} alt={shownId ? `ArkhamPad Pioneer #${pad(shownId)}` : "ArkhamPad Pioneer"} width={560} height={560} />
+          <img src={art} alt={shownId ? `ArkhamPad Genesis #${pad(shownId)}` : "ArkhamPad Genesis"} width={560} height={560} />
           {!mine && next && PIONEER ? <span className="e-pio-tag num">{tr("Next up: #{n}", { n: pad(next) })}</span> : null}
         </div>
       </section>
@@ -170,7 +170,7 @@ export function PioneerPage() {
         <h3 className="e-ph">{recent.length ? tr("Just minted") : tr("What they look like")}</h3>
         <div className="e-pio-grid">
           {(recent.length ? recent : SAMPLES.map((id) => ({ id, src: sample(id) }))).map((x) => (
-            <figure key={x.id}><img src={x.src} alt={`Pioneer #${pad(x.id)}`} loading="lazy" /><figcaption className="num">#{pad(x.id)}</figcaption></figure>
+            <figure key={x.id}><img src={x.src} alt={`Genesis #${pad(x.id)}`} loading="lazy" /><figcaption className="num">#{pad(x.id)}</figcaption></figure>
           ))}
         </div>
       </section>
@@ -181,6 +181,7 @@ export function PioneerPage() {
           <li><b>{tr("Free.")}</b> {tr("No price. You only pay Elysium's network fee.")}</li>
           <li><b>{tr("One per wallet.")}</b> {tr("10,000 in total, then minting closes for good.")}</li>
           <li><b>{tr("Fully on-chain.")}</b> {tr("The picture is drawn by the contract itself. No server, nothing can be changed or taken down.")}</li>
+          <li><b>{tr("Counts for the airdrop.")}</b> {tr("Holding a Genesis badge counts toward the ArkhamPad airdrop, alongside the coins you launch and trade.")}</li>
           <li><b>{tr("Yours.")}</b> {tr("A standard NFT: hold it, show it, or trade it on any NFT market on Elysium.")}</li>
         </ul>
       </section>
