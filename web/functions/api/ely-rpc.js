@@ -4,6 +4,7 @@
 // comma-separated), with no site change, and upstream nodes only ever see Cloudflare, not our users.
 // (rpc.ronspad.fun dropped Oct 31: thousands of blocks behind, it answered with old balances)
 const DEFAULT = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
+const SEND_ALSO = ["https://rpc.ronspad.fun"];
 const ALLOWED = /^(eth_(chainId|blockNumber|getBalance|call|estimateGas|gasPrice|maxPriorityFeePerGas|feeHistory|getCode|getLogs|getBlockByNumber|getBlockByHash|getTransactionByHash|getTransactionReceipt|getTransactionCount|sendRawTransaction|getStorageAt)|net_version|web3_clientVersion)$/;
 const TIMEOUT = 4000;
 
@@ -53,7 +54,10 @@ export async function onRequestPost({ request, env, waitUntil }) {
   // a signed transaction goes to every node at once, so whichever one the wallet reads from next has it
   if (sending && !Array.isArray(calls)) {
     // answer as soon as the first node accepts it; the slower ones keep going in the background
-    const tries = upstreams.map(async (url) => {
+    // a new transaction also goes to the older node we used until Oct 31 (it passes transactions on even
+    // when it's behind on blocks), so it reaches every place it used to
+    const sendTo = [...new Set([...upstreams, ...SEND_ALSO])];
+    const tries = sendTo.map(async (url) => {
       try {
         const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(15000) });
         return await r.text();

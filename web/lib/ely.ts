@@ -176,7 +176,7 @@ export function ago(iso: string | null | undefined): string {
   return `${Math.floor(s / 86400)}d`;
 }
 export const short = (a: string | null | undefined) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
-export const compact = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 4 : 2 }));
+export const compact = (n: number) => (n >= 1e9 ? `${+(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 4 : 2 }));
 
 export const PADS: Record<string, { color: string; short: string }> = {
   ArkhamPad: { color: "#3FE3D4", short: "A" },

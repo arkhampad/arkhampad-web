@@ -33,7 +33,7 @@ let feeWei: bigint | null = null;
 async function elyFee(): Promise<bigint | null> {
   if (feeWei != null && Date.now() - feeAt < 30_000) return feeWei;
   try {
-    const gp = await Promise.any(ELY_RPC_LIST.map(async (url) => {
+    const gp = await Promise.any(ELY_RPC_LIST.filter((u) => !u.includes("arkhampad.com")).map(async (url) => {
       const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_gasPrice", params: [] }), signal: AbortSignal.timeout(2500) });
       const j = await r.json();
       if (typeof j?.result !== "string") throw new Error("no");

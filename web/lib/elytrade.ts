@@ -18,6 +18,10 @@ export const ELY_RPCS = [...new Set([MAIN_RPCS[0], ...(process.env.NEXT_PUBLIC_E
 const OWN_RPC = "https://arkhampad.com/api/ely-rpc";
 // our doorway second: it asks every node and answers with the newest head, so a stuck node can't hide new blocks
 export const ELY_RPC_LIST = [ELY_RPCS[0], OWN_RPC, ...ELY_RPCS.slice(1)];
+// Reads go straight to the nodes from the visitor's browser (each visitor has their own allowance there).
+// Our doorway is only the backup: every visitor's reads through it share one allowance, and when that ran
+// out, sends (which do go through it) failed with "network busy".
+const DIRECT = ELY_RPCS;
 export const ELY_RPC = ELY_RPCS[0];
 
 let rpcAt = 0;
@@ -57,10 +61,12 @@ async function raceCall(method: string, params: unknown) {
     return j.result;
   };
   try {
-    return await Promise.any(ELY_RPC_LIST.map(ask));
+    return await Promise.any(DIRECT.map(ask));
   } catch (e) {
     const errs = (e as AggregateError).errors ?? [e];
-    throw errs.find((x: { rpc?: boolean }) => x?.rpc) ?? errs[0];
+    const real = errs.find((x: { rpc?: boolean }) => x?.rpc);
+    if (real) throw real; // a node answered with a real error (e.g. "execution reverted")
+    return ask(OWN_RPC); // no node reachable directly: through our doorway
   }
 }
 const raceTransport = custom({ request: ({ method, params }) => raceCall(method, params) });
@@ -131,7 +137,8 @@ async function freshest(method: string, params: unknown[]): Promise<string> {
     const b = typeof bn === "string" ? Number(BigInt(bn)) : 0;
     if (b > best.block) { best.block = b; best.result = res; }
   };
-  await Promise.allSettled(ELY_RPC_LIST.map(ask));
+  await Promise.allSettled(DIRECT.map(ask));
+  if (best.result == null) await ask(OWN_RPC).catch(() => {});
   if (best.result == null) throw new Error("no node answered");
   return best.result;
 }
@@ -217,9 +224,11 @@ export async function waitReceipt(hash: Hex, ms = 120_000): Promise<RawReceipt> 
     if (!j?.result) throw new Error("not yet");
     return j.result as { status: Hex; logs: RawReceipt["logs"] };
   };
+  let round = 0;
   while (Date.now() < end) {
     try {
-      const r = await Promise.any(ELY_RPC_LIST.map(ask));
+      // the nodes directly every round; our doorway (which asks them all again) only every 5th
+      const r = await Promise.any((round++ % 5 === 4 ? ELY_RPC_LIST : DIRECT).map(ask));
       return { status: r.status === "0x1" ? "success" : "reverted", logs: r.logs ?? [] };
     } catch {}
     await new Promise((r) => setTimeout(r, 700));
