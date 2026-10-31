@@ -13,7 +13,7 @@ export const ELY_CHAIN = 99901;
  * has its own list of nodes. Change the list with NEXT_PUBLIC_ELY_RPCS (comma-separated).
  */
 // ElysPump's node first (Oct 31: the others stopped seeing new blocks), then whatever the variable lists.
-const MAIN_RPCS = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club", "https://rpc.ronspad.fun"];
+const MAIN_RPCS = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
 export const ELY_RPCS = [...new Set([MAIN_RPCS[0], ...(process.env.NEXT_PUBLIC_ELY_RPCS || process.env.NEXT_PUBLIC_ELY_RPC || "").split(",").map((u) => u.trim()).filter(Boolean), ...MAIN_RPCS.slice(1)])];
 const OWN_RPC = "https://arkhampad.com/api/ely-rpc";
 // our doorway second: it asks every node and answers with the newest head, so a stuck node can't hide new blocks
@@ -92,22 +92,37 @@ export function cachedHype(addr?: string | null): bigint | undefined {
   try { const v = localStorage.getItem(`ap_bal_${k}`); if (v) { balMem.set(k, BigInt(v)); return BigInt(v); } } catch {}
   return undefined;
 }
-/** HYPE balance on Elysium: asks every node at once and takes the first answer (one slow or refusing node can't block it). */
-export async function hypeBalance(addr: Address) {
+/**
+ * One read from the node that is furthest along: every node gets [eth_blockNumber, call] in one request and
+ * the answer of the highest block wins (a node far behind would show an old balance). Waits at most ~3 s.
+ */
+async function freshest(method: string, params: unknown[]): Promise<string> {
+  const best = { block: -1, result: null as string | null };
   const ask = async (url: string) => {
-    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [addr, "latest"] }), signal: AbortSignal.timeout(5000) });
+    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify([{ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }, { jsonrpc: "2.0", id: 2, method, params }]), signal: AbortSignal.timeout(3000) });
     const j = await r.json();
-    if (typeof j?.result !== "string") throw new Error(j?.error?.message || "no answer");
-    return BigInt(j.result);
+    if (!Array.isArray(j)) throw new Error("no batch");
+    const bn = j.find((x: { id: number }) => x.id === 1)?.result;
+    const res = j.find((x: { id: number }) => x.id === 2)?.result;
+    if (typeof res !== "string") throw new Error("no answer");
+    const b = typeof bn === "string" ? Number(BigInt(bn)) : 0;
+    if (b > best.block) { best.block = b; best.result = res; }
   };
-  const v = await Promise.any(ELY_RPC_LIST.map(ask)).catch(() => ely().getBalance({ address: addr }));
+  await Promise.allSettled(ELY_RPC_LIST.map(ask));
+  if (best.result == null) throw new Error("no node answered");
+  return best.result;
+}
+/** HYPE balance on Elysium, from the most up-to-date node. */
+export async function hypeBalance(addr: Address) {
+  const v = await freshest("eth_getBalance", [addr, "latest"]).then((x) => BigInt(x)).catch(() => ely().getBalance({ address: addr }));
   const k = addr.toLowerCase();
   balMem.set(k, v);
   try { localStorage.setItem(`ap_bal_${k}`, v.toString()); } catch {}
   return v;
 }
 export async function tokenBalance(token: Address, addr: Address) {
-  return ely().readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [addr] });
+  const data = encodeFunctionData({ abi: ERC20, functionName: "balanceOf", args: [addr] });
+  return freshest("eth_call", [{ to: token, data }, "latest"]).then((x) => (x === "0x" ? 0n : BigInt(x))).catch(() => ely().readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [addr] }));
 }
 
 /** Expected output (wei of the other side) for `amountIn`; null when this pool can't be traded here. */

@@ -2,7 +2,8 @@
 // to this address; it forwards each JSON-RPC call to the first Elysium node that answers, trying the
 // next one after a short timeout. Swapping or adding nodes is one Cloudflare variable (ELY_UPSTREAMS,
 // comma-separated), with no site change, and upstream nodes only ever see Cloudflare, not our users.
-const DEFAULT = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club", "https://rpc.ronspad.fun"];
+// (rpc.ronspad.fun dropped Oct 31: thousands of blocks behind, it answered with old balances)
+const DEFAULT = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
 const ALLOWED = /^(eth_(chainId|blockNumber|getBalance|call|estimateGas|gasPrice|maxPriorityFeePerGas|feeHistory|getCode|getLogs|getBlockByNumber|getBlockByHash|getTransactionByHash|getTransactionReceipt|getTransactionCount|sendRawTransaction|getStorageAt)|net_version|web3_clientVersion)$/;
 const TIMEOUT = 4000;
 
@@ -13,7 +14,7 @@ const reply = (body, status = 200) => new Response(typeof body === "string" ? bo
 
 export const onRequestOptions = () => reply("", 204);
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, waitUntil }) {
   let text;
   try { text = await request.text(); } catch { return reply({ error: "bad request" }, 400); }
   let calls;
@@ -51,20 +52,22 @@ export async function onRequestPost({ request, env }) {
   const sending = list.some((c) => c.method === "eth_sendRawTransaction");
   // a signed transaction goes to every node at once, so whichever one the wallet reads from next has it
   if (sending && !Array.isArray(calls)) {
-    const outs = await Promise.all(upstreams.map(async (url) => {
+    // answer as soon as the first node accepts it; the slower ones keep going in the background
+    const tries = upstreams.map(async (url) => {
       try {
         const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(15000) });
         return await r.text();
       } catch { return null; }
-    }));
-    const ok = outs.find((o) => o && /"result"\s*:\s*"0x[0-9a-f]{64}"/i.test(o));
-    if (ok) return reply(ok);
-    const known = outs.find((o) => o && /already known|known transaction/i.test(o));
-    if (known) {
-      // another node already has it: answer with its hash so the wallet carries on
-      const hash = outs.map((o) => o?.match(/"result"\s*:\s*"(0x[0-9a-f]{64})"/i)?.[1]).find(Boolean);
-      if (hash) return reply({ jsonrpc: "2.0", id: calls.id ?? null, result: hash });
+    });
+    const isOk = (o) => o && /"result"\s*:\s*"0x[0-9a-f]{64}"/i.test(o);
+    const firstOk = await Promise.any(tries.map((t) => t.then((o) => (isOk(o) ? o : Promise.reject())))).catch(() => null);
+    if (firstOk) {
+      waitUntil?.(Promise.allSettled(tries));
+      return reply(firstOk);
     }
+    const outs = await Promise.all(tries);
+    const known = outs.find((o) => o && /already known|known transaction/i.test(o));
+    if (known) return reply(known);
     const first = outs.find(Boolean);
     if (first) return reply(first);
   }

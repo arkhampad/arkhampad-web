@@ -84,7 +84,11 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
       const min = (q * BigInt(100 - slip)) / 100n;
       const sent = side === "buy" ? await buy(w.signer, t, inWei, min) : await sell(w.signer, t, inWei, min, (x) => setBusy(tr(x)));
       const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) });
-      setBusy(tr("Confirming…"));
+      // a running counter, so a slow network doesn't look like a frozen button
+      const t0 = Date.now();
+      setBusy(`${tr("Confirming…")} 0s`);
+      const clock = setInterval(() => setBusy(`${tr("Confirming…")} ${Math.round((Date.now() - t0) / 1000)}s`), 1000);
+      sent.confirmed.finally(() => clearInterval(clock)).catch(() => {});
       setVal("");
       setExact(null);
       try {
