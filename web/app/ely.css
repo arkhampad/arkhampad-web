@@ -478,7 +478,7 @@ a.e-row:hover { background: var(--e-card2); }
 .e-ark-head h2 { margin: 6px 0 4px; font-size: 22px; letter-spacing: -.02em; }
 .e-ark-head p { margin: 0; color: #9fc4c1; font-size: 14px; }
 .e-ark-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.e-ark-grid > div { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+.e-ark-grid > div { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 14px; background: var(--e-raise); border: 1px solid rgba(255,255,255,.08); }
 .e-ark-grid span { font-size: 12px; color: #9fc4c1; font-weight: 600; }
 .e-ark-grid b { font-size: clamp(19px, 2.4vw, 24px); letter-spacing: -.03em; }
 .e-meter { display: block; height: 6px; border-radius: 99px; background: rgba(255,255,255,.1); overflow: hidden; }
@@ -585,3 +585,7 @@ html { overscroll-behavior-y: none; }
 .e-invbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + var(--e-safe-b, 0px)); z-index: 45; width: min(560px, calc(100% - 24px)); display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 16px; background: var(--e-card); border: 1px solid var(--e-teal); box-shadow: var(--e-shadow); font-size: 13.5px; }
 .e-invbar span { flex: 1; }
 @media (min-width: 861px) { .e-invbar { bottom: 20px; } }
+
+/* back to the list from a coin page */
+.e-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--e-line, rgba(255,255,255,.1)); background: transparent; color: inherit; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; opacity: .85; }
+.e-back:hover { opacity: 1; background: var(--e-raise); }

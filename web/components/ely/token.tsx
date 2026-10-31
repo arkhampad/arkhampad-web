@@ -265,6 +265,9 @@ export function TokenPage() {
     <main className="e-in e-page e-tokpage">
       <div className="e-tgrid">
         <div className="e-tmain">
+          <button type="button" className="e-back" onClick={() => { if (history.length > 1 && document.referrer.startsWith(location.origin)) history.back(); else location.href = "/"; }}>
+            <span aria-hidden>←</span> {tr("Back")}
+          </button>
           <section className="e-thead">
             <TokenAvatar t={t} size={56} />
             <div className="e-tname">

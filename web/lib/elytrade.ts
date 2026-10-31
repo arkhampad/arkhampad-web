@@ -122,12 +122,16 @@ function findRevertData(e: unknown): Hex | null {
 
 export class TradeFail extends Error {}
 /** MetaMask keeps its own transaction counter; when a node was a block behind it can get stuck one behind. */
+export const USER_NO = /user (rejected|denied|cancel)|rejected by (the )?user|denied by (the )?user|cancelled by (the )?user|request was cancel/i;
+export const SLOW_HELP = "The network didn't confirm this in time, so nothing happened and your HYPE is safe. Please try again in a moment.";
 export const NONCE_HELP = "Your wallet's transaction counter is out of date. In MetaMask: Settings → Advanced → Clear activity tab data, then refresh and try again. Your funds are not affected.";
 const nice = (e: unknown) => {
   const m = String((e as Error)?.message ?? e);
   if (/nonce/i.test(m)) return NONCE_HELP;
+  if (/timed out|timeout/i.test(m)) return SLOW_HELP;
   if (/insufficient funds/i.test(m)) return "Not enough HYPE for this trade and gas.";
-  if (/rejected|denied|cancel/i.test(m)) return "Cancelled.";
+  // only a person saying no counts as "Cancelled"; a node refusing the transaction shows its real reason
+  if (USER_NO.test(m)) return "Cancelled.";
   if (/Slippage|TooLittle|minOut/i.test(m)) return "Price moved. Try again or raise slippage.";
   const short = String((e as { shortMessage?: string })?.shortMessage || m).split("\n")[0].slice(0, 120);
   return `Trade failed: ${short}`;
