@@ -236,8 +236,10 @@ export function Discover() {
         </div>
       </section>
 
-      <PioneerBanner />
-      <AirdropBanner signedIn={w.signedIn} />
+      <div className="e-promos">
+        <PioneerBanner />
+        <AirdropBanner signedIn={w.signedIn} />
+      </div>
       <Board tokens={tokens ?? []} usd={usd} />
       <Hot tokens={tokens ?? []} usd={usd} />
 
