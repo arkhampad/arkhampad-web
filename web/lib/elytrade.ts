@@ -330,7 +330,7 @@ export async function buy(signer: Signer, t: EToken, hypeIn: bigint, minOut: big
  * sent in the background, no pop-up). The later sale is then a single transaction, with no approval racing
  * ahead of it through nodes that are a few seconds behind. Failing here costs nothing: sell() approves itself.
  */
-function prepareSell(signer: Signer, token: Address) {
+export function prepareSell(signer: Signer, token: Address) {
   if (!signer.embedded || !ROUTER) return;
   (async () => {
     const allowed = await ely().readContract({ address: token, abi: ERC20, functionName: "allowance", args: [signer.address, ROUTER as Address] }).catch(() => null);
@@ -349,17 +349,10 @@ export async function sell(signer: Signer, t: EToken, amountIn: bigint, minOut: 
     const approveData = encodeFunctionData({ abi: ERC20, functionName: "approve", args: [ROUTER, MAX] });
     if (allowed < amountIn) {
       onStep?.("Approving…");
-      if (signer.embedded && signer.nextNonce) {
-        // built-in wallet: approval and sale go out back to back with consecutive nonces; the sequencer
-        // runs them in order, so there's no waiting for the approval to show up on a node first
-        const n = await signer.nextNonce();
-        if (n != null) {
-          await signer.sendTx(ELY_CHAIN, { to: p.token, data: approveData, gas: 80_000n, nonce: n });
-          onStep?.("Selling…");
-          const hash = await signer.sendTx(ELY_CHAIN, { to: ROUTER, data, gas: 600_000n, nonce: n + 1 });
-          return track(hash, t.address);
-        }
-      }
+      // Nov 1: approval and sale sent back to back (consecutive nonces) left the sale stuck whenever the
+      // approval didn't reach the sequencer: the page said "Sold" and nothing happened. Now the sale only
+      // goes out once the approval is on chain. (Coins bought or launched here are approved in the
+      // background right away, so most sales skip this step.)
       await wait(await signer.sendTx(ELY_CHAIN, { to: p.token, data: approveData, gas: 80_000n }));
       for (let i = 0; i < 25; i++) {
         const now = await ely().readContract({ address: p.token, abi: ERC20, functionName: "allowance", args: [signer.address, ROUTER] }).catch(() => 0n);

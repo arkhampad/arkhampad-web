@@ -9,7 +9,7 @@ import { decodeEventLog, encodeFunctionData, parseAbi, type Address, type Hex } 
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { fetchHypeUsd, money, usePoll } from "@/lib/ely";
-import { ELY_CHAIN, NONCE_HELP, USER_NO, SlowTx, savePending, waitReceipt, ely, fromWei, hypeBalance, cachedHype, rememberToken, toWei } from "@/lib/elytrade";
+import { ELY_CHAIN, NONCE_HELP, USER_NO, SlowTx, savePending, waitReceipt, ely, fromWei, hypeBalance, cachedHype, rememberToken, toWei, prepareSell } from "@/lib/elytrade";
 import type { EToken } from "@/lib/ely";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
@@ -227,6 +227,8 @@ export function CreatePage() {
       }
       if (!coin) throw new Error("no coin");
       rememberToken(coin);
+      // let the router sell this coin later in one step (a tiny background approval, built-in wallet only)
+      if (buyWei > 0n) prepareSell(w.signer, coin as Address);
       // show the new coin right away (page + Discover board), even before the indexer has it
       const e1 = ev as LaunchEv | null;
       if (e1) {

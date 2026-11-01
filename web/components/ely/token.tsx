@@ -143,7 +143,8 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
       sent.confirmed.then(
         () => { setAfter(null); setTick((x) => x + 1); onDone?.(); },
         (e) => {
-          if (e instanceof SlowTx) return; // still on its way: the balances catch up by themselves
+          // not confirmed after two minutes: don't leave "Sold"/"Bought" on screen as if it happened
+          if (e instanceof SlowTx) { setAfter(null); setTick((x) => x + 1); setMsg({ ok: false, text: tr("Not confirmed yet. Check your balance in a minute before trying again.") }); return; }
           setAfter(null);
           setTick((x) => x + 1);
           setMsg({ ok: false, text: tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.") });
