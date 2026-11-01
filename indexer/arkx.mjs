@@ -1,10 +1,12 @@
-// @Arkhampad on X: an auto-poster that tweets ArkhamPad's own corporate updates on a schedule.
+// @Arkhampad on X: an auto-poster that tweets ArkhamPad's own updates on a schedule.
 // It posts on its own timeline only; it never replies to, follows or reads anyone else.
 //
-// Style (fixed): every post opens with the line "Arkham is Elysium's launchpad.", stays short and
-// professional (a company voice, not an influencer), adds something real for the reader, features
-// the ArkhamPad brand, links arkhampad.com, carries a DIFFERENT hashtag set each time, and never
-// names a competitor or says "mainnet soon".
+// Goal: pull people who trade (or want to trade) on Elysium over to ArkhamPad. Every post is a
+// FOMO / curiosity hook about the opportunity of trading on Elysium and ArkhamPad's edge — trade
+// any Elysium coin with USDC OR HYPE, smart-money signals, and rug/safety checks, all in one place.
+// Every post features the ArkhamPad brand, links arkhampad.com, and uses a DIFFERENT, heavy hashtag
+// set. About 30% of the day's posts tag an Elysium account (@Enter_Elysium / @HyperliquidX) — never
+// a competitor. No made-up numbers, no "mainnet soon".
 //
 // Runs as its own Railway service: root /indexer, start command `node arkx.mjs`.
 // Env:
@@ -13,9 +15,10 @@
 //   DATABASE_URL     the same Postgres as the indexer (used only to remember what was posted)
 //   ARK_X_OFF=1      switch off          ARK_X_DRY=1   log what it would post, post nothing
 //
-// Schedule: 8 posts a day, Türkiye time (UTC+3), 09:00–23:00 every ~2 hours, each moved by a fixed
-// ±20 min per day so it never goes out at the same minute two days running. A line is not reused
-// until every other line has been posted (a 10-day no-repeat window in the database).
+// Schedule (Türkiye time, UTC+3): mornings ~06:00–12:45 roughly every 45 min, then evenings
+// ~15:15–22:40 roughly every 45 min. Each slot is moved by a fixed ±12 min per day, so posts never
+// go out at the same minute two days running. A line is not reused until every other line has been
+// posted (a 10-day no-repeat window in the database), so text and hashtags change every time.
 
 import { createHmac, randomBytes } from "node:crypto";
 import pg from "pg";
@@ -59,48 +62,57 @@ async function postTweet(keys, text) {
 }
 
 // ------------------------------------------------------------------ the words
-// Each entry is [id, text]. ids are what "not used lately" remembers. 24 lines, each opening with
-// the fixed ArkhamPad line, each with its own hashtag set, the arkhampad.com link, no competitors.
+// Each entry is [id, text]. ids are what "not used lately" remembers. FOMO / curiosity hooks aimed
+// at Elysium traders, every one featuring ArkhamPad + the arkhampad.com link + its own hashtag set.
+// ~30% tag @Enter_Elysium or @HyperliquidX (never a competitor).
 const LINK = "arkhampad.com";
-const OPEN = "Arkham is Elysium's launchpad.";
 function POSTS() {
   return [
-    ["a1", `${OPEN}\n\nTrade any coin on Elysium and watch the smart money move in real time — all in one place.\n\n${LINK}\n\n#Elysium #DeFi #OnChain #SmartMoney`],
-    ["a2", `${OPEN}\n\nEvery token on ArkhamPad carries a live dev reputation and rug check right on its page. Trade what's real.\n\n${LINK}\n\n#Elysium #RugCheck #CryptoSafety #Web3`],
-    ["a3", `${OPEN}\n\nLaunch a coin on Elysium in under a minute. No code, fair from the very first trade.\n\n${LINK}\n\n#Elysium #TokenLaunch #Crypto #Builders`],
-    ["a4", `${OPEN}\n\nThe Smart Money Radar reads the chain live and surfaces which wallets are really buying, before the crowd notices.\n\n${LINK}\n\n#Elysium #SmartMoney #Trading #OnChain`],
-    ["a5", `${OPEN}\n\nOne place to discover, launch and trade Elysium coins — with the on-chain data you need next to every one.\n\n${LINK}\n\n#Elysium #DeFi #CryptoTrading #Blockchain`],
-    ["a6", `${OPEN}\n\nSafety Shield flags mint risks, liquidity locks and holder concentration on every coin. Due diligence, built in.\n\n${LINK}\n\n#Elysium #CryptoSafety #DeFiSecurity #DYOR`],
-    ["a7", `${OPEN}\n\nTrade the whole chain from one page. Any Elysium coin, any pool, with live pricing.\n\n${LINK}\n\n#Elysium #Trading #OnChain #Altcoins`],
-    ["a8", `${OPEN}\n\nSee who's buying before you do. ArkhamPad brings smart-money signals to every coin on Elysium.\n\n${LINK}\n\n#Elysium #SmartMoney #CryptoNews #DeFi`],
-    ["a9", `${OPEN}\n\nCreate your coin, share it, and let it trade from the first second — no gatekeepers.\n\n${LINK}\n\n#Elysium #TokenLaunch #Web3 #LaunchPad`],
-    ["a10", `${OPEN}\n\nA dev's track record follows them from coin to coin. ArkhamPad shows it, so you trade with open eyes.\n\n${LINK}\n\n#Elysium #RugCheck #CryptoSafety #OnChain`],
-    ["a11", `${OPEN}\n\nMomentum, buy pressure and fresh launches, ranked live. Know what's waking up on Elysium right now.\n\n${LINK}\n\n#Elysium #Trading #SmartMoney #Altcoins`],
-    ["a12", `${OPEN}\n\nBuilt on Elysium, for Elysium. Launch, trade and track coins where the chain lives.\n\n${LINK}\n\n#Elysium #DeFi #Blockchain #HYPE`],
-    ["a13", `${OPEN}\n\nRug checks and dev reputation on every page mean fewer traps and better trades for everyone.\n\n${LINK}\n\n#Elysium #DeFiSecurity #RugCheck #Crypto`],
-    ["a14", `${OPEN}\n\nThe fastest way to put a coin live on Elysium — and the clearest way to trade one.\n\n${LINK}\n\n#Elysium #TokenLaunch #CryptoTrading #Builders`],
-    ["a15", `${OPEN}\n\nSmart money leaves a trail on-chain. ArkhamPad reads it live and shows you where it's heading.\n\n${LINK}\n\n#Elysium #SmartMoney #OnChain #Web3`],
-    ["a16", `${OPEN}\n\nDiscover what's moving, check it's safe, and trade it — without leaving the page.\n\n${LINK}\n\n#Elysium #DeFi #CryptoSafety #Trading`],
-    ["a17", `${OPEN}\n\nEvery Elysium coin, one home. Live charts, holders, and the signals that matter.\n\n${LINK}\n\n#Elysium #OnChain #Altcoins #CryptoNews`],
-    ["a18", `${OPEN}\n\nLaunch fair, trade informed. ArkhamPad gives every coin a clean start and every trader a clear view.\n\n${LINK}\n\n#Elysium #TokenLaunch #DeFi #DYOR`],
-    ["a19", `${OPEN}\n\nWhale buys, sized to each coin. ArkhamPad shows the moves that actually mean something.\n\n${LINK}\n\n#Elysium #SmartMoney #Trading #Crypto`],
-    ["a20", `${OPEN}\n\nThe launchpad that also watches the chain for you — smart money in, risks flagged, all live.\n\n${LINK}\n\n#Elysium #DeFi #CryptoSafety #OnChain`],
-    ["a21", `${OPEN}\n\nFrom idea to live coin on Elysium in minutes. Your coin, your terms.\n\n${LINK}\n\n#Elysium #TokenLaunch #Builders #Web3`],
-    ["a22", `${OPEN}\n\nTrade with the full picture: price, holders, dev history and smart-money flow, on one screen.\n\n${LINK}\n\n#Elysium #Trading #SmartMoney #OnChain`],
-    ["a23", `${OPEN}\n\nSafety first, speed always. Launch and trade Elysium coins with the checks already done for you.\n\n${LINK}\n\n#Elysium #CryptoSafety #DeFi #RugCheck`],
-    ["a24", `${OPEN}\n\nThe home of coins on Elysium — launch them, find them, trade them, and see the money move.\n\n${LINK}\n\n#Elysium #DeFi #CryptoTrading #Altcoins`],
+    ["a1", `the people making real money on Elysium this week are already trading. are you? 👀\n\nArkhamPad — every Elysium coin, with USDC or HYPE\n\n${LINK}\n\n#Elysium #DeFi #SmartMoney #CryptoTrading #HYPE`],
+    ["a2", `new chain, fresh coins, barely any crowd yet\n\ntrade them on ArkhamPad with USDC or HYPE — your call, no bridges\n\n${LINK}\n\n#Elysium #Altcoins #OnChain #Crypto #NewChain #USDC`],
+    ["a3", `the smart money is already moving on @Enter_Elysium 👀\n\nArkhamPad shows you who's really buying, before the crowd catches on\n\n${LINK}\n\n#Elysium #SmartMoney #Trading #Web3 #CryptoNews`],
+    ["a4", `USDC or HYPE — trade any Elysium coin either way on ArkhamPad. no wrapping, no friction\n\n${LINK}\n\n#Elysium #USDC #HYPE #DeFi #CryptoTrading #Hyperliquid`],
+    ["a5", `everyone's about to find out what's trading on @Enter_Elysium 👀\n\nyou can already be in. ArkhamPad, USDC or HYPE\n\n${LINK}\n\n#Elysium #Altcoins #Crypto #OnChain #GEM`],
+    ["a6", `Arkham is Elysium's launchpad.\n\nsee who's buying, check it's safe, trade it with USDC or HYPE — all on one page\n\n${LINK}\n\n#Elysium #SmartMoney #RugCheck #DeFi #Trading`],
+    ["a7", `the first traders on a new chain are the ones who eat 👀\n\nElysium is early. ArkhamPad lets you trade it now, USDC or HYPE\n\n${LINK}\n\n#Elysium #NewChain #Altcoins #100x #CryptoTrading`],
+    ["a8", `rug checks and dev reputation on every coin 👀\n\ntrade Elysium with your eyes open — and with USDC or HYPE — on ArkhamPad\n\n${LINK}\n\n#Elysium #RugCheck #CryptoSafety #DeFi #DYOR`],
+    ["a9", `coins are moving on @HyperliquidX's new chain right now while you scroll\n\njump in on ArkhamPad, USDC or HYPE\n\n${LINK}\n\n#Elysium #HYPE #Hyperliquid #Trading #Altcoins`],
+    ["a10", `you don't need HYPE to start. trade Elysium coins with USDC too — ArkhamPad handles the rest\n\n${LINK}\n\n#Elysium #USDC #DeFi #Crypto #OnChain #CryptoTrading`],
+    ["a11", `the quiet window before a chain gets loud is where the money's made 👀\n\n@Enter_Elysium is in it. trade on ArkhamPad\n\n${LINK}\n\n#Elysium #SmartMoney #Altcoins #GEM #NewChain`],
+    ["a12", `Arkham is Elysium's launchpad.\n\ndiscover what's pumping, trade it in one tap — USDC or HYPE, your choice\n\n${LINK}\n\n#Elysium #CryptoTrading #DeFi #Memecoins #HYPE`],
+    ["a13", `smart wallets leave a trail. ArkhamPad reads it live so you trade where the money's actually going on Elysium\n\n${LINK}\n\n#Elysium #SmartMoney #OnChain #Trading #Web3`],
+    ["a14", `trade the whole chain from one page — every Elysium coin, USDC or HYPE, live prices\n\nArkhamPad\n\n${LINK}\n\n#Elysium #DeFi #CryptoTrading #Altcoins #USDC`],
+    ["a15", `@Enter_Elysium is early and wide open 👀\n\nthe traders who show up first win. ArkhamPad, USDC or HYPE\n\n${LINK}\n\n#Elysium #NewChain #Altcoins #100x #CryptoGems`],
+    ["a16", `before you ape a coin on Elysium, see its dev's track record and rug score\n\nArkhamPad shows it, then you trade — USDC or HYPE\n\n${LINK}\n\n#Elysium #RugCheck #CryptoSafety #OnChain #Trading`],
+    ["a17", `the trade you miss on @Enter_Elysium today is the screenshot you regret next week 👀\n\nArkhamPad. USDC or HYPE\n\n${LINK}\n\n#Elysium #Altcoins #CryptoTrading #GEM #SmartMoney`],
+    ["a18", `no bridge marathon, no wrapped tokens. USDC or HYPE straight into any Elysium coin on ArkhamPad\n\n${LINK}\n\n#Elysium #USDC #HYPE #DeFi #OnChain`],
+    ["a19", `Arkham is Elysium's launchpad.\n\nwhere the smart money, the safety checks and the trade all live on one page\n\n${LINK}\n\n#Elysium #SmartMoney #RugCheck #Trading #Web3`],
+    ["a20", `the money on @HyperliquidX is hunting the next Elysium runner 👀\n\nbe early. trade on ArkhamPad with USDC or HYPE\n\n${LINK}\n\n#Elysium #HYPE #Hyperliquid #SmartMoney #Altcoins`],
+    ["a21", `whale buys, sized to each coin, flagged live 👀\n\ntrade the moves that matter on Elysium — ArkhamPad, USDC or HYPE\n\n${LINK}\n\n#Elysium #Whales #SmartMoney #Trading #DeFi`],
+    ["a22", `fresh launches on Elysium surface the second they go live on ArkhamPad\n\ncatch them early, trade USDC or HYPE\n\n${LINK}\n\n#Elysium #TokenLaunch #Altcoins #NewChain #CryptoTrading`],
+    ["a23", `trading on Elysium shouldn't mean 12 steps. open ArkhamPad, pick USDC or HYPE, go\n\n${LINK}\n\n#Elysium #DeFi #USDC #OnChain #Crypto`],
+    ["a24", `@Enter_Elysium coins, all in one place, with the data to trade them right 👀\n\nArkhamPad — USDC or HYPE\n\n${LINK}\n\n#Elysium #Altcoins #SmartMoney #OnChain #Trading`],
+    ["a25", `the crowd shows up late, every time 👀\n\nbeat them to Elysium. trade on ArkhamPad with USDC or HYPE\n\n${LINK}\n\n#Elysium #Altcoins #CryptoTrading #GEM #Degens`],
+    ["a26", `Arkham is Elysium's launchpad.\n\ntrade any coin with USDC or HYPE, see the smart money, skip the rugs\n\n${LINK}\n\n#Elysium #SmartMoney #RugCheck #HYPE #DeFi`],
+    ["a27", `momentum, buy pressure and fresh launches on @Enter_Elysium — ranked live so you know what's moving right now\n\ntrade it on ArkhamPad\n\n${LINK}\n\n#Elysium #SmartMoney #Trading #Altcoins #OnChain`],
+    ["a28", `two ways in, one place to trade: USDC or HYPE, every Elysium coin, on ArkhamPad 👀\n\n${LINK}\n\n#Elysium #USDC #HYPE #OnChain #Trading #Memecoins`],
   ];
 }
 
 // ------------------------------------------------------------------ the day's plan (Türkiye time)
-const PLAN = ["09:00", "11:00", "13:00", "15:00", "17:00", "19:00", "21:00", "23:00"];
+const PLAN = [
+  // morning: ~every 45 min, 06:00–12:45
+  "06:00", "06:45", "07:30", "08:15", "09:00", "09:45", "10:30", "11:15", "12:00", "12:45",
+  // evening: ~every 45 min, 15:15–22:40
+  "15:15", "16:00", "16:45", "17:30", "18:15", "19:00", "19:45", "20:30", "21:15", "22:00", "22:40",
+];
 
-/** Today's time (ms) for a slot, moved by a fixed ±20 min for that day + slot. */
+/** Today's time (ms) for a slot, moved by a fixed ±12 min for that day + slot. */
 function slotTime(at, now = Date.now()) {
   const day = new Date(now + TR).toISOString().slice(0, 10);
   let h = 2166136261;
   for (const ch of `${day}:${at}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
-  const jitter = (h % 41) - 20; // minutes
+  const jitter = (h % 25) - 12; // minutes
   const [hh, mm] = at.split(":").map(Number);
   return Date.parse(`${day}T00:00:00Z`) - TR + ((hh * 60 + mm + jitter) * 60e3);
 }
