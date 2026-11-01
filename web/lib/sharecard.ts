@@ -49,6 +49,10 @@ export const coinUrl = (t: EToken) => `https://arkhampad.com/t/?a=${t.address}`;
 
 /** The post text: what it is, where to trade it, the contract, the creator's X account if any. */
 export function shareText(t: EToken, l: CoinLinks, fresh = false) {
+  // a coin from another launchpad: no "launched on" claim, just where to trade it
+  if (!t.ours) {
+    return [`$${t.symbol} is live on Elysium 📈`, "", `Trade $${t.symbol} on @arkhampad: live chart, holders, one-tap buy and sell 👇`, coinUrl(t), "", `CA: ${t.address}`, "", "#Elysium #HYPE"].join("\n");
+  }
   const lines = [
     fresh ? `$${t.symbol} just launched on Elysium 🚀` : `$${t.symbol} is live on Elysium 🚀`,
     "",
@@ -68,6 +72,9 @@ export function telegramText(t: EToken, l: CoinLinks) {
 function loadImg(src: string): Promise<HTMLImageElement | null> {
   return new Promise((ok) => {
     const im = new Image();
+    // other launchpads' pictures live on their own sites: without this the canvas gets "tainted" and the
+    // card can't be saved (the X button then did nothing). A picture that doesn't allow it is left out.
+    im.crossOrigin = "anonymous";
     im.onload = () => ok(im);
     im.onerror = () => ok(null);
     im.src = src;
@@ -190,7 +197,7 @@ export async function shareCard(t: EToken, mcapUsd: string): Promise<Blob | null
   c.textAlign = "right";
   c.fillText("arkhampad.com", W - 64, 569);
   c.textAlign = "left";
-  return new Promise((ok) => cv.toBlob((b) => ok(b), "image/png"));
+  return new Promise((ok) => { try { cv.toBlob((b) => ok(b), "image/png"); } catch { ok(null); } });
 }
 
 /** The "early on ArkhamPad" card (1200×675): your rank, what you launched and traded, the date you started. */

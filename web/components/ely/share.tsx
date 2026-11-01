@@ -18,12 +18,17 @@ export function ShareButton({ t, links, mcap, fresh, big }: { t: EToken; links: 
     setNote("");
     const text = shareText(t, links, fresh);
     try {
-      const blob = await shareCard(t, mcap);
+      const blob = await shareCard(t, mcap).catch(() => null);
       const file = blob ? new File([blob], `${t.symbol}-arkhampad.png`, { type: "image/png" }) : null;
       const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
       const mobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
       if (mobile && file && nav.canShare?.({ files: [file], text })) {
         await navigator.share({ files: [file], text });
+        return;
+      }
+      // no card (a picture that couldn't be drawn): on a phone, the share sheet with just the text
+      if (mobile && !file && typeof navigator.share === "function") {
+        await navigator.share({ text });
         return;
       }
       if (blob) {
@@ -34,7 +39,10 @@ export function ShareButton({ t, links, mcap, fresh, big }: { t: EToken; links: 
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);
         setNote(tr("Card downloaded: add it to your post."));
       }
-      window.open(`https://x.com/intent/post?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+      // a phone blocks new tabs opened after a wait: go to X in the same tab there
+      const intent = `https://x.com/intent/post?text=${encodeURIComponent(text)}`;
+      if (mobile) location.href = intent;
+      else window.open(intent, "_blank", "noopener,noreferrer");
     } catch {
       /* closed the share sheet */
     } finally {
