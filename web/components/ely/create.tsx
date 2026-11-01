@@ -135,7 +135,7 @@ export function CreatePage() {
         limited = res.status === 429;
         if (typeof j.left === "number") setLeft(j.left);
       } catch {}
-      if (limited) throw new Error(j.error || "You've used today's AI ideas.");
+      if (limited) throw new Error(j.error || "You've used today's AI ideas. They reset at midnight UTC (03:00 in Istanbul). You can still type a name and use Draw with AI.");
       if (!j.name) {
         // backup: the general idea maker, pointed at Elysium
         const res = await fetch("/api/ideas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idea: "a fun meme coin for Elysium, the fast new Hyperliquid chain where everyone trades with HYPE" }) });

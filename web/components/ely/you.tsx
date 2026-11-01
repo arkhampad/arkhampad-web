@@ -11,7 +11,7 @@ import { AirdropCard } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
 import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHoldings, fetchHypeUsd, fetchMyTrades, fetchTokensByAddress, money, pct, short, usePoll } from "@/lib/ely";
-import { ELY_CHAIN, chainToken, ely, fromWei, hypeBalance, cachedHype, recentTokens, tokenBalance } from "@/lib/elytrade";
+import { ELY_CHAIN, chainToken, ely, fromWei, hypeBalance, cachedHype, recentTokens, tokenBalance, waitReceipt } from "@/lib/elytrade";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
 const COLLECT = parseAbi(["function collect(address coin) returns (uint256 coinAmount, uint256 nativeAmount)"]);
@@ -22,15 +22,25 @@ function Collect({ coin }: { coin: string }) {
   const [state, setState] = useState<string | null>(null);
   async function go() {
     if (!w.signer?.sendTx || !LAUNCHER) return;
+    setState("Checking…");
+    // the keeper already sends creator fees every 30 minutes; check first so an empty collect never
+    // costs gas or shows "Failed"
+    try {
+      await ely().simulateContract({ account: w.signer.address, address: LAUNCHER, abi: COLLECT, functionName: "collect", args: [coin as Address] });
+    } catch {
+      setState("Nothing new yet");
+      setTimeout(() => setState(null), 3500);
+      return;
+    }
     setState("Collecting…");
     try {
-      const hash = await w.signer.sendTx(ELY_CHAIN, { to: LAUNCHER, data: encodeFunctionData({ abi: COLLECT, functionName: "collect", args: [coin as Address] }) });
-      const r = await ely().waitForTransactionReceipt({ hash: hash as Hex, timeout: 60_000 });
-      setState(r.status === "success" ? "Collected" : "Failed");
+      const hash = await w.signer.sendTx(ELY_CHAIN, { to: LAUNCHER, data: encodeFunctionData({ abi: COLLECT, functionName: "collect", args: [coin as Address] }), gas: 300_000n });
+      const r = await waitReceipt(hash as Hex, 120_000);
+      setState(r.status === "success" ? "Collected" : "Nothing new yet");
     } catch {
-      setState("Failed");
+      setState("Try again in a minute");
     }
-    setTimeout(() => setState(null), 3000);
+    setTimeout(() => setState(null), 3500);
   }
   return <button type="button" className="e-btn" disabled={!!state || !LAUNCHER} onClick={go}>{tr(state ?? "Collect fees")}</button>;
 }
@@ -101,6 +111,9 @@ export function YouPage() {
   const waiting = usePoll(async () => (me ? waitingBalances(me as Address) : null), 10_000, [me]);
   const trades = usePoll(async () => (me ? fetchMyTrades(me) : null), 10_000, [me]);
   const [copied, setCopied] = useState(false);
+  const [allCoins, setAllCoins] = useState(false);
+  const [allMade, setAllMade] = useState(false);
+  const FIRST = 3;
   const copy = () => me && navigator.clipboard?.writeText(me).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); });
 
   if (!w.ready && !me) {
@@ -172,7 +185,7 @@ export function YouPage() {
         <h3 className="e-ph">{tr("Your coins")}</h3>
         {!holdings ? <div style={{ padding: 14 }}><div className="e-skel" style={{ height: 48 }} /></div> : !holdings.length ? <div className="e-empty">{tr("No coins yet.")} <Link href="/" style={{ color: "var(--e-teal)" }}>{tr("Find one on Discover")}</Link> · <Link href="/create/" style={{ color: "var(--e-teal)" }}>{tr("create your own")}</Link></div> : (
           <div className="e-rows">
-            {holdings.map(({ t, amount, value }) => (
+            {(allCoins ? holdings : holdings.slice(0, FIRST)).map(({ t, amount, value }) => (
               <Link key={t.address} href={`/t/?a=${t.address}`} className="e-row e-hold">
                 <span className="e-tok"><TokenAvatar t={t} size={36} /><span><span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span></span><small>{amount >= 1e6 ? `${(amount / 1e6).toFixed(2)}M` : amount >= 1e3 ? `${(amount / 1e3).toFixed(1)}K` : amount.toFixed(2)} {t.symbol}</small></span></span>
                 <span className="r num e-hide-m">{amount >= 1e6 ? `${(amount / 1e6).toFixed(2)}M` : amount >= 1e3 ? `${(amount / 1e3).toFixed(1)}K` : amount.toFixed(2)}</span>
@@ -180,6 +193,7 @@ export function YouPage() {
                 <span className="r num"><b>{money(value * usd)}</b></span>
               </Link>
             ))}
+            {holdings.length > FIRST && <button type="button" className="e-more" onClick={() => setAllCoins((v) => !v)}>{allCoins ? tr("Show less") : tr("Show all {n}", { n: holdings.length })}</button>}
           </div>
         )}
       </section>
@@ -188,15 +202,16 @@ export function YouPage() {
         <section className="e-panel">
           <h3 className="e-ph">{tr("Coins you created")}</h3>
           <div className="e-rows">
-            {created.map((t) => (
+            {(allMade ? created : created.slice(0, FIRST)).map((t) => (
               <div key={t.address} className="e-row e-made">
                 <Link href={`/t/?a=${t.address}`} className="e-tok"><TokenAvatar t={t} size={36} /><span><span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span></span><small>{tr("{age} old", { age: ago(t.created_at) })} · {money((t.mcap_hype ?? 0) * usd)} {tr("mcap")}</small></span></Link>
                 <span className="r num e-hide-m">{money((t.vol24_hype || 0) * usd)} {tr("24h vol")}</span>
                 <Collect coin={t.address} />
               </div>
             ))}
+            {created.length > FIRST && <button type="button" className="e-more" onClick={() => setAllMade((v) => !v)}>{allMade ? tr("Show less") : tr("Show all {n}", { n: created.length })}</button>}
           </div>
-          <p className="e-note" style={{ padding: "0 16px 14px" }}>{tr("Your 30% of the trading fees is sent to your wallet automatically every 30 minutes, in HYPE and in your coin. You can also collect it now.")}</p>
+          <p className="e-note" style={{ padding: "0 16px 14px" }}>{tr("Your 30% of the trading fees is sent to your wallet automatically every 30 minutes: the HYPE part to your balance, the coin part as small amounts of your coin (they show up under Your coins). You can also collect it now.")}</p>
         </section>
       )}
 

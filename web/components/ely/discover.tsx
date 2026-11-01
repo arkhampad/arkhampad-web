@@ -3,10 +3,10 @@
 // Top / Gainers / Losers, search) and live trades (side panel on wide screens, a tab on phones).
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
-import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchTokens, money, pct, short, usePoll, type EToken, type ETrade } from "@/lib/ely";
+import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchStats, fetchTokens, money, pct, short, usePoll, type EToken, type ETrade } from "@/lib/ely";
 import { pendingTokens } from "@/lib/elytrade";
 import { AirdropBanner } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
@@ -105,6 +105,24 @@ const TEAM = new Set((process.env.NEXT_PUBLIC_ELY_TEAM_CREATORS || "").toLowerCa
 /** The ArkhamPad board: the newest coins launched here, first thing on Discover, so fresh launches get seen. */
 function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
   const tr = useT();
+  const row = useRef<HTMLDivElement>(null);
+  // on a computer: hold the mouse and drag the row sideways (a drag doesn't open the coin)
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    let down = false, x0 = 0, s0 = 0, moved = false;
+    const start = (e: PointerEvent) => { if (e.pointerType !== "mouse") return; down = true; moved = false; x0 = e.clientX; s0 = el.scrollLeft; el.classList.add("drag"); };
+    const move = (e: PointerEvent) => { if (!down) return; const dx = e.clientX - x0; if (Math.abs(dx) > 5) moved = true; el.scrollLeft = s0 - dx; };
+    const end = () => { if (!down) return; down = false; el.classList.remove("drag"); };
+    const click = (e: MouseEvent) => { if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; } };
+    const noDrag = (e: DragEvent) => e.preventDefault();
+    el.addEventListener("pointerdown", start);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    el.addEventListener("click", click, true);
+    el.addEventListener("dragstart", noDrag);
+    return () => { el.removeEventListener("pointerdown", start); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); el.removeEventListener("click", click, true); el.removeEventListener("dragstart", noDrag); };
+  }, []);
   const known = new Set(tokens.map((t) => t.address.toLowerCase()));
   const ours = [...tokens, ...pendingTokens().filter((t) => !known.has(t.address.toLowerCase()))].filter((t) => (t.ours || TEAM.has((t.creator || "").toLowerCase())) && !HIDE.has(t.address.toLowerCase())).sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0")).slice(0, 12);
   return (
@@ -113,7 +131,10 @@ function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
         <h2><span className="e-board-dot" />{tr("Fresh on ArkhamPad")}</h2>
         <Link href="/create/" className="e-board-cta">{tr("Launch yours →")}</Link>
       </div>
-      <div className="e-board-row">
+      <div className="e-board-wrap">
+      <button type="button" className="e-board-arrow l" aria-label="Back" onClick={() => row.current?.scrollBy({ left: -row.current.clientWidth * 0.8, behavior: "smooth" })}>‹</button>
+      <button type="button" className="e-board-arrow r" aria-label="More" onClick={() => row.current?.scrollBy({ left: row.current.clientWidth * 0.8, behavior: "smooth" })}>›</button>
+      <div className="e-board-row" ref={row}>
         {ours.map((t) => {
           const fresh = Date.now() - Date.parse(t.created_at || "0") < 3_600_000;
           return (
@@ -141,6 +162,7 @@ function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
             <small className="dim">{tr("Launch in 30 seconds. Snipers watch new pools, so first buyers often come within minutes.")}</small>
           </Link>
         )}
+      </div>
       </div>
     </section>
   );
@@ -206,6 +228,8 @@ export function Discover() {
   const params = useSearchParams();
   const r = useRouter();
   const tokens = usePoll(fetchTokens, 30_000);
+  // the list holds at most 1,000 coins (the busiest); the real total comes from the stats
+  const stats = usePoll(() => fetchStats().catch(() => null), 300_000);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const [sort, setSort] = useState<Sort>("trending");
   const [win, setWin] = useState<Win>("24h");
@@ -230,7 +254,7 @@ export function Discover() {
           <p>{tr("Every token on Elysium in one place. Find it, chart it, trade it.")}</p>
         </div>
         <div className="e-stats">
-          <div className="e-stat"><span>{tr("Tokens")}</span><b>{tokens ? tokens.length.toLocaleString("en-US") : "—"}</b></div>
+          <div className="e-stat"><span>{tr("Tokens")}</span><b>{tokens ? Math.max(tokens.length, stats?.tokens ?? 0).toLocaleString("en-US") : "—"}</b></div>
           <div className="e-stat"><span>{tr("24h volume")}</span><b>{tokens ? money(vol * usd) : "—"}</b></div>
           <div className="e-stat"><span>HYPE</span><b>{usd ? `$${usd.toFixed(2)}` : "—"}</b></div>
         </div>

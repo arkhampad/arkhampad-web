@@ -690,3 +690,14 @@ html { overscroll-behavior-y: none; }
   .e-promos .e-airdrop-ico { font-size: 20px; }
   .e-promos .e-pio-banner img { width: 30px; height: 30px; border-radius: 7px; }
 }
+
+/* Fresh on ArkhamPad: arrows and mouse-drag on computers */
+.e-board-wrap { position: relative; }
+.e-board-row.drag { scroll-snap-type: none; cursor: grabbing; user-select: none; }
+.e-board-row { cursor: grab; }
+.e-board-arrow { position: absolute; top: 50%; transform: translateY(-60%); z-index: 2; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--e-line2); background: var(--e-card); color: var(--e-text); font-size: 24px; line-height: 1; display: none; place-items: center; box-shadow: var(--e-shadow); cursor: pointer; }
+.e-board-arrow.l { left: -12px; }
+.e-board-arrow.r { right: -12px; }
+@media (hover: hover) and (pointer: fine) { .e-board-wrap:hover .e-board-arrow { display: grid; } }
+/* You: long lists start short */
+.e-more { display: block; width: 100%; padding: 12px; border: 0; border-top: 1px solid var(--e-line); background: transparent; color: var(--e-teal); font: inherit; font-weight: 700; cursor: pointer; }
