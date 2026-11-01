@@ -80,6 +80,8 @@ export function CreatePage() {
   const [tg, setTg] = useState("");
   const [site, setSite] = useState("");
   const [buy, setBuy] = useState("");
+  // what can go into the first buy: the balance minus a little for the launch's network fee
+  const maxBuy = hype != null ? Math.max(0, fromWei(hype) - 0.02) : 0;
   const [img, setImg] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [picture, setPicture] = useState("");
@@ -189,6 +191,13 @@ export function CreatePage() {
     setBusy("Launching…");
     try {
       const fee = (await ely().readContract({ address: LAUNCHER, abi: ABI, functionName: "launchFee" }).catch(() => 0n)) as bigint;
+      // the whole balance can't go into the first buy: the launch itself needs a little HYPE for gas
+      const bal = await hypeBalance(me).catch(() => hype ?? null);
+      if (bal != null && fee + buyWei + 15n * 10n ** 15n > bal) {
+        const room = bal > fee + 20n * 10n ** 15n ? bal - fee - 20n * 10n ** 15n : 0n;
+        setMsg(`Not enough HYPE left for the network fee. Lower the first buy to ${fromWei(room).toFixed(4)} HYPE or less (or tap Max).`);
+        return;
+      }
       const meta = {
         name: name.trim(),
         symbol: sym.trim().toUpperCase(),
@@ -236,7 +245,9 @@ export function CreatePage() {
       // keep the real reason in the console and on screen (short), so a failed launch can be diagnosed
       console.error("launch failed", e);
       const why = String((e as { shortMessage?: string })?.shortMessage || m).split("\n")[0].slice(0, 140);
-      if (/nonce/i.test(m)) { setMsg(NONCE_HELP); return; }
+      if (/insufficient/i.test(m)) { setMsg(buyWei > 0n ? "Not enough HYPE for the first buy and the network fee. Lower the first buy a little (or tap Max)." : "You need a little HYPE on Elysium for gas."); return; }
+      // the built-in wallet: our nodes were a moment out of sync (nothing was sent); MetaMask: its own counter
+      if (/nonce/i.test(m)) { setMsg(w.signer?.embedded ? "The network was out of sync for a moment. Nothing was sent: press Launch again." : NONCE_HELP); return; }
       if (e instanceof SlowTx || /timed out|timeout/i.test(m)) { setMsg("Your launch was sent, but the network is slow to confirm right now. It will show on your You page in a minute or two. Please don't launch it again."); return; }
       if (!/insufficient/i.test(m) && !USER_NO.test(m)) { setMsg(`Launch failed: ${why}`); return; }
       setMsg(/insufficient/i.test(m) ? (buyWei > 0n ? "Not enough HYPE for the first buy and gas." : "You need a little HYPE on Elysium for gas.") : "Cancelled.");
@@ -298,10 +309,11 @@ export function CreatePage() {
             </details>
             <label className="e-amt">
               <span className="e-amt-top"><span>{tr("First buy")} <i className="dim">{tr("optional")}</i></span><span className="dim">{tr("Balance")} {hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—"}</span></span>
+              {hype != null && <span className="e-note" style={{ display: "block", margin: "2px 0 6px" }}>{tr("You can put up to {n} HYPE into the first buy (a little stays for the network fee).", { n: maxBuy.toFixed(4) })}</span>}
               <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={buy} onChange={(e) => setBuy(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="First buy in HYPE" /><b>HYPE</b></span>
               <span className="dim" style={{ fontSize: 12.5 }}>{b > 0 ? `≈ ${money(fromWei(buyWei) * usd)} · ${tr("about {p}% of the supply", { p: pctOfSupply.toFixed(1) })}` : tr("Be the first buyer of your own coin, in the same transaction.")}</span>
             </label>
-            <div className="e-quick">{["0.1", "0.5", "1", "2"].map((v) => <button key={v} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(v)}>{v}</button>)}</div>
+            <div className="e-quick">{["0.1", "0.5", "1"].map((v) => <button key={v} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(v)}>{v}</button>)}<button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(maxBuy > 0 ? String(Math.floor(maxBuy * 10000) / 10000) : "0")}>{tr("Max")}</button></div>
             <button type="button" className="e-go" disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={launch}>{tr(label)}</button>
             {msg && <div className="e-msg bad" role="status">{tr(msg)}</div>}
             {w.signedIn && hype === 0n && <Link href="/bridge/" className="e-hint">{tr("You need a little HYPE on Elysium for gas.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}

@@ -46,7 +46,11 @@ export function Feel() {
   useEffect(() => {
     const on = (e: PointerEvent) => {
       if (e.pointerType !== "touch") return;
-      const el = (e.target as HTMLElement | null)?.closest("button, a, [role=tab], label");
+      const target = e.target as HTMLElement | null;
+      // never on text fields: on iPhone the tick (a hidden switch being clicked) pulls the focus away and
+      // the long-press Paste menu never shows
+      if (target?.closest("input, textarea, select, [contenteditable]")) return;
+      const el = target?.closest("button, a, [role=tab]");
       if (el && !(el as HTMLButtonElement).disabled) haptic(el.classList.contains("e-go") ? "strong" : "light");
     };
     document.addEventListener("pointerdown", on, { passive: true });
