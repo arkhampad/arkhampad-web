@@ -1,7 +1,7 @@
 // POST /api/ely-idea  { address? } -> { name, ticker, description, picture, left }
 // One fresh meme coin idea that fits what is trending on Elysium right now. The trend list (top coins
 // by 24h volume, from our Elysium index) is refreshed every 2 hours and shared by all visitors.
-// 60 ideas per visitor per day (counted by IP and by wallet, through Supabase ely_ai_take).
+// 100 ideas per wallet per day (20 signed out, per IP) (counted by IP and by wallet, through Supabase ely_ai_take).
 import { clean, parse } from "./ideas.js";
 
 const MODELS = [
@@ -11,7 +11,7 @@ const MODELS = [
 ];
 const TREND_TTL = 2 * 3600; // seconds
 const CACHE_KEY = "https://arkhampad.com/__cache/ely-trends-v1";
-const LIMIT = 60;
+const LIMIT = 100;
 
 // The database address is public (the site uses the same one); Cloudflare's runtime may not have the
 // NEXT_PUBLIC_* build variables, so fall back to it. Without this the daily limit never counted.
@@ -94,9 +94,13 @@ export async function onRequestPost({ request, env, waitUntil }) {
     if (Array.isArray(b.avoid)) avoid = b.avoid.map((x) => String(x).toLowerCase().replace(/[^a-z0-9 ]/g, "").slice(0, 24)).filter(Boolean).slice(0, 30);
   } catch {}
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  const [byIp, byWallet] = await Promise.all([take(env, `ip:${ip}`), /^0x[0-9a-f]{40}$/.test(address) ? take(env, `w:${address}`) : 0]);
-  const used = Math.max(byIp, byWallet);
-  if (used > LIMIT) return json({ error: `You've used today's ${LIMIT} AI ideas. They reset at midnight UTC.`, left: 0 }, 429);
+  // signed in: counted per wallet only (phone networks put many people behind one IP address, so an IP
+  // count ran out for people who had barely used it); signed out: per IP, with a lower allowance
+  const wallet = /^0x[0-9a-f]{40}$/.test(address);
+  const unlimited = String(env.AI_UNLIMITED || "").toLowerCase().split(",").map((x) => x.trim()).includes(address);
+  const cap = wallet ? LIMIT : 20;
+  const used = unlimited ? 0 : wallet ? await take(env, `w:${address}`) : await take(env, `ip:${ip}`);
+  if (used > cap) return json({ error: wallet ? `You've used today's ${cap} AI ideas. More tomorrow (they reset at 00:00 UTC). You can still type a name and use Draw with AI.` : "Log in to get more AI ideas today.", left: 0 }, 429);
   const list = await trends(env, waitUntil);
   const taken = new Set([...list.flatMap((t) => [t.name.toLowerCase(), t.symbol.toLowerCase()]), ...avoid]);
   const brief = list.length
@@ -111,7 +115,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
       });
       const idea = clean(parse(out?.response ?? out));
       const nm = idea?.name.toLowerCase().replace(/[^a-z0-9 ]/g, "");
-      if (idea && !taken.has(nm) && !taken.has(idea.name.toLowerCase()) && !taken.has(idea.ticker.toLowerCase())) return json({ ...idea, left: Math.max(0, LIMIT - used) });
+      if (idea && !taken.has(nm) && !taken.has(idea.name.toLowerCase()) && !taken.has(idea.ticker.toLowerCase())) return json({ ...idea, left: unlimited ? 999 : Math.max(0, cap - used) });
     } catch { /* next model */ }
   }
   return json({ error: "AI is busy right now. Try again in a few seconds." }, 503);
