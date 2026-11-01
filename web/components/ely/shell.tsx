@@ -10,7 +10,7 @@ import { Feel } from "./feel";
 import { InviteConfirm } from "./invite";
 import { I18nProvider, LANGS, useI18n, useT } from "@/lib/i18n";
 import { fetchTokens, fetchHypeUsd, money, pct, padColor, padOf, PADS, tokenColors, usePoll, type EToken } from "@/lib/ely";
-import { ScoutTab, ScoutToast } from "./scout";
+import { ScoutTab, ScoutToast, ScoutFab } from "./scout";
 
 const NAV = [
   { href: "/", label: "Discover", icon: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm3.5 5.5-2 5-5 2 2-5 5-2Z" /> },
@@ -209,6 +209,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         <ScoutTab active={on("/radar")} />
       </nav>
       <ScoutToast />
+      <ScoutFab />
     </div>
   );
 }

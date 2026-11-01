@@ -705,9 +705,9 @@ html { overscroll-behavior-y: none; }
 
 /* ---- Scout: Smart Money Radar --------------------------------------------------------------- */
 .scout-robot { display: block; border-radius: 7px; object-fit: cover; flex: none; animation: scoutIdle 3.6s ease-in-out infinite; }
-.scout-flash { animation: scoutFlash 1.1s ease-in-out infinite; }
+.scout-flash { animation: scoutFlash 0.85s ease-in-out infinite; }
 @keyframes scoutIdle { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.08); } }
-@keyframes scoutFlash { 0%, 100% { filter: brightness(1.05) drop-shadow(0 0 0 rgba(63, 227, 212, 0)); } 50% { filter: brightness(1.4) drop-shadow(0 0 6px rgba(63, 227, 212, .9)); } }
+@keyframes scoutFlash { 0%, 100% { filter: brightness(1.04) drop-shadow(0 0 0 rgba(63, 227, 212, 0)); transform: scale(1); } 50% { filter: brightness(1.6) drop-shadow(0 0 10px rgba(63, 227, 212, 1)); transform: scale(1.07); } }
 
 /* signal meter */
 .scout-meter { display: inline-flex; align-items: flex-end; gap: 3px; flex: none; }
@@ -753,6 +753,16 @@ html { overscroll-behavior-y: none; }
 /* bottom-bar robot tab */
 .scout-tab .scout-robot { width: 24px; height: 24px; border-radius: 6px; }
 .scout-tab.on { color: var(--e-teal); }
+
+/* desktop-only floating Scout button (mobile uses the bottom-bar robot) */
+.scout-fab { position: fixed; right: 20px; bottom: 20px; z-index: 45; display: grid; place-items: center; width: 62px; height: 62px; border-radius: 16px; background: var(--e-bg2); border: 1px solid var(--e-line2); box-shadow: 0 10px 30px rgba(5, 10, 14, .4); transition: transform .15s; }
+.scout-fab:hover { transform: translateY(-2px); }
+.scout-fab .scout-robot { width: 46px; height: 46px; border-radius: 12px; }
+.scout-fab::after { content: ""; position: absolute; inset: 0; border-radius: 16px; pointer-events: none; animation: scoutRing 2.6s ease-in-out infinite; }
+.scout-fab.hot::after { animation: scoutRingHot 0.85s ease-in-out infinite; }
+@keyframes scoutRing { 0%, 100% { box-shadow: 0 0 0 0 rgba(63, 227, 212, 0); } 50% { box-shadow: 0 0 14px 1px rgba(63, 227, 212, .35); } }
+@keyframes scoutRingHot { 0%, 100% { box-shadow: 0 0 2px 0 rgba(63, 227, 212, .3); } 50% { box-shadow: 0 0 24px 5px rgba(63, 227, 212, .85); } }
+@media (max-width: 860px) { .scout-fab { display: none; } }
 
 /* live toast */
 .scout-toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + var(--e-safe-b)); z-index: 55; display: flex; align-items: center; gap: 10px; width: min(420px, calc(100vw - 24px)); padding: 10px 12px; border-radius: 14px; background: var(--e-bg2); border: 1px solid var(--e-line2); box-shadow: 0 10px 30px rgba(5, 10, 14, .28); animation: scoutUp .3s cubic-bezier(.2,.8,.2,1); }

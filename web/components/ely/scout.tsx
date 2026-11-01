@@ -122,6 +122,18 @@ export function ScoutTab({ active }: { active: boolean }) {
   );
 }
 
+/** Desktop-only floating Scout button (bottom-right). Opens the Radar; the ring + eyes flash on a strong signal. */
+export function ScoutFab() {
+  const tr = useT();
+  const radar = useRadar();
+  const strong = !!radar?.hasStrong;
+  return (
+    <Link href="/radar/" className={`scout-fab ${strong ? "hot" : ""}`} aria-label={tr("Smart Money Radar")} title={tr("Smart Money Radar")}>
+      <ScoutRobot size={46} flash={strong} />
+    </Link>
+  );
+}
+
 /** Live toast: slides up when a NEW strong signal appears. Throttled and deduped so it never spams. */
 export function ScoutToast() {
   const tr = useT();
