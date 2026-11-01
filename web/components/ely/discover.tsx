@@ -10,6 +10,9 @@ import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchStats, fetchTokens, m
 import { pendingTokens } from "@/lib/elytrade";
 import { AirdropBanner } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
+import { ScoutBadge } from "./scout";
+import { DevFlag } from "./shield";
+import { devRepsFromTokens, type DevRep } from "@/lib/shield";
 import { useWallet } from "@/components/wallet";
 
 type Sort = "trending" | "new" | "top" | "gainers" | "losers" | "live";
@@ -124,6 +127,7 @@ function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
     return () => { el.removeEventListener("pointerdown", start); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); el.removeEventListener("click", click, true); el.removeEventListener("dragstart", noDrag); };
   }, []);
   const known = new Set(tokens.map((t) => t.address.toLowerCase()));
+  const devReps = useMemo(() => devRepsFromTokens(tokens, usd), [tokens, usd]);
   const ours = [...tokens, ...pendingTokens().filter((t) => !known.has(t.address.toLowerCase()))].filter((t) => (t.ours || TEAM.has((t.creator || "").toLowerCase())) && !HIDE.has(t.address.toLowerCase())).sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0")).slice(0, 12);
   return (
     <section className="e-board">
@@ -142,10 +146,10 @@ function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
               <div className="e-hc-top">
                 <TokenAvatar t={t} size={40} />
                 <div>
-                  <b>{t.name}</b>
+                  <b>{t.name} <DevFlag rep={devReps.get((t.creator || "").toLowerCase())} /></b>
                   <small>{t.symbol} · {tr("{age} old", { age: ago(t.created_at) })}</small>
                 </div>
-                {fresh && <span className="e-new">{tr("NEW")}</span>}
+                <span className="e-bc-badges">{fresh && <span className="e-new">{tr("NEW")}</span>}<ScoutBadge address={t.address} /></span>
               </div>
               <div className="e-hc-mid">
                 <strong>{money((t.mcap_hype ?? 0) * usd)}</strong>
@@ -194,7 +198,7 @@ function TradeList({ byAddr, usd, n = 24 }: { byAddr: Map<string, EToken>; usd: 
   );
 }
 
-function Row({ t, i, usd, w }: { t: EToken; i: number; usd: number; w: Win }) {
+function Row({ t, i, usd, w, rep }: { t: EToken; i: number; usd: number; w: Win; rep?: DevRep }) {
   const c = chg(t, w);
   const tr = useT();
   const mc = money((t.mcap_hype ?? 0) * usd);
@@ -204,7 +208,7 @@ function Row({ t, i, usd, w }: { t: EToken; i: number; usd: number; w: Win }) {
       <span className="e-tok">
         <TokenAvatar t={t} size={38} />
         <span>
-          <span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span>{t.ours && <span className="e-lock">LP locked</span>}</span>
+          <span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span><DevFlag rep={rep} />{t.ours && <span className="e-lock">LP locked</span>}<ScoutBadge address={t.address} /></span>
           <small>
             <span className="e-hide-m">{tr("by {who}", { who: short(t.creator) })} · {tr("{age} old", { age: ago(t.created_at) })}</span>
             <span className="e-only-m-inline">{tr("{age} old", { age: ago(t.created_at) })} · {tr("{n} holders", { n: compact(t.holders || 0) })}</span>
@@ -243,6 +247,7 @@ export function Discover() {
   }, [tokens, sort, q, win]);
 
   const byAddr = useMemo(() => new Map((tokens ?? []).map((t) => [t.address, t])), [tokens]);
+  const devReps = useMemo(() => devRepsFromTokens(tokens ?? [], usd), [tokens, usd]);
   const vol = (tokens ?? []).reduce((s, t) => s + (t.vol24_hype || 0), 0);
 
   return (
@@ -305,7 +310,7 @@ export function Discover() {
                 <span className="r e-hide-m">{tr("Mkt cap")}</span>
               </div>
               <div className="e-rows">
-                {list.slice(0, shown).map((t, i) => <Row key={t.address} t={t} i={i} usd={usd} w={win} />)}
+                {list.slice(0, shown).map((t, i) => <Row key={t.address} t={t} i={i} usd={usd} w={win} rep={devReps.get((t.creator || "").toLowerCase())} />)}
               </div>
               {!tokens && <div style={{ padding: 14, display: "grid", gap: 10 }}>{Array.from({ length: 8 }, (_, i) => <div key={i} className="e-skel" style={{ height: 48 }} />)}</div>}
               {tokens && !list.length && <div className="e-empty">{tr("No tokens here yet.")}</div>}

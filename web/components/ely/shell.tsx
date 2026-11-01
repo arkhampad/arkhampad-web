@@ -10,6 +10,7 @@ import { Feel } from "./feel";
 import { InviteConfirm } from "./invite";
 import { I18nProvider, LANGS, useI18n, useT } from "@/lib/i18n";
 import { fetchTokens, fetchHypeUsd, money, pct, padColor, padOf, PADS, tokenColors, usePoll, type EToken } from "@/lib/ely";
+import { ScoutTab, ScoutToast } from "./scout";
 
 const NAV = [
   { href: "/", label: "Discover", icon: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm3.5 5.5-2 5-5 2 2-5 5-2Z" /> },
@@ -170,6 +171,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="e-links" aria-label="Main">
             {NAV.map((n) => <Link key={n.href} href={n.href} className={`e-link ${on(n.href) ? "on" : ""}`}>{tr(n.label)}</Link>)}
+            <Link href="/radar/" className={`e-link ${on("/radar/") ? "on" : ""}`}>{tr("Radar")}</Link>
             <Link href="/stats/" className={`e-link ${on("/stats/") ? "on" : ""}`}>{tr("Stats")}</Link>
             <Link href="/learn/" className={`e-link ${on("/learn/") ? "on" : ""}`}>{tr("Learn")}</Link>
           </nav>
@@ -197,14 +199,16 @@ function Frame({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
       </footer>
-      <nav className="e-bottom" aria-label="Main">
+      <nav className="e-bottom e-bottom-5" aria-label="Main">
         {NAV.map((n) => (
           <Link key={n.href} href={n.href} className={`e-tabnav ${on(n.href) ? "on" : ""}`}>
             <Icon d={n.icon} />
             {tr(n.label)}
           </Link>
         ))}
+        <ScoutTab active={on("/radar")} />
       </nav>
+      <ScoutToast />
     </div>
   );
 }

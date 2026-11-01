@@ -441,6 +441,8 @@ async function elysiumLoop() {
   if (key && launcher) {
     import("./elykeeper.mjs").then(({ keeperLoop }) => keeperLoop({ rpc, launcher, key, pool, log })).catch((e) => log(`keeper: ${e.message}`));
   }
+  // Smart Money Radar poster (Telegram). No-ops unless TG_SCOUT_TOKEN / TG_SCOUT_CHANNEL are set.
+  import("./scout.mjs").then(({ startScout }) => startScout(pool, { log })).catch((e) => log(`scout: ${e.message}`));
   for (;;) {
     try {
       const store = await makePgStore(pool);

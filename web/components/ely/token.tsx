@@ -9,6 +9,9 @@ import { useWallet } from "@/components/wallet";
 import { TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
 import { EChart } from "./chart";
+import { ScoutPanel } from "./scout";
+import { ShieldPanel } from "./shield";
+import { useShield, useDevRecord } from "@/lib/shield";
 import { Burst, Confetti } from "@/components/celebrate";
 import { ShareButton } from "./share";
 import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
@@ -308,6 +311,8 @@ export function TokenPage() {
   const [sheet, setSheet] = useState<"buy" | "sell" | null>(null);
   const [fresh, setFresh] = useState(params.get("new") === "1");
   const links = useCoinLinks(t ?? null);
+  const shield = useShield(t ?? null, trades, usd);
+  const dev = useDevRecord(t?.creator, usd);
 
   useEffect(() => { if (t) document.title = `${t.symbol} · ${money((t.mcap_hype ?? 0) * usd)} · ArkhamPad`; }, [t, usd]);
   useEffect(() => {
@@ -379,7 +384,12 @@ export function TokenPage() {
             {stats.map((s) => <div key={s.l}><span>{s.l}</span><b className="num">{s.v}</b></div>)}
           </section>
 
+          {/* phones have no side column: keep Shield up top, right by the Buy bar, never buried */}
+          <div className="shield-m"><ShieldPanel token={t} shield={shield} dev={dev} /></div>
+
           <section className="e-panel"><EChart trades={trades} usd={usd} supply={supplyOf(t)} height={420} /></section>
+
+          <ScoutPanel token={t} />
 
           <section className="e-panel">
             <div className="e-bar" style={{ flexDirection: "row" }}>
@@ -395,6 +405,7 @@ export function TokenPage() {
 
         <aside className="e-tside">
           <div className="e-panel"><TradeBox t={t} usd={usd} /></div>
+          <ShieldPanel token={t} shield={shield} dev={dev} />
         </aside>
       </div>
 
