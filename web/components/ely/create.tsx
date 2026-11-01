@@ -100,6 +100,22 @@ export function CreatePage() {
     if (!f) return;
     if (!/^image\/(png|jpe?g|webp|gif)$/.test(f.type)) return setMsg("Use a PNG, JPG, WebP or GIF image.");
     if (f.size > 10_000_000) return setMsg("That image is over 10 MB.");
+    // an animated GIF can't live on-chain (only a tiny still fits there): it's kept on ArkhamPad and the
+    // coin points to it, so it moves everywhere the coin is shown
+    if (f.type === "image/gif") {
+      if (f.size > 2_000_000) return setMsg("That GIF is over 2 MB. Try a smaller one (around 200×200 works well).");
+      setMsg("Uploading your GIF…");
+      try {
+        const r = await fetch("/api/ely-upload", { method: "POST", headers: { "content-type": "image/gif" }, body: f });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.url) throw new Error(j.error || "Couldn't upload the GIF. Try again.");
+        setImg(j.url);
+        setMsg(null);
+      } catch (e) {
+        setMsg((e as Error).message);
+      }
+      return;
+    }
     const url = URL.createObjectURL(f);
     try { setImg(await shrink(url)); setMsg(null); } catch { setMsg("Couldn't read that image."); } finally { URL.revokeObjectURL(url); }
   }
@@ -266,7 +282,7 @@ export function CreatePage() {
               <div className="e-imgbtns">
                 <button type="button" className="e-btn" onClick={() => file.current?.click()}>{tr("Upload")}</button>
                 <button type="button" className="e-btn" onClick={() => (name.trim() ? draw() : idea())} disabled={drawing || thinking}>{tr(drawing ? "Drawing…" : "Draw with AI")}</button>
-                <span className="e-note">{tr("Square works best. PNG, JPG, WebP or GIF.")}</span>
+                <span className="e-note">{tr("Square works best. PNG, JPG, WebP, or an animated GIF up to 2 MB.")}</span>
               </div>
               <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => pick(e.target.files?.[0])} />
             </div>
