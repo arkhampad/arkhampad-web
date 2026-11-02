@@ -585,6 +585,40 @@ export function makeElysium(cfg, store) {
     return list.length;
   }
 
+  // ArkhamPad Genesis badge holders (for the airdrop's 2x): the contract's Transfer logs, own cursor,
+  // never allowed to break the trade scan. Env ELY_GENESIS overrides the address.
+  const GENESIS = lc(process.env.ELY_GENESIS || "0x43c9234bb8be8e4f5aa03d14ee3d12213ef92562");
+  const ZERO = "0x0000000000000000000000000000000000000000";
+  let genesisAt = 0;
+  async function scanGenesis(tip) {
+    if (!/^0x[0-9a-f]{40}$/.test(GENESIS) || !store.addGenesis) return;
+    if (Date.now() - genesisAt < 30_000) return;
+    genesisAt = Date.now();
+    let last = Number((await store.getState("ely_genesis_block")) ?? (cfg.startBlock ?? 0) - 1);
+    let gspan = 2000;
+    while (last < tip) {
+      const to = Math.min(tip, last + gspan);
+      let logs;
+      try {
+        logs = await rpc("eth_getLogs", [{ fromBlock: hex(last + 1), toBlock: hex(to), address: GENESIS, topics: [T.transfer] }]);
+      } catch (e) {
+        if (gspan > 50) { gspan = Math.floor(gspan / 2); continue; }
+        throw e;
+      }
+      const add = [], del = [];
+      for (const l of logs) {
+        if (l.topics.length < 3) continue;
+        const from = addrTopic(l.topics[1]), to2 = addrTopic(l.topics[2]);
+        if (to2 !== ZERO) add.push(to2);
+        if (from !== ZERO) del.push(from);
+      }
+      if (del.length) await store.delGenesis(del.filter((a) => !add.includes(a)));
+      if (add.length) await store.addGenesis([...new Set(add)]);
+      last = to;
+      await store.setState("ely_genesis_block", last);
+    }
+  }
+
   async function hypeUsd() {
     try {
       const r = await fetch("https://api.hyperliquid.xyz/info", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }), signal: AbortSignal.timeout(10_000) });
@@ -672,6 +706,7 @@ export function makeElysium(cfg, store) {
       if (tip - last > 30 && Date.now() - fastLogAt > 60_000) { fastLogAt = Date.now(); log(`elysium: fast lane at block ${last} of ${tip}`); }
     }
     if (Date.now() - fastLogAt > 10 * 60_000) { fastLogAt = Date.now(); log(`elysium: fast lane up to date (block ${last})`); }
+    scanGenesis(tip).catch((e) => log(`elysium: genesis ${e.message}`));
     // the lists' numbers (market cap, volume, holders) can't wait for the full scan either
     if (Date.now() - statsAt > 60_000) {
       statsAt = Date.now();

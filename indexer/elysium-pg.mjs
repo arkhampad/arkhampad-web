@@ -16,6 +16,9 @@ export async function makePgStore(pool) {
     setMeta: async (k, v) => void (await pool.query("insert into ely_meta (k, v, updated_at) values ($1, $2, now()) on conflict (k) do update set v = excluded.v, updated_at = now()", [k, JSON.stringify(v)])),
     /** Network stats for the Stats page (db/026: ely_stats), stored in ely_meta('stats'). */
     saveStats: async () => void (await pool.query("select public.ely_save_stats()")),
+    /** Genesis NFT holders for the airdrop's 2x (db/030: ely_genesis), from the badge contract's Transfer logs. */
+    addGenesis: async (holders) => { if (holders.length) await pool.query("insert into ely_genesis (holder) select unnest($1::text[]) on conflict (holder) do nothing", [holders]); },
+    delGenesis: async (holders) => { if (holders.length) await pool.query("delete from ely_genesis where holder = any($1::text[])", [holders]); },
     upsertToken: async (t) => {
       tokens.set(t.address, { ...tokens.get(t.address), ...t });
       const vals = COLS.map((c) => t[c] ?? null);
