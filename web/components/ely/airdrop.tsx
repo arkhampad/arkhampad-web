@@ -11,10 +11,10 @@ import { earlyCard } from "@/lib/sharecard";
 
 const XIcon = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M17.8 3h3.1l-6.8 7.7L22 21h-6.2l-4.9-6.3L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z" /></svg>;
 
-export function AirdropBanner({ signedIn }: { signedIn: boolean }) {
+export function AirdropBanner() {
   const tr = useT();
   return (
-    <Link href={signedIn ? "/you/#airdrop" : "/create/"} className="e-airdrop">
+    <Link href="/airdrop/" className="e-airdrop">
       <span className="e-airdrop-ico" aria-hidden="true">🪂</span>
       <span>
         <b>{tr("The ArkhamPad airdrop")}</b>
@@ -82,6 +82,7 @@ export function AirdropCard({ me }: { me: string }) {
         <div><b className="num">{trades ? n(vol) : "—"}</b><span>{tr("HYPE traded")}</span></div>
       </div>
       <p className="e-note" style={{ padding: "0 16px 14px" }}>{tr("Everything you launch and trade on ArkhamPad counts toward the ArkhamPad airdrop, and so does a Genesis badge. The more you do, the bigger your share.")}</p>
+      <div style={{ padding: "0 16px 16px" }}><Link href="/airdrop/" className="e-btn pri">{tr("See your points and the leaderboard →")}</Link></div>
     </section>
   );
 }

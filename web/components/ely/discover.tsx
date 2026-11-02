@@ -13,7 +13,6 @@ import { PioneerBanner } from "./pioneer";
 import { ScoutBadge } from "./scout";
 import { DevFlag } from "./shield";
 import { devRepsFromTokens, type DevRep } from "@/lib/shield";
-import { useWallet } from "@/components/wallet";
 
 type Sort = "trending" | "new" | "top" | "gainers" | "losers" | "live";
 const SORTS: { id: Sort; label: string; narrow?: boolean }[] = [
@@ -228,7 +227,6 @@ function Row({ t, i, usd, w, rep }: { t: EToken; i: number; usd: number; w: Win;
 
 export function Discover() {
   const tr = useT();
-  const w = useWallet();
   const params = useSearchParams();
   const r = useRouter();
   const tokens = usePoll(fetchTokens, 30_000);
@@ -267,7 +265,7 @@ export function Discover() {
 
       <div className="e-promos">
         <PioneerBanner />
-        <AirdropBanner signedIn={w.signedIn} />
+        <AirdropBanner />
       </div>
       <Board tokens={tokens ?? []} usd={usd} />
       <Hot tokens={tokens ?? []} usd={usd} />
