@@ -206,7 +206,10 @@ const CONFIG = {
   loginMethods: (process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? ["email", "google", "wallet"] : process.env.NEXT_PUBLIC_TELEGRAM_LOGIN === "1" ? ["google", "twitter", "telegram", "email", "wallet"] : ["google", "twitter", "email", "wallet"]) as ("google" | "twitter" | "telegram" | "email" | "wallet")[],
   appearance: { theme: "light" as const, accentColor: "#0A9A8D" as `#${string}`, logo: "/icon-192.png", landingHeader: "Sign in to ArkhamPad", showWalletLoginFirst: false },
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" as const }, showWalletUIs: false },
-  supportedChains: process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? [elysium, hyperevm, base, arbitrum, mainnet, optimism, polygon, bsc, elysiumTestnet] : [base, robinhood, bsc, arc, baseSepolia, robinhoodTestnet, elysiumTestnet],
+  // Elysium mainnet (99901) stays in the list even before full ELY_LIVE mode, so email/Google (Privy)
+  // users can sign Elysium transactions that don't go through the relayer — e.g. the Genesis NFT mint.
+  // Without it Privy rejects the mint with "missing or invalid parameters" (unsupported chain).
+  supportedChains: process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? [elysium, hyperevm, base, arbitrum, mainnet, optimism, polygon, bsc, elysiumTestnet] : [elysium, base, robinhood, bsc, arc, baseSepolia, robinhoodTestnet, elysiumTestnet],
   defaultChain: process.env.NEXT_PUBLIC_ELY_LIVE === "1" ? elysium : LIVE ? base : baseSepolia,
 };
 
