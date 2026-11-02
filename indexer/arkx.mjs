@@ -22,6 +22,7 @@
 
 import { createHmac, randomBytes } from "node:crypto";
 import pg from "pg";
+import { buildResponse, QUERIES } from "./scout-engine.mjs";
 
 const TR = 3 * 3600e3;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -99,7 +100,43 @@ function POSTS() {
   ];
 }
 
+// ------------------------------------------------------------------ Scout live signals (the wedge)
+// Scout's STRONG smart-money catches, posted from @arkhampad, from ArkhamPad's OWN radar data
+// (the shared Supabase the app reads). Nobody else shows "who's buying on Elysium" live. These fire
+// at their own slots below; a slot only posts when there's a fresh strong catch (never floods), and
+// the same coin is not reposted within 12h. Needs SCOUT_SUPABASE_URL + SCOUT_SUPABASE_KEY.
+const SCOUT_PLAN = ["14:30", "16:00", "17:30", "19:00", "20:30", "22:00", "23:00"]; // ≤7/day
+const SCOUT_ON = () => !!(process.env.SCOUT_SUPABASE_URL && process.env.SCOUT_SUPABASE_KEY);
+
+async function sb(path) {
+  const base = (process.env.SCOUT_SUPABASE_URL || "").replace(/\/$/, "");
+  const key = process.env.SCOUT_SUPABASE_KEY;
+  const r = await fetch(`${base}/rest/v1/${path}`, { headers: { apikey: key, authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(12000) });
+  if (!r.ok) throw new Error("sb " + r.status);
+  return r.json();
+}
+async function getRadar() {
+  const [tokens, trades, meta] = await Promise.all([sb(QUERIES.tokens), sb(QUERIES.trades), sb(QUERIES.meta)]);
+  const usd = Number(meta && meta[0] && meta[0].v) || 0;
+  return buildResponse(tokens, trades, usd, Date.now());
+}
+/** Short, pro, curiosity Scout-signal copy. {sym}=coin, {n}=smart wallets. Different line + tags each. */
+function scoutLines(sym, n) {
+  const S = `$${sym}`;
+  return [
+    ["sc1", `Scout just spotted smart money 👀\n\n${n} winning wallets aped ${S} on Elysium in the last 10 min. live now.\n\narkhampad.com\n\n#Elysium #SmartMoney`],
+    ["sc2", `🚨 strong signal on Elysium\n\n${S} just lit up Scout's radar — ${n} smart wallets buying right now.\n\narkhampad.com\n\n#Elysium #OnChain #DeFi`],
+    ["sc3", `while you were scrolling, ${n} smart wallets bought ${S} on Elysium 👀\n\nScout saw it first.\n\narkhampad.com\n\n#Elysium #Crypto`],
+    ["sc4", `whales + smart money stacking ${S} on Elysium right now 🐋\n\nScout radar, live.\n\narkhampad.com\n\n#Elysium #Whales #SmartMoney`],
+    ["sc5", `the money's moving on Elysium 👀\n\n${S} — ${n} smart wallets in, caught live by Scout.\n\narkhampad.com\n\n#Elysium #SmartMoney #Altcoins`],
+    ["sc6", `${S} is lighting up Scout's radar on Elysium 👀\n\n${n} smart wallets just bought. you're early.\n\narkhampad.com\n\n#Elysium #OnChain #Crypto`],
+    ["sc7", `smart money doesn't wait — ${n} winning wallets just bought ${S} on Elysium 🚨\n\nScout, live.\n\narkhampad.com\n\n#Elysium #DeFi #SmartMoney`],
+    ["sc8", `Scout caught it: ${S} on Elysium, ${n} smart wallets buying in the last 10 min 👀\n\narkhampad.com\n\n#Elysium #Altcoins #SmartMoney`],
+  ];
+}
+
 // ------------------------------------------------------------------ the day's plan (Türkiye time)
+// The corporate / FOMO posts. Set ARK_X_FOMO_OFF=1 to post ONLY Scout signals.
 const PLAN = [
   // morning: ~every 45 min, 06:00–12:45
   "06:00", "06:45", "07:30", "08:15", "09:00", "09:45", "10:30", "11:15", "12:00", "12:45",
@@ -140,7 +177,9 @@ async function main() {
 
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
   await pool.query(`create table if not exists arkx_posts (id bigserial primary key, slot text, tpl text, post_id text, posted_at timestamptz default now())`);
-  log(`on${dry ? " (dry run)" : ""}; ${PLAN.length} posts a day`);
+  await pool.query(`alter table arkx_posts add column if not exists coin text`).catch(() => {});
+  const fomoOff = process.env.ARK_X_FOMO_OFF === "1";
+  log(`on${dry ? " (dry run)" : ""}; ${fomoOff ? 0 : PLAN.length} FOMO posts/day + ${SCOUT_ON() ? `up to ${SCOUT_PLAN.length} Scout signals/day` : "Scout off (no Supabase)"}`);
 
   // a tiny health endpoint so Railway sees the service as up
   if (process.env.PORT) {
@@ -152,21 +191,59 @@ async function main() {
     try {
       const now = Date.now();
       const today = new Date(now + TR).toISOString().slice(0, 10);
-      for (const at of PLAN) {
-        const t = slotTime(at, now);
-        if (now < t || now > t + 3 * 3600e3) continue; // its time has come, and no more than 3h late
-        const done = await pool.query(`select 1 from arkx_posts where slot = $1 and posted_at::date = $2 limit 1`, [at, today]).catch(() => ({ rows: [] }));
-        if (done.rows.length) continue;
-        const [tpl, text] = await fresh(pool, POSTS());
-        if (dry) {
-          log(`[dry] ${at} ${tpl}\n${text}`);
-          await pool.query(`insert into arkx_posts (slot, tpl, post_id) values ($1,$2,$3)`, [at, tpl, "dry"]);
-        } else {
-          const id = await postTweet(keys, text);
-          await pool.query(`insert into arkx_posts (slot, tpl, post_id) values ($1,$2,$3)`, [at, tpl, id ?? ""]);
-          log(`posted ${at} ${tpl} -> ${id}`);
+
+      // Never two posts within ~18 min (keeps FOMO + Scout from clustering when their slots overlap).
+      const recent = await pool.query(`select 1 from arkx_posts where post_id <> 'dry' and posted_at > now() - interval '18 minutes' limit 1`).catch(() => ({ rows: [] }));
+      const quiet = recent.rows.length === 0 || dry;
+
+      // 1) Scout live signals take priority at their slots (strong catches only; never floods).
+      let posted = false;
+      if (quiet && SCOUT_ON()) {
+        for (const at of SCOUT_PLAN) {
+          const t = slotTime(at, now);
+          if (now < t || now > t + 60 * 60e3) continue; // due, and no more than 1h late
+          const sslot = `scout:${at}`;
+          const done = await pool.query(`select 1 from arkx_posts where slot = $1 and posted_at::date = $2 limit 1`, [sslot, today]).catch(() => ({ rows: [] }));
+          if (done.rows.length) continue;
+          const radar = await getRadar().catch((e) => (log("radar: " + String(e.message).slice(0, 120)), null));
+          if (!radar || !radar.coins) break;
+          const blk = await pool.query(`select coin from arkx_posts where coin is not null and posted_at > now() - interval '12 hours'`).catch(() => ({ rows: [] }));
+          const blocked = new Set(blk.rows.map((r) => String(r.coin).toLowerCase()));
+          const pick = radar.coins.find((c) => c.signal === "strong" && !blocked.has(String(c.address).toLowerCase()));
+          if (!pick) { log(`${sslot}: no fresh strong catch — skipping`); break; }
+          const n = pick.smartCount || pick.notableCount || pick.recentCount || 2;
+          const [tpl, text] = await fresh(pool, scoutLines(pick.symbol, n));
+          if (dry) {
+            log(`[dry] ${sslot} ${tpl} (${pick.symbol})\n${text}`);
+            await pool.query(`insert into arkx_posts (slot, tpl, coin, post_id) values ($1,$2,$3,$4)`, [sslot, tpl, pick.address, "dry"]);
+          } else {
+            const id = await postTweet(keys, text);
+            await pool.query(`insert into arkx_posts (slot, tpl, coin, post_id) values ($1,$2,$3,$4)`, [sslot, tpl, pick.address, id ?? ""]);
+            log(`posted ${sslot} ${tpl} ${pick.symbol} -> ${id}`);
+          }
+          posted = true;
+          break;
         }
-        break; // one post per pass
+      }
+
+      // 2) Corporate / FOMO posts fill the other slots (unless turned off).
+      if (quiet && !posted && !fomoOff) {
+        for (const at of PLAN) {
+          const t = slotTime(at, now);
+          if (now < t || now > t + 3 * 3600e3) continue; // its time has come, and no more than 3h late
+          const done = await pool.query(`select 1 from arkx_posts where slot = $1 and posted_at::date = $2 limit 1`, [at, today]).catch(() => ({ rows: [] }));
+          if (done.rows.length) continue;
+          const [tpl, text] = await fresh(pool, POSTS());
+          if (dry) {
+            log(`[dry] ${at} ${tpl}\n${text}`);
+            await pool.query(`insert into arkx_posts (slot, tpl, post_id) values ($1,$2,$3)`, [at, tpl, "dry"]);
+          } else {
+            const id = await postTweet(keys, text);
+            await pool.query(`insert into arkx_posts (slot, tpl, post_id) values ($1,$2,$3)`, [at, tpl, id ?? ""]);
+            log(`posted ${at} ${tpl} -> ${id}`);
+          }
+          break; // one post per pass
+        }
       }
     } catch (e) {
       log(String(e.message).slice(0, 300));
