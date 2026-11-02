@@ -73,7 +73,7 @@ export const elysium = defineChain({
 });
 const elysiumTestnet = defineChain({
   id: 99801, name: "Elysium Testnet", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
-  rpcUrls: { default: { http: (process.env.NEXT_PUBLIC_ELY_TEST_RPCS || "https://rpc-elysium-testnet.t.conduit.xyz,https://rpc.elysium-testnet.kinetiq.xyz").split(",") } },
+  rpcUrls: { default: { http: (process.env.NEXT_PUBLIC_ELY_TEST_RPCS || "https://testnet-rpc.elysium.kinetiq.xyz,https://rpc-elysium-testnet.t.conduit.xyz").split(",") } },
   testnet: true,
 });
 const hyperevm = defineChain({

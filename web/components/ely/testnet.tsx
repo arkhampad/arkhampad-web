@@ -10,7 +10,7 @@ import { useT } from "@/lib/i18n";
 import { fromWei, toWei } from "@/lib/elytrade";
 
 export const TEST_CHAIN = 99801;
-export const TEST_RPCS = (process.env.NEXT_PUBLIC_ELY_TEST_RPCS || "https://rpc-elysium-testnet.t.conduit.xyz,https://rpc.elysium-testnet.kinetiq.xyz").split(",").map((u) => u.trim()).filter(Boolean);
+export const TEST_RPCS = (process.env.NEXT_PUBLIC_ELY_TEST_RPCS || "https://testnet-rpc.elysium.kinetiq.xyz,https://rpc-elysium-testnet.t.conduit.xyz").split(",").map((u) => u.trim()).filter(Boolean);
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_TEST_LAUNCHER || "") as Address | "";
 const ROUTER = (process.env.NEXT_PUBLIC_ELY_TEST_ROUTER || "") as Address | "";
 const WHYPE = (process.env.NEXT_PUBLIC_ELY_TEST_WHYPE || "") as Address | "";
