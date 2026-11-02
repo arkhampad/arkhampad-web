@@ -16,7 +16,7 @@ import { Burst, Confetti } from "@/components/celebrate";
 import { ShareButton } from "./share";
 import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
 import { chainActivity, isFresh, mergeTrades } from "@/lib/elyfresh";
-import { ago, compact, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
+import { ago, compact, fetchClusters, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
 import { ascendBuy, ascendQuote, ascendSell, isAscend, quoteToken, type QuoteToken } from "@/lib/ascend";
 import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, pendingToken, SlowTx, taxedTokens, sellable } from "@/lib/elytrade";
 
@@ -237,14 +237,25 @@ function Trades({ t, usd, chain }: { t: EToken; usd: number; chain?: ETrade[] | 
 function Holders({ t, chain }: { t: EToken; chain?: EHolder[] | null }) {
   const tr = useT();
   const db = usePoll(() => fetchHolders(t.address, 30), 20000, [t.address]);
+  const cl = usePoll(() => fetchClusters(t.address), 30000, [t.address]);
   // the index's list, or (a young coin it hasn't caught up with) the balances read from the chain
   const rows = db && db.length ? db : chain?.length ? chain.slice(0, 30) : db;
   const sup = supplyOf(t) || 1;
   if (!rows) return <div style={{ padding: 14, display: "grid", gap: 8 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="e-skel" style={{ height: 36 }} />)}</div>;
   if (!rows.length) return <div className="e-empty">{tr("Holder list is loading. Check back in a minute.")}</div>;
   const isPool = (h: string) => h === (t.pool || "").toLowerCase() || h === (t.manager || "").toLowerCase();
+  const danger = !!cl && cl.cluster_supply_pct >= 20;
   return (
     <div className="e-rows">
+      {cl && cl.clusters > 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 6, borderRadius: 10, background: danger ? "rgba(246,70,93,0.10)" : "rgba(128,128,128,0.08)", border: `1px solid ${danger ? "rgba(246,70,93,0.35)" : "transparent"}` }}>
+          <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+            <b style={{ fontSize: 15, color: danger ? "var(--down, #F6465D)" : undefined }}>{cl.cluster_supply_pct.toFixed(0)}% {tr("in bot clusters")}</b>
+            <span className="dim" style={{ fontSize: 11 }}>{cl.clusters} {tr("bundles")} · {cl.cluster_wallets} {tr("wallets")} · {tr("biggest")} {cl.biggest_cluster_pct.toFixed(0)}%</span>
+          </span>
+          <span className="dim" style={{ fontSize: 10, textAlign: "right", maxWidth: 140, lineHeight: 1.3 }}>{tr("Wallets that bought in the same block")}</span>
+        </div>
+      )}
       {rows.map((h, i) => {
         const p = (Number(h.amount) / 10 ** (t.decimals ?? 18) / sup) * 100;
         return (

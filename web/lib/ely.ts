@@ -109,6 +109,18 @@ export async function fetchHolders(token: string, limit = 25): Promise<EHolder[]
   return rest<EHolder[]>(`ely_balances?select=holder,amount&token=eq.${token.toLowerCase()}&amount=gt.0&order=amount.desc&limit=${limit}`, 20);
 }
 
+export type EClusters = { holders: number; cluster_wallets: number; clusters: number; cluster_supply_pct: number; top10_pct: number; biggest_cluster_pct: number };
+/** Bot/bundle clusters: wallets that bought in the same block, and what % of circulating supply they hold now (db/031). */
+export async function fetchClusters(token: string): Promise<EClusters | null> {
+  if (MOCK) return null;
+  try {
+    const rows = await rest<EClusters[]>(`rpc/ely_clusters?p_coin=${token.toLowerCase()}`, 60);
+    return rows?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Re-runs `load` every `ms` while the tab is visible; keeps the last good value. */
 export function usePoll<T>(load: () => Promise<T>, ms: number, deps: unknown[] = []): T | undefined {
   const [v, setV] = useState<T>();

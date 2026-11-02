@@ -18,18 +18,28 @@ function handleOf(x?: string) {
 
 /** X / Telegram / website the creator entered at launch (coins launched on ArkhamPad). */
 export async function coinLinks(t: EToken): Promise<CoinLinks> {
-  if (!t.ours) return {};
+  // any launchpad's coin, not only ours: the links live in the coin's own on-chain metadata
   const hit = cache.get(t.address);
   if (hit) return hit;
   let out: CoinLinks = {};
   try {
     const uri = (await ely().readContract({ address: t.address as Address, abi: URI_ABI, functionName: "tokenURI" })) as string;
-    if (uri.startsWith("data:application/json")) {
+    let j: Record<string, unknown> | null = null;
+    if (uri?.startsWith("data:application/json")) {
       const body = uri.slice(uri.indexOf(",") + 1);
       const text = uri.includes(";base64,") ? new TextDecoder().decode(Uint8Array.from(atob(body), (c) => c.charCodeAt(0))) : decodeURIComponent(body);
-      const j = JSON.parse(text);
-      const x = clean(j.twitter ?? j.x);
-      out = { x, xHandle: handleOf(x), telegram: clean(j.telegram), website: clean(j.website), description: typeof j.description === "string" ? j.description : undefined };
+      j = JSON.parse(text);
+    } else if (uri && /^(https?|ipfs):\/\//.test(uri)) {
+      const url = uri.replace(/^ipfs:\/\//, "https://ipfs.io/ipfs/");
+      const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (r.ok) j = (await r.json()) as Record<string, unknown>;
+    }
+    if (j) {
+      // socials sit at the top level, or nested under extensions / links / socials
+      const nests = [j, j.extensions, j.links, j.socials].filter((o): o is Record<string, unknown> => !!o && typeof o === "object");
+      const grab = (...keys: string[]) => { for (const o of nests) for (const k of keys) { const v = clean(o[k]); if (v) return v; } return undefined; };
+      const x = grab("twitter", "x", "twitter_url");
+      out = { x, xHandle: handleOf(x), telegram: grab("telegram", "tg"), website: grab("website", "web", "homepage"), description: typeof j.description === "string" ? j.description : undefined };
     }
   } catch {}
   cache.set(t.address, out);
