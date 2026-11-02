@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
-import { compact, fetchHypeUsd, fetchStats, money, usePoll, type EStats } from "@/lib/ely";
+import { compact, fetchHypeUsd, fetchStats, fetchTokens, money, usePoll, type EStats } from "@/lib/ely";
 
 type Pt = { x: string; y: number; label: string; sub?: string };
 
@@ -101,6 +101,19 @@ export function StatsPage() {
   const s = usePoll(fetchStats, 60_000);
   const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
   const [range, setRange] = useState<"30d" | "48h">("30d");
+  const toks = usePoll(fetchTokens, 60_000);
+  // 24h volume per launchpad, from the token list (coins the indexer couldn't attribute go last as "Other")
+  const pads = useMemo(() => {
+    const m = new Map<string, { name: string; vol: number; coins: number; txns: number; today: number }>();
+    for (const t of toks ?? []) {
+      const n = t.launchpad || "Other";
+      const p = m.get(n) ?? { name: n, vol: 0, coins: 0, txns: 0, today: 0 };
+      p.vol += t.vol24_hype || 0; p.coins++; p.txns += (t.buys24 || 0) + (t.sells24 || 0);
+      if (t.created_at && Date.now() - Date.parse(t.created_at) < 86400e3) p.today++;
+      m.set(n, p);
+    }
+    return [...m.values()].sort((a, b) => Number(a.name === "Other") - Number(b.name === "Other") || b.vol - a.vol);
+  }, [toks]);
 
   const volPts = useMemo<Pt[]>(() => {
     if (!s) return [];
@@ -155,6 +168,26 @@ export function StatsPage() {
         </div>
         <Chart pts={volPts} kind="area" fmt={money} height={280} tick={range === "30d" ? tickDaily : tickHourly} />
       </section>
+
+      {pads.length > 0 && (
+        <section className="e-panel">
+          <div className="e-chart-head" style={{ padding: "16px 16px 6px" }}><div><h2>{tr("Volume by launchpad")}</h2><span className="dim">{tr("Last 24 hours · every pad on Elysium")}</span></div></div>
+          <div className="e-rows">
+            {pads.map((p, i) => {
+              const padMax = Math.max(...pads.map((x) => x.vol), 1);
+              return (
+                <div key={p.name} className="e-row e-toprow">
+                  <span className="dim num">{p.name === "Other" ? "–" : i + 1}</span>
+                  <span className="e-tok"><span><span className="l1"><b>{p.name}</b>{p.name === "ArkhamPad" && <span className="e-lock">{tr("here")}</span>}</span><span className="dim" style={{ fontSize: 12 }}>{p.name === "Other" ? tr("coins not from a listed pad") : `${p.coins} ${tr("coins")}${p.today ? ` · +${p.today} ${tr("today")}` : ""} · ${compact(p.txns)} ${tr("trades")}`}</span></span></span>
+                  <span className="e-hbar e-hide-m"><i style={{ width: `${(p.vol / padMax) * 100}%` }} /></span>
+                  <span className="r num e-hide-m dim">{s.vol_24h > 0 ? `${((p.vol / s.vol_24h) * 100).toFixed(1)}%` : ""}</span>
+                  <span className="r num"><b>{money(p.vol * usd)}</b></span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="e-two">
         <section className="e-panel e-chartpanel">
