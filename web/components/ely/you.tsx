@@ -147,7 +147,7 @@ export function YouPage() {
       <section className="e-balance">
         <div className="e-balance-top">
           <span>{tr("Total balance")}</span>
-          <b className="num">{hype == null ? "—" : money((hypeNum + tokensHype) * usd)}</b>
+          <b className="num">{hype == null ? "—" : money((hypeNum + tokensHype) * usd + waitUsd)}</b>
           <div className="e-balance-split">
             <span><i style={{ background: "var(--e-tealfill)" }} />{hypeNum.toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE <em>{money(hypeNum * usd)}</em></span>
             <span><i style={{ background: "#7c5cff" }} />{tr("Tokens")} <em>{money(tokensHype * usd)}</em></span>

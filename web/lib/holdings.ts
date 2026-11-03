@@ -1,6 +1,6 @@
 "use client";
 // Your coins and their value, fast: the last known list shows instantly (saved on this device), the indexer's
-// list replaces it in one round trip, and live on-chain balances are checked only for coins you just traded.
+// list replaces it in one round trip, then every balance is confirmed on-chain in the background.
 import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { fetchHoldings, fetchTokensByAddress, type EToken } from "@/lib/ely";
@@ -52,8 +52,9 @@ async function load(me: string, onFirst: (l: Holding[]) => void): Promise<Holdin
       .sort((a, b) => b.value - a.value);
   // first paint: the indexer's numbers, no chain reads
   onFirst(build(new Map()));
-  // then the live chain: only coins traded here lately (the indexer may not have them yet) + names it lacks
-  const check = addrs.filter((a) => recent.includes(a) || !byAddr.get(a)?.name);
+  // then the live chain for every coin (in the background, the list is already on screen), so a balance
+  // that changed outside ArkhamPad or that the indexer hasn't caught up with is never missing or stale
+  const check = addrs.slice(0, 60);
   const live = await Promise.all(
     check.map(async (a) => {
       if (!byAddr.get(a)?.name) { const c = await chainToken(a).catch(() => null); if (c) byAddr.set(a, { ...(byAddr.get(a) ?? {}), ...c } as EToken); }
