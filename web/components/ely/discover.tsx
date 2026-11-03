@@ -5,10 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RingAvatar, TokenAvatar } from "./shell";
-import { useWallet } from "@/components/wallet";
-import { cachedHype, fromWei, hypeBalance } from "@/lib/elytrade";
 import { useT } from "@/lib/i18n";
-import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchStats, fetchTokens, money, pct, short, tinyPrice, usePoll, type EToken, type ETrade } from "@/lib/ely";
+import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchStats, fetchTokens, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken, type ETrade } from "@/lib/ely";
 import { pendingTokens } from "@/lib/elytrade";
 import { AirdropBanner } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
@@ -16,12 +14,13 @@ import { ScoutBadge } from "./scout";
 import { DevFlag } from "./shield";
 import { devRepsFromTokens, type DevRep } from "@/lib/shield";
 
-type Sort = "trending" | "new" | "top" | "gainers" | "losers" | "live";
-const SORTS: { id: Sort; label: string; narrow?: boolean }[] = [
-  { id: "trending", label: "Trending" },
-  { id: "new", label: "New" },
+type Sort = "trending" | "new" | "top" | "gainers" | "losers" | "ours" | "live";
+const SORTS: { id: Sort; label: string; icon?: string; narrow?: boolean }[] = [
+  { id: "trending", label: "Trending", icon: "🔥" },
+  { id: "new", label: "New", icon: "✨" },
+  { id: "gainers", label: "Gainers", icon: "📈" },
+  { id: "ours", label: "On ArkhamPad" },
   { id: "top", label: "Top" },
-  { id: "gainers", label: "Gainers" },
   { id: "losers", label: "Losers" },
   { id: "live", label: "Live", narrow: true },
 ];
@@ -43,11 +42,12 @@ function trendScore(t: EToken) {
 }
 function sortTokens(list: EToken[], sort: Sort, w: Win) {
   const l = list.slice();
-  if (w !== "24h" && sort !== "new" && sort !== "top") {
+  if (w !== "24h" && sort !== "new" && sort !== "top" && sort !== "ours") {
     if (sort === "gainers") return l.filter((t) => volOf(t, w) >= MIN_VOL[w] && (chg(t, w) ?? 0) > 0).sort((a, b) => (chg(b, w) ?? -1e9) - (chg(a, w) ?? -1e9));
     if (sort === "losers") return l.filter((t) => volOf(t, w) >= MIN_VOL[w] && (chg(t, w) ?? 0) < 0).sort((a, b) => (chg(a, w) ?? 1e9) - (chg(b, w) ?? 1e9));
     return l.filter((t) => volOf(t, w) > 0).sort((a, b) => volOf(b, w) - volOf(a, w));
   }
+  if (sort === "ours") return l.filter((t) => t.ours).sort((a, b) => (b.vol24_hype || 0) - (a.vol24_hype || 0) || Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0"));
   if (sort === "new") return l.sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0"));
   // Top: only coins people actually trade (spam tokens with a made-up price and no trades stay out)
   if (sort === "top") return l.filter((t) => (t.vol24_hype || 0) > 0 && (t.holders || 0) >= 5 && Date.parse(t.created_at || "") > Date.parse("2025-01-01")).sort((a, b) => (b.mcap_hype || 0) - (a.mcap_hype || 0));
@@ -173,35 +173,40 @@ function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
   );
 }
 
-/** MEXC-style top: your money first (or the market when logged out), two big actions, four shortcuts. */
-function HomeTop({ tokens, stats, usd, vol }: { tokens?: EToken[]; stats: { tokens?: number } | null | undefined; usd: number; vol: number }) {
+/** Spotlight: the top-10 coins by 24h volume take turns (one a minute) in a big card with a live chart and one-tap buys. */
+function Spotlight({ tokens, usd }: { tokens: EToken[]; usd: number }) {
   const tr = useT();
-  const w = useWallet();
-  const me = w.address as `0x${string}` | null;
-  const hype = usePoll(async () => (me ? hypeBalance(me) : null), 15_000, [me]) ?? cachedHype(me);
-  const bal = me && hype != null && usd ? fromWei(hype) * usd : null;
-  const n = tokens ? Math.max(tokens.length, stats?.tokens ?? 0) : 0;
+  const top = useMemo(() => tokens.filter((t) => (t.vol24_hype || 0) > 0 && !HIDE.has(t.address.toLowerCase())).sort((a, b) => (b.vol24_hype || 0) - (a.vol24_hype || 0)).slice(0, 10), [tokens]);
+  const [i, setI] = useState(0);
+  useEffect(() => { const id = setInterval(() => setI((x) => x + 1), 60_000); return () => clearInterval(id); }, []);
+  const t = top.length ? top[i % top.length] : null;
+  const trades = usePoll(async () => (t ? fetchTrades(t.address, 300) : null), 30_000, [t?.address]);
+  if (!t) return <div className="e-spot e-skel" style={{ height: 210 }} />;
+  const supply = t.supply ? Number(t.supply) / 10 ** (t.decimals ?? 18) : 0;
+  const pts = (trades ?? []).filter((x) => (x.price_hype ?? 0) > 0).map((x) => ({ p: x.price_hype as number })).reverse();
+  let path = "";
+  if (pts.length > 2) {
+    const ys = pts.map((x) => x.p); const lo = Math.min(...ys), hi = Math.max(...ys); const span = hi - lo || hi || 1;
+    path = pts.map((x, k) => `${((k / (pts.length - 1)) * 300).toFixed(1)},${(70 - ((x.p - lo) / span) * 62).toFixed(1)}`).join(" ");
+  }
+  const up = (t.change24 ?? 0) >= 0;
+  const mc = (t.mcap_hype ?? (supply * (t.price_hype ?? 0))) * usd;
   return (
-    <section className="e-mx">
-      <div className="e-mx-bal">
-        <div>
-          <small>{w.signedIn ? tr("Your balance") : tr("Elysium · 24h volume")}</small>
-          <b className="num">{w.signedIn ? (bal == null ? "—" : money(bal)) : tokens ? money(vol * usd) : "—"}</b>
+    <section className="e-spot">
+      <span className="e-spot-rank">#{(i % top.length) + 1} {tr("by volume")}</span>
+      <Link href={`/t/?a=${t.address}`} className="e-spot-h">
+        <TokenAvatar t={t} size={46} />
+        <span className="nm"><b>{t.name}</b><small>#{(i % top.length) + 1} {tr("by volume")} · {compact(t.holders || 0)} {tr("holders")}</small></span>
+        <span className="mc"><b>{money(mc)}</b><small style={{ color: up ? "#3fe3d4" : "#ff6b6b" }}>{pct(t.change24)} 24h</small></span>
+      </Link>
+      <svg viewBox="0 0 300 74" preserveAspectRatio="none" aria-hidden="true">{path && <polyline fill="none" stroke={up ? "#3fe3d4" : "#ff6b6b"} strokeWidth="2.4" strokeLinejoin="round" points={path} />}</svg>
+      <div>
+        <div className="e-spot-btns">
+          <Link href={`/t/?a=${t.address}&buy=0.1`} className="g">{tr("Buy")} 0.1</Link>
+          <Link href={`/t/?a=${t.address}&buy=0.5`} className="g">{tr("Buy")} 0.5</Link>
+          <Link href={`/t/?a=${t.address}`}>{tr("Chart")} →</Link>
         </div>
-        <div className="e-mx-r num">
-          {w.signedIn ? <><span>{hype == null ? "—" : `${fromWei(hype).toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE`}</span><span className="dim">{usd ? `HYPE $${usd.toFixed(2)}` : ""}</span></>
-            : <><span>{n ? `${n.toLocaleString("en-US")} ${tr("coins")}` : "—"}</span><span className="dim">{usd ? `HYPE $${usd.toFixed(2)}` : ""}</span></>}
-        </div>
-      </div>
-      <div className="e-mx-cta">
-        {w.signedIn ? <Link href="/bridge/" className="e-mx-btn">{tr("Deposit")}</Link> : <button type="button" className="e-mx-btn" onClick={w.login}>{tr("Log in")}</button>}
-        <Link href="/create/" className="e-mx-btn pri">{tr("Create coin")}</Link>
-      </div>
-      <div className="e-mx-grid">
-        <Link href="/create/"><i>AI</i>{tr("AI create")}</Link>
-        <Link href="/learn/spot-a-rug-pull/"><i>🛡</i>{tr("Shield")}</Link>
-        <Link href="/bridge/"><i>↔</i>{tr("Bridge")}</Link>
-        <Link href="/invite/"><i>🎁</i>{tr("Invite")}</Link>
+        <div className="e-spot-dots">{top.map((_, k) => <i key={k} className={k === i % top.length ? "on" : ""} onClick={() => setI(k)} />)}</div>
       </div>
     </section>
   );
@@ -256,7 +261,7 @@ function Row({ t, i, usd, w, rep }: { t: EToken; i: number; usd: number; w: Win;
       <span className="r num e-hide-m">{compact(t.holders || 0)}</span>
       <span className="r num muted e-hide-t e-hide-m">{t.top10_pct == null ? "—" : `${Math.min(100, t.top10_pct).toFixed(0)}%`}</span>
       <span className="r num e-hide-m"><b>{mc}</b></span>
-      <span className="e-mc"><span className="e-mc-px"><b>{tinyPrice((t.price_hype ?? 0) * usd)}</b><small>MC {mc}</small></span><span className={`e-pill fill ${upDown(c)}`}>{pct(c)}</span></span>
+      <span className="e-mc"><span className="e-mc-px"><b>{mc}</b><small>{tinyPrice((t.price_hype ?? 0) * usd)}</small></span><span className={`e-pill fill ${upDown(c)}`}>{pct(c)}</span></span>
     </Link>
   );
 }
@@ -286,14 +291,13 @@ export function Discover() {
 
   return (
     <main className="e-in e-page">
-      <HomeTop tokens={tokens} stats={stats} usd={usd} vol={vol} />
+      <Spotlight tokens={tokens ?? []} usd={usd} />
 
       <div className="e-promos">
         <PioneerBanner />
         <AirdropBanner />
       </div>
       <Board tokens={tokens ?? []} usd={usd} />
-      <Hot tokens={tokens ?? []} usd={usd} />
 
       <div className="e-wrap">
         <section className="e-panel">
@@ -301,7 +305,7 @@ export function Discover() {
             <div className="e-scrollx">
               <div className="e-tabs" role="tablist">
                 {SORTS.map((s) => (
-                  <button key={s.id} type="button" role="tab" aria-selected={sort === s.id} className={`e-tab ${sort === s.id ? "on" : ""} ${s.narrow ? "e-narrow" : ""}`} onClick={() => { setSort(s.id); setShown(50); }}>{tr(s.label)}</button>
+                  <button key={s.id} type="button" role="tab" aria-selected={sort === s.id} className={`e-tab ${sort === s.id ? "on" : ""} ${s.narrow ? "e-narrow" : ""}`} onClick={() => { setSort(s.id); setShown(50); }}>{s.icon ? `${s.icon} ` : ""}{tr(s.label)}</button>
                 ))}
               </div>
             </div>

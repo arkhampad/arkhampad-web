@@ -941,3 +941,45 @@ html { overscroll-behavior-y: none; }
 .e-ring em { bottom: -4px; }
 .e-mc-px small, .e-hc-mid strong, .e-hc-mid, .e-board .e-hc-mid strong { font-family: inherit; }
 .e-hc-mid strong { font-weight: 600; letter-spacing: -.02em; }
+
+/* ===== ely97: You card readable, trade box fits, Spotlight on Discover ===== */
+.e-balance { background: var(--e-card) !important; color: var(--e-text) !important; border: 1px solid var(--e-line); box-shadow: var(--e-shadow); }
+.e-balance::after { display: none !important; }
+.e-balance-top > span { color: var(--e-dim) !important; font-size: 11px; font-weight: 500; }
+.e-balance-split { color: var(--e-text) !important; }
+.e-balance-split em { color: var(--e-muted) !important; font-family: inherit !important; }
+.e-balance-btns .e-btn:not(.pri) { background: var(--e-card) !important; border-color: var(--e-line2) !important; color: var(--e-text) !important; }
+:root[data-theme="dark"] .e-balance-btns .e-btn:not(.pri) { background: var(--e-raise) !important; }
+/* compact trade box (phone, beside live trades) */
+.e-split-box .e-amt-top { flex-direction: column; gap: 2px; font-size: 11px; }
+.e-split-box .e-amt-top .dim { font-size: 10.5px; }
+.e-split-box .e-quick { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.e-split-box .e-quick button { height: 30px; font-size: 11px; border-radius: 8px; padding: 0; }
+.e-split-box .e-quick button:nth-child(n+5) { display: none; }
+.e-split-box .e-quick button:nth-child(4) { display: none; }
+.e-split-box .e-quick button:last-child { display: block; }
+.e-slip select { height: 30px; border: 1px solid var(--e-line2); border-radius: 8px; background: var(--e-card); color: var(--e-text); font: 600 12.5px Inter, sans-serif; padding: 0 6px; }
+.e-split-box .e-slip { font-size: 11.5px; }
+/* Spotlight */
+.e-spot { background: #0c1419; color: #fff; border-radius: 22px; padding: 16px; position: relative; overflow: hidden; }
+.e-spot-h { display: flex; align-items: center; gap: 12px; }
+.e-spot-h .nm { min-width: 0; flex: 1; }
+.e-spot-h .nm b { display: block; font-size: 18px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.e-spot-h .nm small { color: #9fb3bd; font-size: 12.5px; }
+.e-spot-h .mc { text-align: right; }
+.e-spot-h .mc b { display: block; font-size: 26px; font-weight: 600; letter-spacing: -.03em; }
+.e-spot-h .mc small { font-weight: 600; font-size: 12.5px; }
+.e-spot svg { display: block; width: 100%; height: 74px; margin: 10px 0 6px; }
+.e-spot-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.e-spot-btns a { height: 44px; border-radius: 12px; display: grid; place-items: center; font-weight: 600; font-size: 14px; background: #1d2a33; color: #fff; }
+.e-spot-btns a.g { background: var(--e-tealfill); color: var(--e-tealink); }
+.e-spot-dots { display: flex; gap: 5px; justify-content: center; margin-top: 10px; }
+.e-spot-dots i { width: 6px; height: 6px; border-radius: 50%; background: #34444f; cursor: pointer; }
+.e-spot-dots i.on { background: var(--e-tealfill); width: 16px; border-radius: 3px; }
+.e-spot-rank { position: absolute; top: 12px; right: 14px; font-size: 11px; color: #9fb3bd; font-weight: 600; }
+@media (min-width: 861px) { .e-spot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 300px; gap: 20px; align-items: center; padding: 18px 22px; } .e-spot svg { margin: 0; } .e-spot-btns { grid-template-columns: 1fr 1fr; } .e-spot-btns a:last-child { grid-column: 1 / -1; } .e-spot-dots { position: absolute; bottom: 10px; left: 22px; } .e-spot-rank { display: none; } }
+/* desktop: use the full width like ElyScreener */
+@media (min-width: 1200px) { .ely { --e-max: 100%; } .e-in { padding-left: 32px; padding-right: 32px; } }
+
+.e-tabs .e-tab { flex: none; white-space: nowrap; }
+.e-spot-rank { display: none !important; }

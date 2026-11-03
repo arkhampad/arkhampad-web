@@ -46,11 +46,11 @@ function Copy({ text, label }: { text: string; label?: string }) {
   );
 }
 
-function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: number; side?: "buy" | "sell"; onDone?: () => void }) {
+function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }: { t: EToken; usd: number; side?: "buy" | "sell"; onDone?: () => void; compact?: boolean; preset?: string }) {
   const tr = useT();
   const w = useWallet();
   const [side, setSide] = useState<"buy" | "sell">(side0);
-  const [val, setVal] = useState("");
+  const [val, setVal] = useState(preset && side0 === "buy" ? preset : "");
   const [slip, setSlip] = useState(5);
   const [out, setOut] = useState<bigint | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -193,7 +193,8 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
       {taxedTokens.has(t.address.toLowerCase()) && <div className="e-hint" style={{ marginBottom: 8 }}>{tr("This coin takes a tax on every trade. The amount shown is what you get after it.")}</div>}
       <div className="e-slip">
         <span className="dim">{tr("Slippage")}</span>
-        <div className="e-seg">{[1, 3, 5, 10].map((s) => <button key={s} type="button" className={slip === s ? "on" : ""} onMouseDown={(e) => e.preventDefault()} onClick={() => setSlip(s)}>{s}%</button>)}</div>
+        {cmp ? <select value={slip} onChange={(e) => setSlip(Number(e.target.value))} aria-label={tr("Slippage")}>{[1, 3, 5, 10].map((s) => <option key={s} value={s}>{s}%</option>)}</select>
+          : <div className="e-seg">{[1, 3, 5, 10].map((s) => <button key={s} type="button" className={slip === s ? "on" : ""} onMouseDown={(e) => e.preventDefault()} onClick={() => setSlip(s)}>{s}%</button>)}</div>}
       </div>
       <button type="button" className={`e-go ${side}`} disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={go}>{label}</button>
       {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
@@ -323,6 +324,9 @@ export function TokenPage() {
   const params = useSearchParams();
   const a = (params.get("a") || "").toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(a);
+  // "Buy 0.1" from Discover: the amount is filled in and the page scrolls to the buy box
+  const buyPreset = /^\d+(\.\d+)?$/.test(params.get("buy") || "") ? (params.get("buy") as string) : undefined;
+  useEffect(() => { if (!buyPreset) return; const id = setTimeout(() => document.getElementById(window.innerWidth <= 860 ? "trade" : "trade-side")?.scrollIntoView({ behavior: "smooth", block: "center" }), 600); return () => clearTimeout(id); }, [buyPreset, a]);
   // a coin launched a moment ago may not be indexed yet: read it from the chain until it is
   // a coin launched here a moment ago: the launch's own record fills in until a node / the indexer has it
   const pend = valid ? pendingToken(a) : null;
@@ -425,7 +429,7 @@ export function TokenPage() {
           {/* phones: the exchange layout — live trades on the left, buy/sell on the right, no sheet needed */}
           <section className="e-split">
             <div className="e-split-feed"><MiniTrades t={t} usd={usd} chain={live?.trades} /></div>
-            <div className="e-panel e-split-box"><TradeBox t={t} usd={usd} /></div>
+            <div className="e-panel e-split-box" id="trade"><TradeBox t={t} usd={usd} compact preset={buyPreset} /></div>
           </section>
 
           <ScoutPanel token={t} />
@@ -443,7 +447,7 @@ export function TokenPage() {
         </div>
 
         <aside className="e-tside">
-          <div className="e-panel"><TradeBox t={t} usd={usd} /></div>
+          <div className="e-panel" id="trade-side"><TradeBox t={t} usd={usd} preset={buyPreset} /></div>
           <ShieldPanel token={t} shield={shield} dev={dev} />
         </aside>
       </div>

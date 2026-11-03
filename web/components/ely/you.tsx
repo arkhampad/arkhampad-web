@@ -10,8 +10,9 @@ import { InviteCard } from "./invite";
 import { AirdropCard } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
 import { TokenAvatar } from "./shell";
-import { ago, fetchCreated, fetchHoldings, fetchHypeUsd, fetchMyTrades, fetchTokensByAddress, money, pct, short, usePoll } from "@/lib/ely";
-import { ELY_CHAIN, chainToken, ely, fromWei, hypeBalance, cachedHype, recentTokens, tokenBalance, waitReceipt } from "@/lib/elytrade";
+import { ago, fetchCreated, fetchHypeUsd, fetchMyTrades, money, pct, short, usePoll } from "@/lib/ely";
+import { lastAddress, rememberAddress, useHoldings } from "@/lib/holdings";
+import { ELY_CHAIN, ely, fromWei, hypeBalance, cachedHype, waitReceipt } from "@/lib/elytrade";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
 const COLLECT = parseAbi(["function collect(address coin) returns (uint256 coinAmount, uint256 nativeAmount)"]);
@@ -86,26 +87,14 @@ function AddMoneyHelp({ me }: { me: string }) {
 export function YouPage() {
   const tr = useT();
   const w = useWallet();
-  const me = w.address?.toLowerCase() ?? null;
+  const live = w.address?.toLowerCase() ?? null;
+  // while sign-in is still loading after a refresh, show the last account's numbers instead of a blank page
+  const me = live ?? (!w.ready ? lastAddress() : null);
+  if (live) rememberAddress(live);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const hype = usePoll(async () => (me ? hypeBalance(me as Address) : null), 5000, [me]) ?? cachedHype(me);
-  // what you hold: the indexer's list plus anything bought or created here just now, read live from the chain
-  const holdings = usePoll(async () => {
-    if (!me) return null;
-    const rows = await fetchHoldings(me).catch(() => []);
-    const addrs = [...new Set([...recentTokens(), ...rows.map((r) => r.token)])];
-    const toks = await Promise.all((await fetchTokensByAddress(addrs)).map(async (t) => (t.name ? t : { ...t, ...((await chainToken(t.address).catch(() => null)) ?? {}) })));
-    const live = await Promise.all(toks.map(async (t) => [t.address, await tokenBalance(t.address as Address, me as Address).catch(() => null)] as const));
-    const bal = new Map(live);
-    return toks
-      .map((t) => {
-        const raw = bal.get(t.address) ?? BigInt(rows.find((r) => r.token === t.address)?.amount ?? "0");
-        const amount = Number(raw) / 10 ** (t.decimals ?? 18);
-        return { t, amount, value: amount * (t.price_hype ?? 0) };
-      })
-      .filter((x) => x.amount > 0)
-      .sort((a, b) => b.value - a.value);
-  }, 10_000, [me]);
+  // what you hold: shown instantly from this device's last copy, then refreshed (see lib/holdings)
+  const holdings = useHoldings(me);
   const created = usePoll(async () => (me ? fetchCreated(me) : null), 20_000, [me]);
   // money that arrived on Base (USDC) or HyperEVM (HYPE) but hasn't been moved to Elysium yet
   const waiting = usePoll(async () => (me ? waitingBalances(me as Address) : null), 10_000, [me]);
@@ -125,7 +114,7 @@ export function YouPage() {
       </main>
     );
   }
-  if (!w.signedIn || !me) {
+  if (!me || (w.ready && !w.signedIn)) {
     return (
       <main className="e-in e-page">
         <div className="e-panel e-empty" style={{ padding: "60px 20px" }}>
@@ -158,7 +147,7 @@ export function YouPage() {
       <section className="e-balance">
         <div className="e-balance-top">
           <span>{tr("Total balance")}</span>
-          <b className="num">{hype == null ? "—" : money((hypeNum + tokensHype) * usd + waitUsd)}</b>
+          <b className="num">{hype == null ? "—" : money((hypeNum + tokensHype) * usd)}</b>
           <div className="e-balance-split">
             <span><i style={{ background: "var(--e-tealfill)" }} />{hypeNum.toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE <em>{money(hypeNum * usd)}</em></span>
             <span><i style={{ background: "#7c5cff" }} />{tr("Tokens")} <em>{money(tokensHype * usd)}</em></span>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { WalletProvider, useWallet } from "@/components/wallet";
+import { holdingsHype, useHoldings } from "@/lib/holdings";
 import { fromWei, hypeBalance, cachedHype } from "@/lib/elytrade";
 import { Feel } from "./feel";
 import { InviteConfirm } from "./invite";
@@ -114,11 +115,13 @@ function Account() {
   const me = w.address as `0x${string}` | null;
   const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
   const hype = usePoll(async () => (me ? hypeBalance(me) : null), 15_000, [me]) ?? cachedHype(me);
+  // same number as "Total balance" on You: HYPE + the value of your coins
+  const coins = holdingsHype(useHoldings(me ? me.toLowerCase() : null));
   // sign-in is still loading (a page reload): hold the spot instead of flashing "Log in"
   if (!w.ready && !w.signedIn) return <span className="e-btn e-acctbtn num" aria-hidden="true" style={{ opacity: 0.5, minWidth: 90 }}>…</span>;
   if (!w.signedIn) return <button type="button" className="e-btn pri" onClick={w.login}>{tr("Log in")}</button>;
   // your money at a glance; tap to open You (balance, coins, deposit, withdraw)
-  const bal = hype != null && usd ? money(fromWei(hype) * usd) : null;
+  const bal = hype != null && usd ? money((fromWei(hype) + coins) * usd) : null;
   return (
     <Link href="/you/" className="e-btn e-acctbtn num" title={w.address ?? ""}>
       <span>{bal ?? `${w.address?.slice(0, 5)}…${w.address?.slice(-3)}`}</span>
