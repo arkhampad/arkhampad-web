@@ -6,6 +6,8 @@
 // No library needed (plain JSON-RPC over fetch, BigInt math), so the same code runs on Railway
 // (with Postgres, ./elysium-pg.mjs) and in a quick check script (in-memory store).
 
+import { createHash } from "node:crypto";
+
 const T = {
   v3PoolCreated: "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118",
   v4Initialize: "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438",
@@ -418,6 +420,46 @@ export function makeElysium(cfg, store) {
     return launchpadOf.get(maker) || launchpadOf.get(venue) || null;
   }
 
+  /**
+   * Launchpads whose every coin has its own contract (a bonding curve per coin, which later makes the
+   * pool) never repeat a "maker" address, so the address map above can't learn them: their coins fell
+   * into "Other". Same pad = same contract code, though. So each maker's code gets a fingerprint; a
+   * fingerprint seen on a labelled pad's maker labels every other maker with that code.
+   */
+  const codeFp = new Map(); // maker address -> fingerprint ("" = not a contract)
+  const fpPad = new Map(); // fingerprint -> launchpad
+  async function fingerprint(addr) {
+    if (!addr || addr === ZERO) return "";
+    if (codeFp.has(addr)) return codeFp.get(addr);
+    const code = await rpc("eth_getCode", [addr, "latest"]).catch(() => null);
+    if (code == null) return ""; // unknown right now: don't cache, ask again later
+    const fp = code && code !== "0x" ? createHash("sha256").update(code).digest("hex").slice(0, 32) : "";
+    codeFp.set(addr, fp);
+    return fp;
+  }
+  let relabelAt = 0;
+  async function relabelOnce() {
+    if (Date.now() - relabelAt < 10 * 60_000) return;
+    relabelAt = Date.now();
+    const all = [...store.tokens().values()];
+    // learn: every labelled coin's maker contract teaches its fingerprint
+    const learn = all.filter((t) => t.launchpad && t.launchpad !== "Other" && t.maker && t.maker !== t.manager);
+    await pool(learn.map((t) => async () => { const fp = await fingerprint(t.maker); if (fp && !fpPad.has(fp)) fpPad.set(fp, t.launchpad); }), 4);
+    if (!fpPad.size) return;
+    // apply: unlabelled coins whose maker has a known fingerprint
+    const todo = all.filter((t) => !t.launchpad && t.maker && t.maker !== t.manager).slice(0, 400);
+    let fixed = 0;
+    await pool(todo.map((t) => async () => {
+      const fp = await fingerprint(t.maker);
+      const pad = fp && fpPad.get(fp);
+      if (!pad) return;
+      launchpadOf.set(t.maker, pad);
+      await store.upsertToken({ ...t, launchpad: pad });
+      fixed++;
+    }), 4);
+    if (fixed) log(`elysium: labelled ${fixed} coins by contract fingerprint (${[...new Set([...fpPad.values()])].join(", ")})`);
+  }
+
   async function addPool(p) {
     if (p.hype !== ZERO && !quoteDec.has(p.hype) && !usdQuotes.has(p.hype)) quoteDec.set(p.hype, 18); // WHYPE
     // p: { token, hype, venue: 'v3'|'v4', pool, manager, fee, tickSpacing, hooks, tokenIs0, block, tx, sqrt }
@@ -749,6 +791,7 @@ export function makeElysium(cfg, store) {
         backfillMeta().catch(() => {});
         backfillImages().catch(() => {});
         repairTokens().catch((e) => log(`elysium: repair ${e.message}`));
+        relabelOnce().catch((e) => log(`elysium: relabel ${e.message}`));
         // list stats once a minute (each run reads the database; keeps Supabase disk use low)
         if (Date.now() - statsAt > 60_000) {
           statsAt = Date.now();
