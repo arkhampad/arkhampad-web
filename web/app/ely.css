@@ -983,3 +983,40 @@ html { overscroll-behavior-y: none; }
 
 .e-tabs .e-tab { flex: none; white-space: nowrap; }
 .e-spot-rank { display: none !important; }
+
+/* ely98: Spotlight a touch shorter, swipeable */
+.e-spot { padding: 13px 14px 12px; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.e-spot svg { height: 54px; margin: 8px 0 6px; }
+.e-spot-h .mc b { font-size: 23px; }
+.e-spot-btns a { height: 40px; }
+.e-spot-dots { margin-top: 8px; }
+.e-spot-dots i { width: 7px; height: 7px; }
+@media (min-width: 861px) { .e-spot { padding: 16px 22px 22px; } .e-spot svg { height: 64px; margin: 0; } }
+
+/* ely98: create page a little shorter on phones, slimmer first-buy box */
+.e-fb { padding: 9px 12px; gap: 4px; }
+.e-fb .e-amt-row input { font-size: 20px; }
+.e-fb .e-amt-row b { font-size: 12.5px; padding: 3px 8px; }
+@media (max-width: 860px) {
+  .e-create .e-hero h1 { font-size: 26px; }
+  .e-create .e-hero p { font-size: 13.5px; margin-top: 4px; }
+  .e-create .e-trade { gap: 10px; }
+  .e-create .e-idea { padding: 10px 12px; }
+  .e-create .e-imgbox { width: 76px; height: 76px; border-radius: 16px; }
+  .e-create .e-field { gap: 4px; }
+  .e-create .e-field input, .e-create .e-field textarea { padding: 9px 12px; }
+  .e-fb-note, .e-fb-hint { display: none !important; }
+  .e-create .e-go { height: 48px; }
+}
+
+/* ely98: coin page on phones: live trades full width, Buy / Sell bar at the bottom opens the trade sheet */
+@media (max-width: 860px) {
+  .e-split { grid-template-columns: minmax(0, 1fr) !important; }
+  .e-split-box { display: none !important; }
+  .e-mbar { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px; background: linear-gradient(to bottom, transparent, var(--e-bg) 38%) !important; border-top: 0 !important; padding-top: 14px !important; }
+  .e-mbar .e-go { height: 50px; border-radius: 14px; font-size: 16px; font-weight: 700; }
+  .e-mbar .e-go.buy { background: var(--e-up); color: #fff; }
+  .e-mbar .e-go.sell { background: color-mix(in srgb, var(--e-down) 14%, var(--e-card)); color: var(--e-down); }
+  .e-mini-r { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .e-sheet-in > .e-trade, .e-sheet-in .e-trade { padding: 0 16px 6px; }
+}

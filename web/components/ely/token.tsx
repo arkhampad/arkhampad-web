@@ -325,8 +325,9 @@ export function TokenPage() {
   const a = (params.get("a") || "").toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(a);
   // "Buy 0.1" from Discover: the amount is filled in and the page scrolls to the buy box
+  const [sheet, setSheet] = useState<"buy" | "sell" | null>(null);
   const buyPreset = /^\d+(\.\d+)?$/.test(params.get("buy") || "") ? (params.get("buy") as string) : undefined;
-  useEffect(() => { if (!buyPreset) return; const id = setTimeout(() => document.getElementById(window.innerWidth <= 860 ? "trade" : "trade-side")?.scrollIntoView({ behavior: "smooth", block: "center" }), 600); return () => clearTimeout(id); }, [buyPreset, a]);
+  useEffect(() => { if (!buyPreset) return; const id = setTimeout(() => { if (window.innerWidth <= 860) setSheet("buy"); else document.getElementById("trade-side")?.scrollIntoView({ behavior: "smooth", block: "center" }); }, 500); return () => clearTimeout(id); }, [buyPreset, a]);
   // a coin launched a moment ago may not be indexed yet: read it from the chain until it is
   // a coin launched here a moment ago: the launch's own record fills in until a node / the indexer has it
   const pend = valid ? pendingToken(a) : null;
@@ -345,7 +346,6 @@ export function TokenPage() {
   }, [t0, live]);
   const trades = useMemo(() => mergeTrades(dbTrades, live?.trades) ?? (live ? live.trades : undefined), [dbTrades, live]);
   const [tab, setTab] = useState<"trades" | "holders" | "about">("trades");
-  const [sheet, setSheet] = useState<"buy" | "sell" | null>(null);
   const [fresh, setFresh] = useState(params.get("new") === "1");
   const links = useCoinLinks(t ?? null);
   const shield = useShield(t ?? null, trades, usd);
@@ -426,7 +426,7 @@ export function TokenPage() {
 
           <section className="e-panel"><EChart trades={trades} usd={usd} supply={supplyOf(t)} height={420} /></section>
 
-          {/* phones: the exchange layout — live trades on the left, buy/sell on the right, no sheet needed */}
+          {/* phones: live trades full width; Buy / Sell sit in a bar at the bottom and open a sheet */}
           <section className="e-split">
             <div className="e-split-feed"><MiniTrades t={t} usd={usd} chain={live?.trades} /></div>
             <div className="e-panel e-split-box" id="trade"><TradeBox t={t} usd={usd} compact preset={buyPreset} /></div>
@@ -483,7 +483,7 @@ export function TokenPage() {
         <div className="e-sheet" role="dialog" aria-modal="true" aria-label={`${sheet === "buy" ? "Buy" : "Sell"} ${t.symbol}`} onClick={(e) => { if (e.target === e.currentTarget) setSheet(null); }}>
           <div className="e-sheet-in">
             <div className="e-sheet-h"><span className="e-grab" /><button type="button" className="e-btn e-icon" onClick={() => setSheet(null)} aria-label="Close">✕</button></div>
-            <TradeBox t={t} usd={usd} side={sheet} />
+            <TradeBox t={t} usd={usd} side={sheet} preset={buyPreset} />
           </div>
         </div>
       )}

@@ -178,10 +178,16 @@ function Spotlight({ tokens, usd }: { tokens: EToken[]; usd: number }) {
   const tr = useT();
   const top = useMemo(() => tokens.filter((t) => (t.vol24_hype || 0) > 0 && !HIDE.has(t.address.toLowerCase())).sort((a, b) => (b.vol24_hype || 0) - (a.vol24_hype || 0)).slice(0, 10), [tokens]);
   const [i, setI] = useState(0);
-  useEffect(() => { const id = setInterval(() => setI((x) => x + 1), 60_000); return () => clearInterval(id); }, []);
-  const t = top.length ? top[i % top.length] : null;
+  // one a minute; a swipe restarts the minute
+  useEffect(() => { const id = setTimeout(() => setI((x) => x + 1), 60_000); return () => clearTimeout(id); }, [i]);
+  const n = top.length; const idx = n ? ((i % n) + n) % n : 0;
+  const t = n ? top[idx] : null;
+  const sw = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const onDown = (e: React.PointerEvent) => { sw.current = { x: e.clientX, y: e.clientY, moved: false }; };
+  const onUp = (e: React.PointerEvent) => { const s0 = sw.current; if (!s0) return; const dx = e.clientX - s0.x, dy = e.clientY - s0.y; if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) { s0.moved = true; setI((x) => x + (dx < 0 ? 1 : -1)); } };
+  const onClickCap = (e: React.MouseEvent) => { if (sw.current?.moved) { e.preventDefault(); e.stopPropagation(); sw.current = null; } };
   const trades = usePoll(async () => (t ? fetchTrades(t.address, 300) : null), 30_000, [t?.address]);
-  if (!t) return <div className="e-spot e-skel" style={{ height: 210 }} />;
+  if (!t) return <div className="e-spot e-skel" style={{ height: 186 }} />;
   const supply = t.supply ? Number(t.supply) / 10 ** (t.decimals ?? 18) : 0;
   const pts = (trades ?? []).filter((x) => (x.price_hype ?? 0) > 0).map((x) => ({ p: x.price_hype as number })).reverse();
   let path = "";
@@ -192,11 +198,11 @@ function Spotlight({ tokens, usd }: { tokens: EToken[]; usd: number }) {
   const up = (t.change24 ?? 0) >= 0;
   const mc = (t.mcap_hype ?? (supply * (t.price_hype ?? 0))) * usd;
   return (
-    <section className="e-spot">
-      <span className="e-spot-rank">#{(i % top.length) + 1} {tr("by volume")}</span>
+    <section className="e-spot" onPointerDown={onDown} onPointerUp={onUp} onClickCapture={onClickCap}>
+      <span className="e-spot-rank">#{idx + 1} {tr("by volume")}</span>
       <Link href={`/t/?a=${t.address}`} className="e-spot-h">
-        <TokenAvatar t={t} size={46} />
-        <span className="nm"><b>{t.name}</b><small>#{(i % top.length) + 1} {tr("by volume")} · {compact(t.holders || 0)} {tr("holders")}</small></span>
+        <TokenAvatar t={t} size={42} />
+        <span className="nm"><b>{t.name}</b><small>#{idx + 1} {tr("by volume")} · {compact(t.holders || 0)} {tr("holders")}</small></span>
         <span className="mc"><b>{money(mc)}</b><small style={{ color: up ? "#3fe3d4" : "#ff6b6b" }}>{pct(t.change24)} 24h</small></span>
       </Link>
       <svg viewBox="0 0 300 74" preserveAspectRatio="none" aria-hidden="true">{path && <polyline fill="none" stroke={up ? "#3fe3d4" : "#ff6b6b"} strokeWidth="2.4" strokeLinejoin="round" points={path} />}</svg>
@@ -206,7 +212,7 @@ function Spotlight({ tokens, usd }: { tokens: EToken[]; usd: number }) {
           <Link href={`/t/?a=${t.address}&buy=0.5`} className="g">{tr("Buy")} 0.5</Link>
           <Link href={`/t/?a=${t.address}`}>{tr("Chart")} →</Link>
         </div>
-        <div className="e-spot-dots">{top.map((_, k) => <i key={k} className={k === i % top.length ? "on" : ""} onClick={() => setI(k)} />)}</div>
+        <div className="e-spot-dots">{top.map((_, k) => <i key={k} className={k === idx ? "on" : ""} onClick={() => setI(k)} />)}</div>
       </div>
     </section>
   );

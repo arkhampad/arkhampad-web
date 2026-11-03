@@ -271,7 +271,7 @@ export function CreatePage() {
   if (busy) label = busy;
 
   return (
-    <main className="e-in e-page">
+    <main className="e-in e-page e-create">
       <section className="e-hero">
         <div>
           <span className="e-eyebrow">{tr("Create")}</span>
@@ -303,18 +303,18 @@ export function CreatePage() {
             {aiMsg && <div className="e-msg bad" role="status">{tr(aiMsg)}</div>}
             <label className="e-field"><span>{tr("Name")}</span><input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="Moon Otter" autoComplete="off" /></label>
             <label className="e-field"><span>{tr("Ticker")}</span><input value={sym} maxLength={10} onChange={(e) => setSym(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())} placeholder="OTTER" autoComplete="off" autoCapitalize="characters" /></label>
-            <label className="e-field"><span>{tr("Description")} <i className="dim">{tr("optional")}</i></span><textarea value={desc} maxLength={400} rows={3} onChange={(e) => { setDesc(e.target.value); setPicture(""); }} placeholder={tr("What is your coin about?")} /></label>
+            <label className="e-field"><span>{tr("Description")} <i className="dim">{tr("optional")}</i></span><textarea value={desc} maxLength={400} rows={2} onChange={(e) => { setDesc(e.target.value); setPicture(""); }} placeholder={tr("What is your coin about?")} /></label>
             <details className="e-more-links">
               <summary>{tr("Links")} <i className="dim">{tr("optional")}</i></summary>
               <label className="e-field"><span>X</span><input value={x} onChange={(e) => setX(e.target.value)} placeholder="https://x.com/yourcoin" inputMode="url" autoCapitalize="off" /></label>
               <label className="e-field"><span>Telegram</span><input value={tg} onChange={(e) => setTg(e.target.value)} placeholder="https://t.me/yourcoin" inputMode="url" autoCapitalize="off" /></label>
               <label className="e-field"><span>{tr("Website")}</span><input value={site} onChange={(e) => setSite(e.target.value)} placeholder="https://" inputMode="url" autoCapitalize="off" /></label>
             </details>
-            <label className="e-amt">
+            <label className="e-amt e-fb">
               <span className="e-amt-top"><span>{tr("First buy")} <i className="dim">{tr("optional")}</i></span><span className="dim">{tr("Balance")} {hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—"}</span></span>
-              {hype != null && <span className="e-note" style={{ display: "block", margin: "2px 0 6px" }}>{tr("You can put up to {n} HYPE into the first buy (a little stays for the network fee).", { n: maxBuy.toFixed(4) })}</span>}
+              {hype != null && <span className="e-note e-fb-note" style={{ display: "block", margin: "2px 0 6px" }}>{tr("You can put up to {n} HYPE into the first buy (a little stays for the network fee).", { n: maxBuy.toFixed(4) })}</span>}
               <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={buy} onChange={(e) => setBuy(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="First buy in HYPE" /><b>HYPE</b></span>
-              <span className="dim" style={{ fontSize: 12.5 }}>{b > 0 ? `≈ ${money(fromWei(buyWei) * usd)} · ${tr("about {p}% of the supply", { p: pctOfSupply.toFixed(1) })}` : tr("Be the first buyer of your own coin, in the same transaction.")}</span>
+              <span className={`dim${b > 0 ? "" : " e-fb-hint"}`} style={{ fontSize: 12.5 }}>{b > 0 ? `≈ ${money(fromWei(buyWei) * usd)} · ${tr("about {p}% of the supply", { p: pctOfSupply.toFixed(1) })}` : tr("Be the first buyer of your own coin, in the same transaction.")}</span>
             </label>
             <div className="e-quick">{["0.1", "0.5", "1"].map((v) => <button key={v} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(v)}>{v}</button>)}<button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(maxBuy > 0 ? String(Math.floor(maxBuy * 10000) / 10000) : "0")}>{tr("Max")}</button></div>
             <button type="button" className="e-go" disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={launch}>{tr(label)}</button>

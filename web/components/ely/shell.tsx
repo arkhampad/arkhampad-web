@@ -194,7 +194,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="e-links" aria-label="Main">
             {NAV.map((n) => <Link key={n.href} href={n.href} className={`e-link ${on(n.href) ? "on" : ""}`}>{tr(n.label)}</Link>)}
-            <Link href="/radar/" className={`e-link ${on("/radar/") ? "on" : ""}`}>{tr("Radar")}</Link>
+            <Link href="/radar/" className={`e-link ${on("/radar/") ? "on" : ""}`}>{tr("Scout")}</Link>
             <Link href="/stats/" className={`e-link ${on("/stats/") ? "on" : ""}`}>{tr("Stats")}</Link>
             <Link href="/learn/" className={`e-link ${on("/learn/") ? "on" : ""}`}>{tr("Learn")}</Link>
           </nav>

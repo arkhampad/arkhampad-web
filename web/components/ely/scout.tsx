@@ -86,8 +86,8 @@ export function ScoutPanel({ token }: { token: EToken }) {
       <div className="scout-head">
         <ScoutRobot size={34} still flash={signal === "strong"} />
         <div className="scout-head-t">
-          <b>{tr("Smart Money Radar")}</b>
-          <small className="dim">{tr("Scout watches who's buying")}</small>
+          <b>{tr("Scout")}</b>
+          <small className="dim">{tr("Smart money on this coin")}</small>
         </div>
         <ScoutMeter signal={signal} />
       </div>
@@ -115,7 +115,7 @@ export function ScoutTab({ active }: { active: boolean }) {
   const tr = useT();
   const radar = useRadar();
   return (
-    <Link href="/radar/" className={`e-tabnav scout-tab ${active ? "on" : ""}`} aria-label={tr("Scout Radar")}>
+    <Link href="/radar/" className={`e-tabnav scout-tab ${active ? "on" : ""}`} aria-label={tr("Scout")}>
       <ScoutRobot size={26} flash={!!radar?.hasStrong} />
       {tr("Scout")}
     </Link>
@@ -128,7 +128,7 @@ export function ScoutFab() {
   const radar = useRadar();
   const strong = !!radar?.hasStrong;
   return (
-    <Link href="/radar/" className={`scout-fab ${strong ? "hot" : ""}`} aria-label={tr("Smart Money Radar")} title={tr("Smart Money Radar")}>
+    <Link href="/radar/" className={`scout-fab ${strong ? "hot" : ""}`} aria-label={tr("Scout")} title={tr("Scout")}>
       <ScoutRobot size={46} flash={strong} />
     </Link>
   );

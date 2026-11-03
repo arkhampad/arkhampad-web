@@ -71,8 +71,8 @@ export function RadarView() {
     <main className="e-in e-page">
       <section className="e-hero scout-hero">
         <div>
-          <span className="e-eyebrow"><ScoutRobot size={22} flash={!!radar?.hasStrong} />{tr("Smart Money Radar")}</span>
-          <h1>{tr("Scout Radar")}</h1>
+          <span className="e-eyebrow"><ScoutRobot size={22} flash={!!radar?.hasStrong} />{tr("Smart money")}</span>
+          <h1>{tr("Scout")}</h1>
           <p>{tr("Coins ranked by the smart money moving into them right now — who's buying, how big, how fast.")}</p>
         </div>
       </section>
