@@ -11,7 +11,7 @@ import { AirdropCard } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
 import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHypeUsd, fetchMyTrades, money, pct, short, usePoll } from "@/lib/ely";
-import { lastAddress, rememberAddress, useHoldings } from "@/lib/holdings";
+import { lastAddress, rememberAddress, shownHype, useElyUsdc, useHoldings } from "@/lib/holdings";
 import { ELY_CHAIN, ely, fromWei, hypeBalance, cachedHype, waitReceipt } from "@/lib/elytrade";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
@@ -92,7 +92,9 @@ export function YouPage() {
   const me = live ?? (!w.ready ? lastAddress() : null);
   if (live) rememberAddress(live);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
-  const hype = usePoll(async () => (me ? hypeBalance(me as Address) : null), 5000, [me]) ?? cachedHype(me);
+  const hype = shownHype(me, usePoll(async () => (me ? hypeBalance(me as Address) : null), 5000, [me]) ?? cachedHype(me));
+  // USDC sitting on Elysium itself (from coins that trade in USDC)
+  const elyUsdc = useElyUsdc(me);
   // what you hold: shown instantly from this device's last copy, then refreshed (see lib/holdings)
   const holdings = useHoldings(me);
   const created = usePoll(async () => (me ? fetchCreated(me) : null), 20_000, [me]);
@@ -147,10 +149,11 @@ export function YouPage() {
       <section className="e-balance">
         <div className="e-balance-top">
           <span>{tr("Total balance")}</span>
-          <b className="num">{hype == null ? "—" : money((hypeNum + tokensHype) * usd + waitUsd)}</b>
+          <b className="num">{hype == null ? "—" : money((hypeNum + tokensHype) * usd + waitUsd + elyUsdc)}</b>
           <div className="e-balance-split">
             <span><i style={{ background: "var(--e-tealfill)" }} />{hypeNum.toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE <em>{money(hypeNum * usd)}</em></span>
             <span><i style={{ background: "#7c5cff" }} />{tr("Tokens")} <em>{money(tokensHype * usd)}</em></span>
+            {elyUsdc >= 0.01 && <span><i style={{ background: "#2775ca" }} />USDC <em>{money(elyUsdc)}</em></span>}
             {waitUsd >= 0.01 && <span><i style={{ background: "#ffb43c" }} />{tr("Waiting to move")} <em>{money(waitUsd)}</em></span>}
           </div>
         </div>

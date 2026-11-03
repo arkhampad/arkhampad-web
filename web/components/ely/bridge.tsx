@@ -62,10 +62,22 @@ const DEPOSIT = encodeFunctionData({ abi: parseAbi(["function depositEth() payab
  * The You page counts it in the total and offers to move it.
  */
 export async function waitingBalances(me: Address): Promise<{ usdc: bigint; hype: bigint }> {
-  const [all, hype] = await Promise.all([usdcEverywhere(me).catch(() => []), hyperevm.getBalance({ address: me }).catch(() => 0n)]);
-  // total USDC on every chain, in 6-decimal units
-  const usdc = all.reduce((s, x) => s + BigInt(Math.floor(x.usd * 1e6)), 0n);
-  return { usdc, hype };
+  // a public node that doesn't answer must not make money vanish: each chain keeps its last good reading
+  const k = `ap_wait_${me.toLowerCase()}`;
+  let last: Record<string, string> = {};
+  try { last = JSON.parse(localStorage.getItem(k) || "{}"); } catch {}
+  const per = await Promise.all(ORIGINS.map(async (o) => {
+    const v = await originClient(o).readContract({ address: o.usdc, abi: ERC20, functionName: "balanceOf", args: [me] }).then((x) => x as bigint).catch(() => null);
+    const micro = v == null ? null : (v * 1_000_000n) / 10n ** BigInt(o.dec);
+    return [String(o.id), micro] as const;
+  }));
+  const h = await hyperevm.getBalance({ address: me }).catch(() => null);
+  const next: Record<string, string> = { ...last };
+  for (const [id, v] of per) if (v != null) next[id] = v.toString();
+  if (h != null) next.hype = h.toString();
+  try { localStorage.setItem(k, JSON.stringify(next)); } catch {}
+  const usdc = ORIGINS.reduce((sum, o) => sum + BigInt(next[String(o.id)] || "0"), 0n);
+  return { usdc, hype: BigInt(next.hype || "0") };
 }
 
 const fmt = (v: bigint | null | undefined, d = 18, p = 4) => (v == null ? "—" : Number(formatUnits(v, d)).toLocaleString("en-US", { maximumFractionDigits: p }));

@@ -16,6 +16,7 @@ import { Burst, Confetti } from "@/components/celebrate";
 import { ShareButton } from "./share";
 import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
 import { chainActivity, isFresh, mergeTrades } from "@/lib/elyfresh";
+import { pendingTrade } from "@/lib/holdings";
 import { ago, compact, fetchClusters, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
 import { ascendBuy, ascendQuote, ascendSell, isAscend, quoteToken, type QuoteToken } from "@/lib/ascend";
 import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, pendingToken, SlowTx, taxedTokens, sellable } from "@/lib/elytrade";
@@ -133,11 +134,11 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
       // the network has it: show the result and the new balances now
       const h0 = hype ?? 0n;
       const b0 = bal ?? 0n;
-      setAfter({
-        hype: side === "buy" ? (h0 > amountIn ? h0 - amountIn : 0n) : h0 + q,
-        bal: side === "buy" ? b0 + q : b0 > amountIn ? b0 - amountIn : 0n,
-        until: Date.now() + 90_000,
-      });
+      const nextHype = side === "buy" ? (h0 > amountIn ? h0 - amountIn : 0n) : h0 + q;
+      const nextBal = side === "buy" ? b0 + q : b0 > amountIn ? b0 - amountIn : 0n;
+      setAfter({ hype: nextHype, bal: nextBal, until: Date.now() + 90_000 });
+      // the header and You move HYPE and the coin together (no jump while the trade is on its way)
+      if (addr) pendingTrade(addr, t, { hypeFrom: qNative ? h0 : null, hypeTo: qNative ? nextHype : null, tokFrom: b0, tokTo: nextBal });
       setMsg({ ok: true, text: `${done} ✓` });
       setVal("");
       setExact(null);
