@@ -4,9 +4,11 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { TokenAvatar } from "./shell";
+import { RingAvatar, TokenAvatar } from "./shell";
+import { useWallet } from "@/components/wallet";
+import { cachedHype, fromWei, hypeBalance } from "@/lib/elytrade";
 import { useT } from "@/lib/i18n";
-import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchStats, fetchTokens, money, pct, short, usePoll, type EToken, type ETrade } from "@/lib/ely";
+import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchStats, fetchTokens, money, pct, short, tinyPrice, usePoll, type EToken, type ETrade } from "@/lib/ely";
 import { pendingTokens } from "@/lib/elytrade";
 import { AirdropBanner } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
@@ -171,6 +173,40 @@ function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
   );
 }
 
+/** MEXC-style top: your money first (or the market when logged out), two big actions, four shortcuts. */
+function HomeTop({ tokens, stats, usd, vol }: { tokens?: EToken[]; stats: { tokens?: number } | null | undefined; usd: number; vol: number }) {
+  const tr = useT();
+  const w = useWallet();
+  const me = w.address as `0x${string}` | null;
+  const hype = usePoll(async () => (me ? hypeBalance(me) : null), 15_000, [me]) ?? cachedHype(me);
+  const bal = me && hype != null && usd ? fromWei(hype) * usd : null;
+  const n = tokens ? Math.max(tokens.length, stats?.tokens ?? 0) : 0;
+  return (
+    <section className="e-mx">
+      <div className="e-mx-bal">
+        <div>
+          <small>{w.signedIn ? tr("Your balance") : tr("Elysium · 24h volume")}</small>
+          <b className="num">{w.signedIn ? (bal == null ? "—" : money(bal)) : tokens ? money(vol * usd) : "—"}</b>
+        </div>
+        <div className="e-mx-r num">
+          {w.signedIn ? <><span>{hype == null ? "—" : `${fromWei(hype).toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE`}</span><span className="dim">{usd ? `HYPE $${usd.toFixed(2)}` : ""}</span></>
+            : <><span>{n ? `${n.toLocaleString("en-US")} ${tr("coins")}` : "—"}</span><span className="dim">{usd ? `HYPE $${usd.toFixed(2)}` : ""}</span></>}
+        </div>
+      </div>
+      <div className="e-mx-cta">
+        {w.signedIn ? <Link href="/bridge/" className="e-mx-btn">{tr("Deposit")}</Link> : <button type="button" className="e-mx-btn" onClick={w.login}>{tr("Log in")}</button>}
+        <Link href="/create/" className="e-mx-btn pri">{tr("Create coin")}</Link>
+      </div>
+      <div className="e-mx-grid">
+        <Link href="/create/"><i>AI</i>{tr("AI create")}</Link>
+        <Link href="/learn/spot-a-rug-pull/"><i>🛡</i>{tr("Shield")}</Link>
+        <Link href="/bridge/"><i>↔</i>{tr("Bridge")}</Link>
+        <Link href="/invite/"><i>🎁</i>{tr("Invite")}</Link>
+      </div>
+    </section>
+  );
+}
+
 function TradeItem({ x, t, usd }: { x: ETrade; t?: EToken; usd: number }) {
   const tr = useT();
   return (
@@ -205,7 +241,7 @@ function Row({ t, i, usd, w, rep }: { t: EToken; i: number; usd: number; w: Win;
     <Link href={`/t/?a=${t.address}`} className="e-row">
       <span className="dim num e-hide-m">{i + 1}</span>
       <span className="e-tok">
-        <TokenAvatar t={t} size={38} />
+        <RingAvatar t={t} size={34} />
         <span>
           <span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span><DevFlag rep={rep} />{t.ours && <span className="e-lock">LP locked</span>}<ScoutBadge address={t.address} /></span>
           <small>
@@ -220,7 +256,7 @@ function Row({ t, i, usd, w, rep }: { t: EToken; i: number; usd: number; w: Win;
       <span className="r num e-hide-m">{compact(t.holders || 0)}</span>
       <span className="r num muted e-hide-t e-hide-m">{t.top10_pct == null ? "—" : `${Math.min(100, t.top10_pct).toFixed(0)}%`}</span>
       <span className="r num e-hide-m"><b>{mc}</b></span>
-      <span className="e-mc"><b>{mc}</b><span className={`e-pill ${upDown(c)}`}>{pct(c)}</span></span>
+      <span className="e-mc"><span className="e-mc-px"><b>{tinyPrice((t.price_hype ?? 0) * usd)}</b><small>MC {mc}</small></span><span className={`e-pill fill ${upDown(c)}`}>{pct(c)}</span></span>
     </Link>
   );
 }
@@ -250,18 +286,7 @@ export function Discover() {
 
   return (
     <main className="e-in e-page">
-      <section className="e-hero">
-        <div>
-          <span className="e-eyebrow"><i className="e-dot" />{tr("Elysium mainnet · live")}</span>
-          <h1>{tr("Discover")}</h1>
-          <p>{tr("Every token on Elysium in one place. Find it, chart it, trade it.")}</p>
-        </div>
-        <div className="e-stats">
-          <div className="e-stat"><span>{tr("Tokens")}</span><b>{tokens ? Math.max(tokens.length, stats?.tokens ?? 0).toLocaleString("en-US") : "—"}</b></div>
-          <div className="e-stat"><span>{tr("24h volume")}</span><b>{tokens ? money(vol * usd) : "—"}</b></div>
-          <div className="e-stat"><span>HYPE</span><b>{usd ? `$${usd.toFixed(2)}` : "—"}</b></div>
-        </div>
-      </section>
+      <HomeTop tokens={tokens} stats={stats} usd={usd} vol={vol} />
 
       <div className="e-promos">
         <PioneerBanner />

@@ -33,6 +33,26 @@ export function TokenAvatar({ t, size = 36 }: { t: Pick<EToken, "address" | "sym
   );
 }
 
+/** Safety ring around a coin logo: 0-100 from holders, top-10 share and selling pressure (same idea as Shield). */
+export function safetyScore(t: Partial<EToken>) {
+  let sc = 100;
+  const top = t.top10_pct ?? null; if (top != null) sc -= top > 60 ? 30 : top > 40 ? 15 : 0;
+  const h = t.holders || 0; sc -= h < 15 ? 20 : h < 50 ? 8 : 0;
+  const b = t.buys24 || 0, s = t.sells24 || 0; if (s > 20 && s > b * 2) sc -= 12;
+  if (t.change24 != null && t.change24 < -70) sc -= 10;
+  return Math.max(0, Math.min(100, sc));
+}
+export function RingAvatar({ t, size = 38 }: { t: EToken; size?: number }) {
+  const sc = safetyScore(t);
+  const c = sc >= 80 ? "var(--e-up)" : sc >= 60 ? "#e0a21b" : "var(--e-down)";
+  return (
+    <span className="e-ring" style={{ width: size + 6, height: size + 6, ["--c" as string]: c, ["--p" as string]: `${sc * 3.6}deg` }} title={`Safety ${sc}/100`}>
+      <TokenAvatar t={t} size={size} />
+      <em>{sc}</em>
+    </span>
+  );
+}
+
 export function PadTag({ t }: { t: Pick<EToken, "launchpad" | "ours"> }) {
   const name = padOf(t);
   return (

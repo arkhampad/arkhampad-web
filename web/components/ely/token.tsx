@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import { useWallet } from "@/components/wallet";
-import { TokenAvatar } from "./shell";
+import { RingAvatar, TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
 import { EChart } from "./chart";
 import { ScoutPanel } from "./scout";
@@ -207,6 +207,28 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone }: { t: EToken; usd: num
 /** Shows an exact amount without a long tail: at most 6 decimals, trailing zeros dropped (rounded down). */
 const trim = (v: string) => { const [a, b = ""] = v.split("."); const d = b.slice(0, 6).replace(/0+$/, ""); return d ? `${a}.${d}` : a; };
 
+function MiniTrades({ t, usd, chain }: { t: EToken; usd: number; chain?: ETrade[] | null }) {
+  const tr = useT();
+  const db = usePoll(() => fetchTrades(t.address, 40), 6000, [t.address]);
+  const trades = useMemo(() => mergeTrades(db, chain)?.slice(0, 40) ?? (chain ? chain.slice(0, 40) : undefined), [db, chain]);
+  const last = trades ?? [];
+  const buys = last.length ? Math.round((last.filter((x) => x.side === "buy").length / last.length) * 100) : 50;
+  return (
+    <div className="e-mini">
+      <div className="e-mini-h"><span>{tr("Live trades")}</span><span>HYPE</span></div>
+      {!trades && <div className="e-skel" style={{ height: 120 }} />}
+      {trades && !trades.length && <div className="dim" style={{ padding: "18px 0", textAlign: "center", fontSize: 12.5 }}>{tr("No trades yet.")}</div>}
+      {last.slice(0, 12).map((x) => (
+        <div key={`${x.tx}-${x.log_index}`} className="e-mini-r">
+          <b className={x.side === "buy" ? "up" : "down"}>{x.side === "buy" ? "BUY" : "SELL"}</b>
+          <span className="dim num">{x.trader ? short(x.trader) : "—"}</span>
+          <i className="num">{x.hype.toFixed(x.hype < 1 ? 3 : 2)}</i>
+        </div>
+      ))}
+      {!!last.length && <div className="e-mini-bar"><div><i style={{ width: `${buys}%` }} /></div><div className="e-mini-bl"><span className="up">{tr("buys")} {buys}%</span><span className="down">{100 - buys}% {tr("sells")}</span></div></div>}
+    </div>
+  );
+}
 function Trades({ t, usd, chain }: { t: EToken; usd: number; chain?: ETrade[] | null }) {
   const tr = useT();
   const db = usePoll(() => fetchTrades(t.address, 60), 6000, [t.address]);
@@ -375,7 +397,7 @@ export function TokenPage() {
             <span aria-hidden>←</span> {tr("Back")}
           </button>
           <section className="e-thead">
-            <TokenAvatar t={t} size={56} />
+            <RingAvatar t={t} size={50} />
             <div className="e-tname">
               <h1>{t.name} <span>{t.symbol}</span></h1>
               <div className="e-tmeta">
@@ -399,6 +421,12 @@ export function TokenPage() {
           <div className="shield-m"><ShieldPanel token={t} shield={shield} dev={dev} /></div>
 
           <section className="e-panel"><EChart trades={trades} usd={usd} supply={supplyOf(t)} height={420} /></section>
+
+          {/* phones: the exchange layout — live trades on the left, buy/sell on the right, no sheet needed */}
+          <section className="e-split">
+            <div className="e-split-feed"><MiniTrades t={t} usd={usd} chain={live?.trades} /></div>
+            <div className="e-panel e-split-box"><TradeBox t={t} usd={usd} /></div>
+          </section>
 
           <ScoutPanel token={t} />
 
