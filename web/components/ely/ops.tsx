@@ -270,7 +270,7 @@ export function OpsPage() {
   const [mcIn, setMcIn] = useState("");
   const mcNow = s ? Number(s.startMc) / 1e18 : 0;
   const mcNew = Number(mcIn.replace(",", "."));
-  const mcOk = mcNew >= 5 && mcNew <= 1000;
+  const mcOk = mcNew >= 5 && mcNew <= 5000;
 
   return (
     <main className="e-in e-page">

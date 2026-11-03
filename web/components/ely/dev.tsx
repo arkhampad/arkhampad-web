@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useT } from "@/lib/i18n";
-import { ago, compact, fetchHypeUsd, fetchTokens, money, pct, short, tokenColors, usePoll, type EToken } from "@/lib/ely";
+import { ago, compact, fetchHypeUsd, fetchTokens, money, pct, short, tokenColors, usePoll, type EToken , useTokens } from "@/lib/ely";
 import { TokenAvatar } from "./shell";
 import { devRecordFromTokens, devRecordLine } from "@/lib/shield";
 
@@ -15,7 +15,7 @@ export function DevView() {
   const tr = useT();
   const a = (useSearchParams().get("a") || "").toLowerCase();
   const valid = /^0x[0-9a-f]{40}$/.test(a);
-  const tokens = usePoll(fetchTokens, 60_000);
+  const tokens = useTokens(60_000);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const mine = useMemo(() => (tokens ?? []).filter((t) => (t.creator || "").toLowerCase() === a).sort((x, y) => Date.parse(y.created_at || "0") - Date.parse(x.created_at || "0")), [tokens, a]);
   const rec = useMemo(() => (tokens ? devRecordFromTokens(a, tokens, usd) : null), [tokens, a, usd]);

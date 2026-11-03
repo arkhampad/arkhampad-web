@@ -11,7 +11,7 @@ import { fromWei, hypeBalance, cachedHype } from "@/lib/elytrade";
 import { Feel } from "./feel";
 import { InviteConfirm } from "./invite";
 import { I18nProvider, LANGS, useI18n, useT } from "@/lib/i18n";
-import { fetchTokens, fetchHypeUsd, money, pct, padColor, padOf, PADS, tokenColors, usePoll, type EToken } from "@/lib/ely";
+import { fetchTokens, fetchHypeUsd, money, pct, padColor, padOf, PADS, tokenColors, usePoll, type EToken , useTokens } from "@/lib/ely";
 import { ScoutTab, ScoutToast, ScoutFab } from "./scout";
 
 const NAV = [
@@ -119,7 +119,7 @@ function Account() {
   // same number as "Total balance" on You: HYPE + the value of your coins + money waiting to move
   const coins = holdingsHype(useHoldings(me ? me.toLowerCase() : null));
   // plus money that arrived on Base (USDC) or HyperEVM (HYPE) and hasn't been moved to Elysium yet
-  const waiting = usePoll(async () => (me ? waitingBalances(me) : null), 20_000, [me]);
+  const waiting = usePoll(async () => (me ? waitingBalances(me) : null), 60_000, [me]);
   const waitUsd = waiting ? Number(waiting.usdc) / 1e6 + fromWei(waiting.hype) * usd : 0;
   const elyUsdc = useElyUsdc(me ? me.toLowerCase() : null);
   // sign-in is still loading (a page reload): hold the spot instead of flashing "Log in"
@@ -136,7 +136,7 @@ function Account() {
 }
 
 function Ticker() {
-  const tokens = usePoll(fetchTokens, 60_000);
+  const tokens = useTokens(60_000);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
   const top = (tokens ?? []).slice(0, 16);
   if (!top.length) return <div className="e-ticker"><div className="e-ticker-run" style={{ height: 34 }} /></div>;
@@ -242,7 +242,43 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Keeps an open tab fresh. Back on a tab that sat in the background 5+ minutes: reload (phones freeze
+ * background tabs, so without this someone returning after an hour saw the old page). Left open and
+ * untouched for 10+ minutes: reload too, so prices, lists and the site itself are never stale.
+ */
+function useStayFresh() {
+  useEffect(() => {
+    const loaded = Date.now();
+    let hiddenAt = 0;
+    let touched = Date.now();
+    const busy = () => (touched = Date.now());
+    const typing = () => { const el = document.activeElement as HTMLElement | null; return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA"); };
+    const sheetOpen = () => !!document.querySelector(".e-sheet");
+    const vis = () => {
+      if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+      if (hiddenAt && Date.now() - hiddenAt > 5 * 60_000) location.reload();
+      hiddenAt = 0;
+    };
+    const show = (e: PageTransitionEvent) => { if (e.persisted && Date.now() - loaded > 5 * 60_000) location.reload(); };
+    const id = setInterval(() => {
+      if (document.visibilityState !== "visible" || typing() || sheetOpen()) return;
+      if (Date.now() - touched > 10 * 60_000 && Date.now() - loaded > 10 * 60_000) location.reload();
+    }, 60_000);
+    document.addEventListener("visibilitychange", vis);
+    window.addEventListener("pageshow", show);
+    ["pointerdown", "keydown", "wheel", "touchstart"].forEach((ev) => window.addEventListener(ev, busy, { passive: true }));
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", vis);
+      window.removeEventListener("pageshow", show);
+      ["pointerdown", "keydown", "wheel", "touchstart"].forEach((ev) => window.removeEventListener(ev, busy));
+    };
+  }, []);
+}
+
 export function ElyShell({ children }: { children: React.ReactNode }) {
+  useStayFresh();
   return (
     <I18nProvider>
       <WalletProvider>

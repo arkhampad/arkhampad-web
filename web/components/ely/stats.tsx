@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
-import { compact, fetchHypeUsd, fetchStats, fetchTokens, money, usePoll, type EStats } from "@/lib/ely";
+import { compact, fetchHypeUsd, fetchStats, fetchTokens, money, usePoll, type EStats , useTokens } from "@/lib/ely";
 
 type Pt = { x: string; y: number; label: string; sub?: string };
 
@@ -101,7 +101,7 @@ export function StatsPage() {
   const s = usePoll(fetchStats, 60_000);
   const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
   const [range, setRange] = useState<"30d" | "48h">("30d");
-  const toks = usePoll(fetchTokens, 60_000);
+  const toks = useTokens(60_000);
   // 24h volume per launchpad, from the token list (coins the indexer couldn't attribute go last as "Other")
   const pads = useMemo(() => {
     const m = new Map<string, { name: string; vol: number; coins: number; txns: number; today: number }>();

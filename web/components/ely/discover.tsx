@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RingAvatar, TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
-import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchStats, fetchTokens, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken, type ETrade } from "@/lib/ely";
+import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchStats, fetchTokens, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken, type ETrade , useTokens } from "@/lib/ely";
 import { pendingTokens } from "@/lib/elytrade";
 import { AirdropBanner } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
@@ -276,7 +276,7 @@ export function Discover() {
   const tr = useT();
   const params = useSearchParams();
   const r = useRouter();
-  const tokens = usePoll(fetchTokens, 30_000);
+  const tokens = useTokens(30_000);
   // the list holds at most 1,000 coins (the busiest); the real total comes from the stats
   const stats = usePoll(() => fetchStats().catch(() => null), 300_000);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;

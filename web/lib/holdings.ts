@@ -79,7 +79,7 @@ function pendingCoin(me: string, a: string, chain: bigint | null): bigint | null
   return c.to;
 }
 
-async function load(me: string, onFirst: (l: Holding[]) => void): Promise<Holding[]> {
+async function load(me: string, onFirst: (l: Holding[]) => void, full: boolean): Promise<Holding[]> {
   const rows = await fetchHoldings(me).catch(() => []);
   const recent = recentTokens().map((a) => a.toLowerCase());
   const pc = pend.get(me)?.coins;
@@ -101,7 +101,8 @@ async function load(me: string, onFirst: (l: Holding[]) => void): Promise<Holdin
   onFirst(build(new Map()));
   // then the live chain for every coin (in the background, the list is already on screen), so a balance
   // that changed outside ArkhamPad or that the indexer hasn't caught up with is never missing or stale
-  const check = addrs.slice(0, 60);
+  // (every coin on the first load, after a trade and once a minute; in between only the ones just traded)
+  const check = full ? addrs.slice(0, 60) : addrs.filter((a) => recent.includes(a) || !byAddr.get(a)?.name || pc?.has(a));
   const live = await Promise.all(
     check.map(async (a) => {
       if (!byAddr.get(a)?.name) { const c = await chainToken(a).catch(() => null); if (c) byAddr.set(a, { ...(byAddr.get(a) ?? {}), ...c } as EToken); }
@@ -120,15 +121,20 @@ export function useHoldings(me: string | null): Holding[] | undefined {
     setV(cachedHoldings(me));
     if (!me) return;
     let t: ReturnType<typeof setTimeout>;
+    let n = 0;
+    let force = true;
     const run = async () => {
+      const full = force || n % 4 === 0;
+      force = false;
+      n++;
       try {
-        const list = await load(me, (first) => { if (alive.current && first.length) setV((old) => (old && old.length ? old : first)); });
+        const list = await load(me, (first) => { if (alive.current && first.length) setV((old) => (old && old.length ? old : first)); }, full);
         if (alive.current) { setV(list); save(me, list); }
       } catch {}
       if (alive.current) t = setTimeout(tick, 15_000);
     };
     const tick = () => (document.visibilityState === "visible" ? run() : (t = setTimeout(tick, 2000)));
-    const now = () => { clearTimeout(t); run(); };
+    const now = () => { clearTimeout(t); force = true; run(); };
     const other = (e: Event) => { if ((e as CustomEvent).detail === me && alive.current) setV(cachedHoldings(me)); };
     window.addEventListener("ap:balance", now);
     window.addEventListener("ap:holdings", other);

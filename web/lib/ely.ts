@@ -78,13 +78,27 @@ const mock = () => (mockData ??= fetch("/ely-mock.json").then((r) => r.json()));
 const WINDOW_COLS = "change5m,change1h,change6h,vol5m_hype,vol1h_hype,vol6h_hype";
 const LIST_COLS = "address,name,symbol,decimals,supply,launchpad,venue,pool,manager,whype,token_is0,fee,tick_spacing,hooks,creator,ours,created_at,price_hype,mcap_hype,vol24_hype,buys24,sells24,change24,holders,top10_pct,last_trade_at";
 
+let tokMem: EToken[] | null = null;
+/** The last token list this browser saw: Discover paints from it at once while a fresh one loads. */
+export function cachedTokens(): EToken[] | undefined {
+  if (tokMem) return tokMem;
+  try { const v = localStorage.getItem("ap_tokens_v1"); if (v) { tokMem = JSON.parse(v) as EToken[]; return tokMem; } } catch {}
+  return undefined;
+}
 export async function fetchTokens(): Promise<EToken[]> {
   if (MOCK) return (await mock()).tokens;
   // with the short-window columns when the database has them (db/027), without them otherwise
   const pick = (cols: string) => rest<EToken[]>(`ely_tokens?select=${cols}&price_hype=not.is.null&order=vol24_hype.desc&limit=2000`, 30);
-  let list: EToken[];
-  try { list = await pick(`${LIST_COLS},${WINDOW_COLS}`); } catch { list = await pick(LIST_COLS); }
-  return list.map(withImg);
+  // ArkhamPad's own coins always come along, even quiet ones that fall outside the top 2,000 by volume
+  // (Elysium has more coins than that now, so older coins of ours with no trades today dropped off the site)
+  const oursQ = (cols: string) => rest<EToken[]>(`ely_tokens?select=${cols}&ours=eq.true&order=created_at.desc&limit=1000`, 30).catch(() => [] as EToken[]);
+  let list: EToken[], ours: EToken[];
+  try { [list, ours] = await Promise.all([pick(`${LIST_COLS},${WINDOW_COLS}`), oursQ(`${LIST_COLS},${WINDOW_COLS}`)]); } catch { [list, ours] = await Promise.all([pick(LIST_COLS), oursQ(LIST_COLS)]); }
+  const seen = new Set(list.map((t) => t.address.toLowerCase()));
+  const all = [...list, ...ours.filter((t) => !seen.has(t.address.toLowerCase()))].map(withImg);
+  tokMem = all;
+  try { localStorage.setItem("ap_tokens_v1", JSON.stringify(all)); } catch {}
+  return all;
 }
 export async function fetchToken(address: string): Promise<EToken | null> {
   if (MOCK) return (await mock()).tokens.find((t: EToken) => t.address === address) ?? null;
@@ -271,4 +285,12 @@ export async function fetchOurCoinsVolume(): Promise<EOurCoin[]> {
     by.set(r.token, x);
   }
   return toks.map((t) => ({ ...t, ...(by.get(t.address) ?? { vol: 0, trades: 0, buys: 0, sells: 0 }) }));
+}
+
+/** All tokens, polled; the browser's last copy shows right after the page loads, before the first answer. */
+export function useTokens(ms = 30_000): EToken[] | undefined {
+  const live = usePoll(fetchTokens, ms);
+  const [c, setC] = useState<EToken[]>();
+  useEffect(() => { setC(cachedTokens()); }, []);
+  return live ?? c;
 }

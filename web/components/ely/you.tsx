@@ -1,7 +1,7 @@
 "use client";
 // You: your HYPE, the Elysium tokens you hold, coins you created (collect your 30% fee share) and your trades.
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
@@ -10,9 +10,9 @@ import { InviteCard } from "./invite";
 import { AirdropCard } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
 import { TokenAvatar } from "./shell";
-import { ago, fetchCreated, fetchHypeUsd, fetchMyTrades, money, pct, short, usePoll } from "@/lib/ely";
+import { ago, fetchCreated, fetchHypeUsd, fetchMyTrades, money, pct, short, usePoll, type EToken } from "@/lib/ely";
 import { lastAddress, rememberAddress, shownHype, useElyUsdc, useHoldings } from "@/lib/holdings";
-import { ELY_CHAIN, ely, fromWei, hypeBalance, cachedHype, waitReceipt } from "@/lib/elytrade";
+import { ELY_CHAIN, ely, fromWei, hypeBalance, cachedHype, pendingTokens, waitReceipt } from "@/lib/elytrade";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
 const COLLECT = parseAbi(["function collect(address coin) returns (uint256 coinAmount, uint256 nativeAmount)"]);
@@ -97,7 +97,18 @@ export function YouPage() {
   const elyUsdc = useElyUsdc(me);
   // what you hold: shown instantly from this device's last copy, then refreshed (see lib/holdings)
   const holdings = useHoldings(me);
-  const created = usePoll(async () => (me ? fetchCreated(me) : null), 20_000, [me]);
+  // coins you launched: the ones launched here a moment ago show at once (the indexer adds them a bit later)
+  const createdDb = usePoll(async () => (me ? fetchCreated(me) : null), 20_000, [me]);
+  const [createdCache, setCreatedCache] = useState<EToken[] | null>(null);
+  useEffect(() => { if (!me) return; try { const v = localStorage.getItem(`ap_made_${me}`); setCreatedCache(v ? (JSON.parse(v) as EToken[]) : null); } catch {} }, [me]);
+  useEffect(() => { if (me && createdDb) try { localStorage.setItem(`ap_made_${me}`, JSON.stringify(createdDb.slice(0, 50))); } catch {} }, [me, createdDb]);
+  const created = useMemo(() => {
+    const base = createdDb ?? createdCache;
+    const mine = me ? pendingTokens().filter((t) => (t.creator || "").toLowerCase() === me) : [];
+    if (!base && !mine.length) return base;
+    const seen = new Set((base ?? []).map((t) => t.address.toLowerCase()));
+    return [...mine.filter((t) => !seen.has(t.address.toLowerCase())), ...(base ?? [])];
+  }, [createdDb, createdCache, me]);
   // money that arrived on Base (USDC) or HyperEVM (HYPE) but hasn't been moved to Elysium yet
   const waiting = usePoll(async () => (me ? waitingBalances(me as Address) : null), 10_000, [me]);
   const trades = usePoll(async () => (me ? fetchMyTrades(me) : null), 10_000, [me]);
