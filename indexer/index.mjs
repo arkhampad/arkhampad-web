@@ -443,6 +443,8 @@ async function elysiumLoop() {
   }
   // Smart Money Radar poster (Telegram). No-ops unless TG_SCOUT_TOKEN / TG_SCOUT_CHANNEL are set.
   import("./scout.mjs").then(({ startScout }) => startScout(pool, { log })).catch((e) => log(`scout: ${e.message}`));
+  // ElyScreener paid promotions (profile / boost / banner): verifies payments on-chain. Needs ES_PAY_TO.
+  import("./promo.mjs").then(({ startPromo }) => startPromo(pool, { log })).catch((e) => log(`promo: ${e.message}`));
   for (;;) {
     try {
       const store = await makePgStore(pool);
