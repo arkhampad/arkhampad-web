@@ -370,7 +370,8 @@ async function postOne(slotIdx, asThread = false) {
   const base = p.text ?? W[p.kind][p.tpl](p.d);
   // written fresh by the AI from the same data (checked), else our template line
   const facts = p.d ? Object.entries(p.d).filter(([, v]) => v != null && v !== "").map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" / ") : v}`).join("\n") : base;
-  const must = [p.d?.sym && `$${p.d.sym}`, p.d?.x].filter(Boolean);
+  // the key number must be in the post too (a gainer without its % is just noise)
+  const must = [p.d?.sym && `$${p.d.sym}`, p.d?.x, p.d?.pct, p.kind === "smart" && p.d?.n != null && String(p.d.n), p.kind === "fresh" && p.d?.holders].filter(Boolean);
   let text = await writePost({ facts: `${facts}\n${base}`, fallback: base, must, recent });
   text = `${text}\n\n${tags(r, 2, r() < 0.7 ? "#Elysium" : null)}`.replace(/\n{3,}/g, "\n\n").trim();
   const link = p.token ? `chart → ${SITE}/coin/${p.token}` : `live → ${SITE}`;
