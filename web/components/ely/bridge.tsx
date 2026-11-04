@@ -9,17 +9,18 @@ import { createPublicClient, encodeFunctionData, fallback, formatUnits, http, pa
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { usePoll } from "@/lib/ely";
+import { funnel } from "@/lib/funnel";
 import { ELY_CHAIN as ELY_CHAIN_ID, balanceChanged, ely, elyRpc, fromWei, toWei } from "@/lib/elytrade";
 
-const HYPEREVM = 999;
+export const HYPEREVM = 999;
 const HYPEREVM_RPC = "https://rpc.hyperliquid.xyz/evm";
 const BASE = 8453;
 const BASE_RPC = process.env.NEXT_PUBLIC_BASE_RPC || "https://mainnet.base.org";
-const INBOX = "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff" as Address; // Elysium's official bridge inbox on HyperEVM
+export const INBOX = "0xce59f8b65ad41c9dae4c07a0571a39824bd92cff" as Address; // Elysium's official bridge inbox on HyperEVM
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
 const RELAY = "https://api.relay.link";
 const RELAY_KEY = process.env.NEXT_PUBLIC_RELAY_KEY || "";
-const GAS_KEEP = 10n ** 16n; // 0.01 HYPE stays on HyperEVM for the bridge transaction's gas
+export const GAS_KEEP = 10n ** 16n; // 0.01 HYPE stays on HyperEVM for the bridge transaction's gas
 
 /** Where USDC can come from. Relay converts it to HYPE on HyperEVM; native USDC everywhere (6 decimals) except BNB Chain. */
 type Origin = { id: number; name: string; usdc: Address; dec: number; gas: string; rpcs: string[] };
@@ -52,10 +53,10 @@ async function usdcEverywhere(me: Address) {
   }));
 }
 
-const hyperevm = createPublicClient({ chain: { id: HYPEREVM, name: "HyperEVM", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [HYPEREVM_RPC] } } }, transport: fallback([http(HYPEREVM_RPC), http("https://hyperliquid.drpc.org"), http("https://rpc.hypurrscan.io")]) });
+export const hyperevm = createPublicClient({ chain: { id: HYPEREVM, name: "HyperEVM", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [HYPEREVM_RPC] } } }, transport: fallback([http(HYPEREVM_RPC), http("https://hyperliquid.drpc.org"), http("https://rpc.hypurrscan.io")]) });
 const base = createPublicClient({ chain: { id: BASE, name: "Base", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [BASE_RPC] } } }, transport: http(BASE_RPC) });
 const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)"]);
-const DEPOSIT = encodeFunctionData({ abi: parseAbi(["function depositEth() payable returns (uint256)"]), functionName: "depositEth" });
+export const DEPOSIT = encodeFunctionData({ abi: parseAbi(["function depositEth() payable returns (uint256)"]), functionName: "depositEth" });
 
 /**
  * Money that has arrived but isn't on Elysium yet: USDC on Base and HYPE on HyperEVM at this address.
@@ -82,7 +83,7 @@ export async function waitingBalances(me: Address): Promise<{ usdc: bigint; hype
 
 const fmt = (v: bigint | null | undefined, d = 18, p = 4) => (v == null ? "—" : Number(formatUnits(v, d)).toLocaleString("en-US", { maximumFractionDigits: p }));
 
-function Address0({ address }: { address: string }) {
+export function Address0({ address }: { address: string }) {
   const tr = useT();
   const [ok, setOk] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
@@ -121,6 +122,7 @@ function HypeIn({ me, onSent }: { me: Address; onSent: () => void }) {
       const hash = await w.signer.sendTx(HYPEREVM, { to: INBOX, data: DEPOSIT, value: sent });
       const r = await hyperevm.waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
       if (r.status !== "success") throw new Error("failed");
+      funnel(me, "deposit_sent");
       setMsg({ ok: true, text: tr("{n} HYPE is on its way. It shows up on Elysium in about a minute.", { n: fmt(sent) }) });
       setVal("");
       setCustom(false);
@@ -267,6 +269,7 @@ function UsdcIn({ me, onSent }: { me: Address; onSent: () => void }) {
       const send = total > GAS_KEEP ? total - GAS_KEEP : 0n;
       const hash = await w.signer.sendTx(HYPEREVM, { to: INBOX, data: DEPOSIT, value: send });
       await hyperevm.waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
+      funnel(me, "deposit_sent");
       setMsg({ ok: true, text: tr("Done. About {n} HYPE is on its way to Elysium (about a minute).", { n: fmt(send) }) });
       setVal("");
       onSent();
@@ -421,6 +424,7 @@ function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
   const tr = useT();
   const w = useWallet();
   const [tick, setTick] = useState(0);
+  useEffect(() => { funnel(me, "deposit_page"); }, [me]);
   const bal = usePoll(() => ely().getBalance({ address: me }), 5000, [me, tick]);
   const list = usePoll(() => myWithdrawals(me), 20_000, [me, tick]);
   const confirmed = usePoll(() => confirmedCount(), 120_000, [tick]);

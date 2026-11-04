@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import { useWallet } from "@/components/wallet";
+import { funnel } from "@/lib/funnel";
 import { RingAvatar, TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
 import { EChart } from "./chart";
@@ -145,7 +146,7 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
       setBusy(null);
       going.current = false;
       sent.confirmed.then(
-        () => { setAfter(null); setTick((x) => x + 1); onDone?.(); },
+        () => { funnel(addr, "trade"); setAfter(null); setTick((x) => x + 1); onDone?.(); },
         (e) => {
           // not confirmed after two minutes: don't leave "Sold"/"Bought" on screen as if it happened
           if (e instanceof SlowTx) { setAfter(null); setTick((x) => x + 1); setMsg({ ok: false, text: tr("Not confirmed yet. Check your balance in a minute before trying again.") }); return; }

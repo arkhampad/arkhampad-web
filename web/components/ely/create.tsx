@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { decodeEventLog, encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
+import { funnel } from "@/lib/funnel";
 import { useT } from "@/lib/i18n";
 import { fetchHypeUsd, money, usePoll } from "@/lib/ely";
 import { ELY_CHAIN, NONCE_HELP, USER_NO, SlowTx, savePending, waitReceipt, ely, fromWei, hypeBalance, cachedHype, rememberToken, toWei, prepareSell } from "@/lib/elytrade";
@@ -227,6 +228,7 @@ export function CreatePage() {
         } catch {}
       }
       if (!coin) throw new Error("no coin");
+      funnel(me, "create");
       rememberToken(coin);
       // let the router sell this coin later in one step (a tiny background approval, built-in wallet only)
       if (buyWei > 0n) prepareSell(w.signer, coin as Address);

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { WalletProvider, useWallet } from "@/components/wallet";
 import { holdingsHype, shownHype, useElyUsdc, useHoldings } from "@/lib/holdings";
 import { waitingBalances } from "./bridge";
+import { Onboard } from "./onboard";
 import { fromWei, hypeBalance, cachedHype } from "@/lib/elytrade";
 import { Feel } from "./feel";
 import { InviteConfirm } from "./invite";
@@ -238,6 +239,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       </nav>
       <ScoutToast />
       <ScoutFab />
+      <Onboard />
     </div>
   );
 }

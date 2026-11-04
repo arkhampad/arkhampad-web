@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { encodeFunctionData, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
+import { funnelStats, type FunnelRow } from "@/lib/funnel";
 import { ELY_CHAIN, ELY_EXPLORER, ROUTER, ely, waitReceipt } from "@/lib/elytrade";
 import { PIONEER } from "@/lib/pioneer";
 import { PIONEER_CODE } from "@/lib/pioneer-code";
@@ -220,6 +221,42 @@ function PioneerDeploy({ isOwner }: { isOwner: boolean }) {
   );
 }
 
+const STEP_NAMES: Record<string, string> = {
+  login: "Logged in", welcome: "Saw the welcome screen", deposit_page: "Opened Deposit", deposit_sent: "Sent a deposit",
+  funded: "Has HYPE on Elysium", trade: "Made a trade", create: "Created a coin",
+};
+/** Where new wallets stop: each step as a count and as a share of everyone who logged in. */
+function Funnel() {
+  const rows = usePoll(funnelStats, 60_000);
+  const [win, setWin] = useState<"total" | "d7" | "d1">("total");
+  const top = rows?.find((r) => r.step === "login")?.[win] || 0;
+  return (
+    <section className="e-panel"><div className="e-trade">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <h3 className="e-ph" style={{ margin: 0 }}>New wallets: where they stop</h3>
+        <div className="e-via" style={{ marginLeft: "auto" }}>
+          {([["total", "All"], ["d7", "7 days"], ["d1", "24 h"]] as const).map(([k, l]) => <button key={k} type="button" className={win === k ? "on" : ""} aria-pressed={win === k} onClick={() => setWin(k)}>{l}</button>)}
+        </div>
+      </div>
+      {!rows ? <p className="dim">Loading…</p> : !rows.length ? <p className="dim">No data yet (run db/033_ap_funnel.sql in Supabase).</p> : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {rows.map((r: FunnelRow) => {
+            const n = r[win];
+            const pct = top ? Math.round((n / top) * 100) : 0;
+            return (
+              <div key={r.step} style={{ display: "grid", gap: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}><span>{STEP_NAMES[r.step] ?? r.step}</span><b className="num">{n}{top ? ` · ${pct}%` : ""}</b></div>
+                <div style={{ height: 8, borderRadius: 6, background: "var(--e-raise)", overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: "var(--e-teal)" }} /></div>
+              </div>
+            );
+          })}
+          <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Counted from Nov 4, 2026. Wallets that logged in before then are counted once they come back.</p>
+        </div>
+      )}
+    </div></section>
+  );
+}
+
 export function OpsPage() {
   const w = useWallet();
   const [s, setS] = useState<S | null>(null);
@@ -275,6 +312,7 @@ export function OpsPage() {
   return (
     <main className="e-in e-page">
       <section className="e-hero"><div><span className="e-eyebrow">Ops</span><h1>ArkhamPad ops</h1></div></section>
+      <Funnel />
       <Earnings />
       <Activity />
       <section className="e-panel"><div className="e-trade">

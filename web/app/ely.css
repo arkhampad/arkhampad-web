@@ -1020,3 +1020,24 @@ html { overscroll-behavior-y: none; }
   .e-mini-r { grid-template-columns: 44px minmax(0, 1fr) auto; }
   .e-sheet-in > .e-trade, .e-sheet-in .e-trade { padding: 0 16px 6px; }
 }
+
+/* first steps for an empty wallet (components/ely/onboard.tsx) */
+.e-onb-body { display: flex; flex-direction: column; gap: 14px; padding: 4px 18px 8px; min-width: 0; }
+.e-onb-body h2 { margin: 0; font-size: 22px; color: var(--e-text); text-wrap: balance; }
+.e-onb-body > p { margin: 0; font-size: 14.5px; line-height: 1.45; }
+.e-onb-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.e-onb-opt { display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 14px; border: 1px solid var(--e-line); background: var(--e-raise); color: var(--e-text); text-decoration: none; min-width: 0; transition: border-color .15s, transform .1s; }
+.e-onb-opt:hover { border-color: var(--e-teal); }
+.e-onb-opt:active { transform: scale(.98); }
+.e-onb-opt b { font-size: 17px; color: var(--e-teal); }
+.e-onb-opt span { font-size: 12.5px; line-height: 1.4; color: var(--e-muted); }
+.e-onb .e-addr { min-width: 0; }
+.e-onb .e-addr code { word-break: break-all; }
+.e-onb a.e-go { display: flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; white-space: normal; height: auto; min-height: 50px; padding: 10px 14px; line-height: 1.3; }
+@media (max-width: 380px) { .e-onb-opts { grid-template-columns: 1fr; } }
+.e-onb-toast { position: fixed; z-index: 70; left: 50%; transform: translateX(-50%); bottom: calc(84px + var(--e-safe-b)); width: min(440px, calc(100% - 32px)); display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--e-card); color: var(--e-text); border: 1px solid var(--e-line); box-shadow: var(--e-shadow); font-size: 14px; line-height: 1.35; animation: eUp .26s cubic-bezier(.2,.8,.2,1); }
+.e-onb-toast.ok { border-color: var(--e-up); }
+.e-onb-toast.bad { border-color: var(--e-down); }
+.e-onb-toast a { margin-left: auto; color: var(--e-teal); font-weight: 700; white-space: nowrap; }
+@media (min-width: 900px) { .e-onb-toast { bottom: 24px; } }
+.e-onb { border-radius: 22px; }
