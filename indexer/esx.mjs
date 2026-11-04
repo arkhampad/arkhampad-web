@@ -539,15 +539,14 @@ async function answerMentions() {
   const since = (await q(`select max(mention_id::numeric)::text m from es_x_replies where mention_id ~ '^[0-9]+$'`))[0]?.m;
   const j = await xGet(`/2/users/${myId}/mentions?max_results=${since ? 50 : 5}&tweet.fields=author_id,created_at${since ? `&since_id=${since}` : ""}`);
   const list = (j?.data || []).sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
-  if (!since) { // first run: start from now, don't answer old mentions
-    for (const m of list) await q(`insert into es_x_replies (mention_id, author, note) values ($1, $2, 'skipped (before start)') on conflict do nothing`, [m.id, m.author_id]);
-    return;
-  }
+  // first run (nothing saved yet): skip only mentions older than an hour, answer the fresh ones
+  const fresh = since ? list : list.filter((m) => Date.now() - Date.parse(m.created_at || 0) < 3600e3);
+  if (!since) for (const m of list) if (!fresh.includes(m)) await q(`insert into es_x_replies (mention_id, author, note) values ($1, $2, 'skipped (before start)') on conflict do nothing`, [m.id, m.author_id]);
   const day = trDay(Date.now());
   const launch = day === "2026-11-09" || day === "2026-11-10";
   const cap = launch ? Number(env("ES_X_REPLY_MAX_LAUNCH")) || 1000 : Number(env("ES_X_REPLY_MAX")) || 300;
   const perUser = launch ? 5 : 3;
-  for (const m of list) {
+  for (const m of fresh) {
     const save = (note, token = null, reply = null) => q(`insert into es_x_replies (mention_id, author, token, reply_id, note) values ($1, $2, $3, $4, $5) on conflict do nothing`, [m.id, m.author_id, token, reply, note]);
     if (m.author_id === myId) { await save("own"); continue; }
     const today = (await q(`select count(*)::int n, count(*) filter (where author = $1)::int a from es_x_replies where reply_id is not null and at > now() - interval '24 hours'`, [m.author_id]))[0];
@@ -643,6 +642,8 @@ async function main() {
   // Telegram: if it can't connect (network hiccup at start, Telegram busy), try again every 30 s
   if (env("ES_TG_TOKEN")) (async () => { for (let i = 0; ; i++) { try { await telegramLoop(); } catch (e) { log(`telegram: ${e.message}${e.cause ? ` (${e.cause.code || e.cause.message})` : ""}, retrying in 30 s`); } await sleep(30_000); } })();
   await q(`create table if not exists es_x_replies (mention_id text primary key, author text, token text, reply_id text, note text, at timestamptz not null default now())`);
+  // the old first-run rule skipped every mention while the table was empty: give the recent ones another chance
+  await q(`delete from es_x_replies where note = 'skipped (before start)' and at > now() - interval '3 hours'`).catch(() => {});
   // answer people who tag us, every 75 s (each mention read costs $0.001, each answer $0.01)
   if (env("ES_X_REPLIES") !== "0" && !DRY && KEYS.apiKey) {
     const loop = async () => { for (;;) { await answerMentions().catch((e) => log("mentions:", e.message)); await sleep(75_000); } };
