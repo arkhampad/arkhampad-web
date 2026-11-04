@@ -109,6 +109,8 @@ export async function writePost({ facts, fallback, must = [], recent = [], max =
   const ok = new Set([...nums(facts), ...nums(fallback), "1", "2", "3", "24", "7", "10"].map(norm));
   if (nums(out).map(norm).some((n) => !ok.has(n))) return fallback;
   if (must.some((m) => m && !out.toLowerCase().includes(String(m).toLowerCase()))) return fallback;
+  // keep $TICKERs and @handles exactly as written in the facts (the AI sometimes lowercases them)
+  for (const m of must) if (m) out = out.replace(new RegExp(String(m).replace(/[$^.*+?()[\]{}|\\]/g, "\\$&"), "gi"), m);
   if (xLength(out) > max || out.length < 12) return fallback;
   return out;
 }
