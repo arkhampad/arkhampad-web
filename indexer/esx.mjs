@@ -77,7 +77,13 @@ async function uploadImage(buf) {
   }
   throw last;
 }
+// X allows only one $CASHTAG per post: keep the first, the rest lose their "$"
+function oneCashtag(text) {
+  let seen = false;
+  return text.replace(/\$([A-Za-z][A-Za-z0-9_]{0,14})\b/g, (m, sym) => (seen ? sym : ((seen = true), m)));
+}
 async function tweet(text, { mediaId, replyTo } = {}) {
+  text = oneCashtag(text);
   const url = "https://api.x.com/2/tweets";
   const body = { text, ...(mediaId ? { media: { media_ids: [mediaId] } } : {}), ...(replyTo ? { reply: { in_reply_to_tweet_id: replyTo } } : {}) };
   const r = await fetch(url, { method: "POST", headers: { authorization: oauth("POST", url), "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -341,7 +347,7 @@ async function thread() {
   if (done.length) return null;
   const parts = [];
   for (const intent of ["launchpads", "top_gainers", "smart_money", "new_coins"]) {
-    const a = await answerFor({ intent, lang: "en", text: "" }).catch(() => null);
+    const a = await answerFor({ intent, lang: "en", text: "", quiet: true }).catch(() => null);
     if (a?.card && !/^(No |Nothing)/.test(a.facts)) parts.push({ intent, ...a });
   }
   if (parts.length < 2) return null;
@@ -398,8 +404,13 @@ async function postThread(p, r, recent) {
     const t = await writePost({ facts: part.facts, fallback, recent: i === 0 ? recent : [], max: 270 });
     texts.push(i === 0 && !/🧵|thread/i.test(t) ? `${t} 🧵` : t);
   }
-  const end = `\n\nevery coin on Elysium, live on ElyScreener\n\n${tags(r, 2, "#Elysium")}`;
-  texts[texts.length - 1] += xLength(texts[texts.length - 1] + end) <= 280 ? end : `\n\n${tags(r, 1, "#Elysium")}`;
+  // the first post is the one people see: it gets the launchpads' @handles (ES_PAD_X) and the hashtags
+  const pads = p.parts.find((x) => x.intent === "launchpads");
+  const handles = pads ? Object.entries(PAD_X).filter(([k]) => pads.facts.toLowerCase().includes(k)).map(([, v]) => v).slice(0, 4).join(" ") : "";
+  const head = `${handles ? `\n\n${handles}` : ""}\n\n${tags(r, 2, "#Elysium")}`;
+  texts[0] += xLength(texts[0] + head) <= 280 ? head : `\n\n${tags(r, 1, "#Elysium")}`;
+  const end = `\n\nevery coin on Elysium, live on ElyScreener`;
+  if (xLength(texts[texts.length - 1] + end) <= 280) texts[texts.length - 1] += end;
   for (let i = 0; i < texts.length; i++) while (xLength(texts[i]) > 280 && texts[i].includes("\n")) texts[i] = texts[i].split("\n").slice(0, -1).join("\n");
   if (DRY || !KEYS.apiKey) {
     mkdirSync("/tmp/esx", { recursive: true });
@@ -484,9 +495,10 @@ async function answerFor(c) {
     const rows = await q(`select t.launchpad pad, count(*)::int coins, round(100.0 * count(*) filter (where s.score >= 80) / nullif(count(s.score), 0))::int safe, sum(t.vol24_hype) v
       from ely_tokens t left join es_safety_cache s on lower(s.token) = lower(t.address) where t.launchpad is not null and t.launchpad <> 'Other' group by 1 having sum(t.vol24_hype) > 0 order by v desc limit 5`).catch(() => []);
     if (!rows.length) return { facts: "No launchpad data right now.", fallback: "no launchpad data right now, try again in a bit" };
-    const lines = rows.map((r) => `${r.pad}: ${count(r.coins)} coin${r.coins === 1 ? "" : "s"}, ${r.safe ?? 0}% rated Safe, ${money(usd(r.v))} volume in 24h`);
+    // our own scheduled posts leave out "% Safe" (no need to call out a launchpad in public); answers to a question keep it
+    const lines = rows.map((r) => `${r.pad}: ${count(r.coins)} coin${r.coins === 1 ? "" : "s"}, ${c.quiet ? "" : `${r.safe ?? 0}% rated Safe, `}${money(usd(r.v))} volume in 24h`);
     const head = "Launchpads on Elysium by the numbers (no ranking of who is best, the data decides):";
-    const card = padsCard({ title: "LAUNCHPADS · COINS · % SAFE · 24H VOLUME", rows: rows.map((r) => ({ name: r.pad, vol: usd(r.v), label: `${money(usd(r.v))} · ${r.safe ?? 0}% safe` })) });
+    const card = padsCard({ title: c.quiet ? "LAUNCHPAD VOLUME · LAST 24H" : "LAUNCHPADS · 24H VOLUME · % RATED SAFE", rows: rows.map((r) => ({ name: r.pad, vol: usd(r.v), label: c.quiet ? money(usd(r.v)) : `${money(usd(r.v))} · ${r.safe ?? 0}% safe` })) });
     return { facts: [head, ...lines, "Your call, not financial advice."].join("\n"), fallback: ["launchpads on Elysium, by the numbers:", ...lines.slice(0, 4)].join("\n"), card };
   }
   if (c.intent === "general" || c.intent === "about") {
@@ -583,7 +595,7 @@ async function telegramLoop() {
   const per = new Map(); // chat → answers in the last minute (keeps busy groups calm)
   for (;;) {
     let ups = [];
-    try { ups = await tg("getUpdates", { offset, timeout: 50, allowed_updates: ["message"] }); } catch (e) { log(e.message); await sleep(5000); continue; }
+    try { ups = await tg("getUpdates", { offset, timeout: 25, allowed_updates: ["message"] }); } catch (e) { log(e.message); await sleep(5000); continue; }
     for (const u of ups) {
       offset = u.update_id + 1;
       const m = u.message;
@@ -620,7 +632,11 @@ async function main() {
   if (env("ES_X_OFF") === "1") { log("off"); return; }
   if (!env("DATABASE_URL")) { log("off (no DATABASE_URL)"); return; }
   if (!DRY && !(KEYS.apiKey && KEYS.apiSecret && KEYS.accessToken && KEYS.accessSecret)) log("no X keys: running dry");
-  pool = new pg.Pool({ connectionString: env("DATABASE_URL"), max: 2 });
+  // the Supabase session pooler (port 5432) has few slots and the indexer uses them; the transaction pooler
+  // (6543) shares connections, so this bot never waits for one. ES_DB_SESSION=1 keeps the URL as it is.
+  let dbUrl = env("DATABASE_URL");
+  if (env("ES_DB_SESSION") !== "1" && /pooler\.supabase\.com:5432/.test(dbUrl)) dbUrl = dbUrl.replace("pooler.supabase.com:5432", "pooler.supabase.com:6543");
+  pool = new pg.Pool({ connectionString: dbUrl, max: 2, idleTimeoutMillis: 5000, connectionTimeoutMillis: 20000 });
   await q(`create table if not exists es_x_posts (id bigserial primary key, kind text not null, token text, tpl int, text text, tweet_id text, at timestamptz not null default now())`);
   await q(`create index if not exists es_x_posts_at on es_x_posts (at desc)`);
   await q(`create table if not exists es_tg_answers (id bigserial primary key, chat text, chat_type text, intent text, at timestamptz not null default now())`);

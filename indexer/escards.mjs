@@ -112,7 +112,7 @@ ${spark(c.series, 1080, 200, 440, 220, true)}`;
 export function padsCard(p) {
   const max = Math.max(...p.rows.map((r) => r.vol), 1e-9);
   const rows = p.rows.slice(0, 6).map((r, i) => {
-    const y = 236 + i * 92, bw = Math.max(8, (r.vol / max) * 820);
+    const y = 236 + i * 92, bw = Math.max(8, (r.vol / max) * (String(r.label).length > 10 ? 640 : 760));
     return `<text x="80" y="${y + 44}" font-family="${D}" font-weight="700" font-size="34" fill="${DIM}">${i + 1}</text>
 <text x="130" y="${y + 44}" font-family="${D}" font-weight="700" font-size="38" fill="${INK}">${esc(fit(r.name, 14))}</text>
 <rect x="470" y="${y + 6}" width="${bw}" height="50" rx="12" fill="url(#mh)" fill-opacity="${(1 - i * 0.12).toFixed(2)}"/>
