@@ -35,6 +35,14 @@ export const KNOWN_TOKENS = [
 ];
 export const KNOWN_CONTRACTS = {
   "0x06c63714fbf1f5753017123e2fcfdede4540b2c4": "Boxa", // Boxa's v4 pool manager (shown on boxa.club)
+  // makers matched by their coins' logo hosts / own tokens (Nov 4)
+  "0x2da68edff4588a77b55a829689c382f2acb39502": "Kleos",
+  "0x893217cbf5c054fd6ee56893b313a4b98c4403e4": "Kleos",
+  "0x8ca88b12bc89b58034c583f1a5df02f7e67d62e1": "Boxa",
+  "0xa338c80bbec54f3439f6af22d21723226abc48bd": "ElysPump",
+  "0x5f702244f102183313e1b035fa846632c8b7e49f": "Eleos",
+  "0xe954a18cffb3205f9452bd968ef27b9e84e8850d": "Stockium",
+  "0x1cb9e9093c940d027c08c63bf7321e146ba0656c": "Elyxa",
 };
 
 /** Runs async jobs, `n` at a time. */
