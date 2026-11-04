@@ -62,12 +62,15 @@ const nums = (s) => (String(s).match(/\d[\d.,]*/g) || []).map((x) => x.replace(/
 const norm = (x) => x.replace(/,/g, ".").replace(/^0+(?=\d)/, "");
 
 /** Phrase `facts` (English lines) in `lang`. Falls back to `fallback` if anything looks off. */
-export async function phrase({ lang, question, facts, fallback, extraOk = [] }) {
+export async function phrase({ lang, question, facts, fallback, extraOk = [], exact = false }) {
   if (lang === "en" && !env("CF_AI_TOKEN")) return fallback;
+  // a bare ticker / address / command says nothing about language or angle: the full template is the answer
+  const bare = String(question).replace(/\/\w+|\$\w+|0x[0-9a-fA-F]{40}|@\w+/g, "").replace(/[^\p{L}]/gu, "");
+  if (bare.length < 4 || (exact && lang === "en")) return fallback;
   let out = null;
   try {
     out = await ai([
-      { role: "system", content: `You are ElyScreener on X, replying to a tweet. Write the reply in the language with code "${lang}". Use ONLY the facts given: never add numbers, names, coins or claims that are not in the facts, never predict prices, never say which coin or launchpad is best, never give financial advice. Keep tickers like $BLOB exactly as written. Casual, short, human tone, no hashtags, no links, no emojis except at most one. At most 230 characters (Chinese/Japanese/Korean: at most 110 characters). Output only the reply text.` },
+      { role: "system", content: `You are ElyScreener on X, replying to a tweet. Write the reply in the language with code "${lang}". ${exact ? "Translate ALL the fact lines, keep every one of them. " : ""}Use ONLY the facts given: never add numbers, names, coins or claims that are not in the facts, never predict prices, never say which coin or launchpad is best, never give financial advice. Keep tickers like $BLOB exactly as written. Casual, short, human tone, no hashtags, no links, no emojis except at most one. At most 230 characters (Chinese/Japanese/Korean: at most 110 characters). Output only the reply text.` },
       { role: "user", content: `Their tweet: ${question.slice(0, 400)}\n\nFacts:\n${facts}` },
     ], 200);
   } catch {}

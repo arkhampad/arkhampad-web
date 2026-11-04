@@ -558,7 +558,7 @@ async function answerMentions() {
     try { a = await answerFor(c); } catch (e) { log("answer data:", e.message); a = null; }
     if (!a) { await save(`no answer (${c.intent})`); continue; }
     try {
-      const text = await phrase({ lang: c.lang, question: c.text, facts: a.facts, fallback: a.fallback });
+      const text = await phrase({ lang: c.lang, question: c.text, facts: a.facts, fallback: a.fallback, exact: c.intent === "coin" });
       const mediaId = a.card ? await uploadImage(a.card) : null;
       const id = await tweet(text, { mediaId, replyTo: m.id });
       await save(`answered ${c.intent} (${c.lang})`, a.token || null, id);
@@ -614,11 +614,11 @@ async function telegramLoop() {
         let c;
         const fixed = { top: "top_gainers", new: "new_coins", smart: "smart_money", pads: "launchpads", volume: "top_volume" }[cmd?.[1]];
         if (fixed) c = { intent: fixed, lang: "en", text, coin: null };
-        else if (cmd?.[1] === "check") { c = await classify(cmd[2] || ""); c.intent = "coin"; c.coin = c.coin || cmd[2].replace(/^\$/, "").trim() || null; if (!c.coin) { await tg("sendMessage", { chat_id: m.chat.id, text: "which one? /check $TICKER or paste the contract address", reply_to_message_id: m.message_id }); continue; } }
+        else if (cmd?.[1] === "check") { const arg = (cmd[2] || "").trim(); c = /^\$?[A-Za-z][A-Za-z0-9]{0,14}$|^0x[0-9a-fA-F]{40}$/.test(arg) ? { lang: "en", intent: "coin", text: arg, coin: arg.replace(/^\$/, "") } : await classify(arg); c.intent = "coin"; c.coin = c.coin || cmd[2].replace(/^\$/, "").trim() || null; if (!c.coin) { await tg("sendMessage", { chat_id: m.chat.id, text: "which one? /check $TICKER or paste the contract address", reply_to_message_id: m.message_id }); continue; } }
         else c = await classify(text);
         const a = await answerFor(c);
         if (!a) continue;
-        const reply = await phrase({ lang: c.lang, question: c.text, facts: a.facts, fallback: a.fallback });
+        const reply = await phrase({ lang: c.lang, question: c.text, facts: a.facts, fallback: a.fallback, exact: c.intent === "coin" });
         const link = a.token ? `\n\n📈 chart: ${SITE}/coin/${a.token}` : `\n\n📈 ${SITE}`;
         if (a.card) await tg("sendPhoto", { chat_id: m.chat.id, caption: (reply + link).slice(0, 1000), reply_to_message_id: m.message_id }, a.card);
         else await tg("sendMessage", { chat_id: m.chat.id, text: reply + link, reply_to_message_id: m.message_id, disable_web_page_preview: true });
