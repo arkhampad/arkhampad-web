@@ -546,6 +546,7 @@ async function answerMentions() {
   const launch = day === "2026-11-09" || day === "2026-11-10";
   const cap = launch ? Number(env("ES_X_REPLY_MAX_LAUNCH")) || 1000 : Number(env("ES_X_REPLY_MAX")) || 300;
   const perUser = launch ? 5 : 3;
+  if (fresh.length) await loadHype(); // without the HYPE price every $ figure comes out as $0
   for (const m of fresh) {
     const save = (note, token = null, reply = null) => q(`insert into es_x_replies (mention_id, author, token, reply_id, note) values ($1, $2, $3, $4, $5) on conflict do nothing`, [m.id, m.author_id, token, reply, note]);
     if (m.author_id === myId) { await save("own"); continue; }
@@ -557,7 +558,7 @@ async function answerMentions() {
     try { a = await answerFor(c); } catch (e) { log("answer data:", e.message); a = null; }
     if (!a) { await save(`no answer (${c.intent})`); continue; }
     try {
-      const text = await phrase({ lang: c.lang, question: c.text, facts: a.facts, fallback: a.fallback, exact: c.intent === "coin" });
+      const text = await phrase({ lang: c.lang, question: c.text, facts: a.facts, fallback: a.fallback, exact: !a.general });
       const mediaId = a.card ? await uploadImage(a.card) : null;
       const id = await tweet(text, { mediaId, replyTo: m.id });
       await save(`answered ${c.intent} (${c.lang})`, a.token || null, id);
@@ -617,7 +618,7 @@ async function telegramLoop() {
         else c = await classify(text);
         const a = await answerFor(c);
         if (!a) continue;
-        const reply = await phrase({ lang: c.lang, question: c.text, facts: a.facts, fallback: a.fallback, exact: c.intent === "coin" });
+        const reply = await phrase({ lang: c.lang, question: c.text, facts: a.facts, fallback: a.fallback, exact: !a.general });
         const link = a.token ? `\n\n📈 chart: ${SITE}/coin/${a.token}` : `\n\n📈 ${SITE}`;
         if (a.card) await tg("sendPhoto", { chat_id: m.chat.id, caption: (reply + link).slice(0, 1000), reply_to_message_id: m.message_id }, a.card);
         else await tg("sendMessage", { chat_id: m.chat.id, text: reply + link, reply_to_message_id: m.message_id, disable_web_page_preview: true });
