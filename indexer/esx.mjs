@@ -624,7 +624,8 @@ async function main() {
   await q(`create table if not exists es_x_posts (id bigserial primary key, kind text not null, token text, tpl int, text text, tweet_id text, at timestamptz not null default now())`);
   await q(`create index if not exists es_x_posts_at on es_x_posts (at desc)`);
   await q(`create table if not exists es_tg_answers (id bigserial primary key, chat text, chat_type text, intent text, at timestamptz not null default now())`);
-  if (env("ES_TG_TOKEN")) telegramLoop().catch((e) => log("telegram stopped:", e.message));
+  // Telegram: if it can't connect (network hiccup at start, Telegram busy), try again every 30 s
+  if (env("ES_TG_TOKEN")) (async () => { for (let i = 0; ; i++) { try { await telegramLoop(); } catch (e) { log(`telegram: ${e.message}${e.cause ? ` (${e.cause.code || e.cause.message})` : ""}, retrying in 30 s`); } await sleep(30_000); } })();
   await q(`create table if not exists es_x_replies (mention_id text primary key, author text, token text, reply_id text, note text, at timestamptz not null default now())`);
   // answer people who tag us, every 75 s (each mention read costs $0.001, each answer $0.01)
   if (env("ES_X_REPLIES") !== "0" && !DRY && KEYS.apiKey) {
