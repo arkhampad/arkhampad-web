@@ -22,6 +22,10 @@ export const ELY_RPC_LIST = [ELY_RPCS[0], OWN_RPC, ...ELY_RPCS.slice(1)];
 // Our doorway is only the backup: every visitor's reads through it share one allowance, and when that ran
 // out, sends (which do go through it) failed with "network busy".
 const DIRECT = ELY_RPCS;
+// Extra nodes used only where any answer is safe to trust (a receipt, or the highest allowance seen):
+// rpc.ronspad.fun lags sometimes, so it never decides a balance, but when another node is down it still
+// sees mined transactions.
+const WATCH = [...new Set([...ELY_RPCS, "https://rpc.ronspad.fun"])];
 export const ELY_RPC = ELY_RPCS[0];
 
 let rpcAt = 0;
@@ -249,7 +253,8 @@ export const NONCE_HELP = "Your wallet's transaction counter is out of date. In 
 export const nice = (e: unknown) => {
   const m = String((e as Error)?.message ?? e);
   if (/nonce/i.test(m)) return NONCE_HELP;
-  if (e instanceof SlowTx || /timed out|timeout/i.test(m)) return SLOW_HELP;
+  if (e instanceof SlowTx) return m || SLOW_HELP;
+  if (/timed out|timeout/i.test(m)) return SLOW_HELP;
   // a node didn't answer: say which one and how, so it can be fixed
   const he = e as { name?: string; status?: number; url?: string; details?: string };
   if (/HTTP request failed|network is busy/i.test(m)) {
@@ -283,11 +288,13 @@ export async function waitReceipt(hash: Hex, ms = 120_000): Promise<RawReceipt> 
   while (Date.now() < end) {
     try {
       // the nodes directly every round; our doorway (which asks them all again) only every 5th
-      const r = await Promise.any((round++ % 5 === 4 ? ELY_RPC_LIST : DIRECT).map(ask));
+      const r = await Promise.any((round++ % 5 === 4 ? [...WATCH, OWN_RPC] : WATCH).map(ask));
       return { status: r.status === "0x1" ? "success" : "reverted", logs: r.logs ?? [], contractAddress: r.contractAddress ?? null };
     } catch {}
     await new Promise((r) => setTimeout(r, 700));
   }
+  // tell the wallet code: this transaction may never have reached the chain, don't count past it
+  try { window.dispatchEvent(new CustomEvent("ely:slowtx", { detail: hash })); } catch {}
   throw new SlowTx(SLOW_HELP);
 }
 export async function wait(hash: Hex) {
@@ -330,12 +337,48 @@ export async function buy(signer: Signer, t: EToken, hypeIn: bigint, minOut: big
  * sent in the background, no pop-up). The later sale is then a single transaction, with no approval racing
  * ahead of it through nodes that are a few seconds behind. Failing here costs nothing: sell() approves itself.
  */
+export async function allowanceMax(owner: Address, token: Address): Promise<bigint | null> {
+  const data = encodeFunctionData({ abi: ERC20, functionName: "allowance", args: [owner, ROUTER as Address] });
+  let best: bigint | null = null;
+  const ask = async (url: string) => {
+    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: token, data }, "latest"] }), signal: AbortSignal.timeout(4000) });
+    const j = await r.json();
+    if (typeof j?.result !== "string" || j.result === "0x") return;
+    const v = BigInt(j.result);
+    if (best == null || v > best) best = v;
+  };
+  await Promise.allSettled(WATCH.map(ask));
+  if (best == null) await ask(OWN_RPC).catch(() => {});
+  return best;
+}
+// An approval sent but not yet seen on a node is remembered (per wallet + coin, 15 min), so a second tap
+// waits for it instead of sending another one behind it.
+const pendKey = (owner: string, token: string) => `ely_appr_${owner.toLowerCase()}_${token.toLowerCase()}`;
+const pendGet = (owner: string, token: string): Hex | null => {
+  try { const v = JSON.parse(localStorage.getItem(pendKey(owner, token)) || "null"); return v && Date.now() - v.at < 900_000 ? v.hash : null; } catch { return null; }
+};
+const pendSet = (owner: string, token: string, hash: Hex | null) => {
+  try { if (hash) localStorage.setItem(pendKey(owner, token), JSON.stringify({ hash, at: Date.now() })); else localStorage.removeItem(pendKey(owner, token)); } catch {}
+};
+async function waitAllowance(owner: Address, token: Address, need: bigint, ms: number) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const a = await allowanceMax(owner, token);
+    if (a != null && a >= need) return true;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return false;
+}
+
 export function prepareSell(signer: Signer, token: Address) {
   if (!signer.embedded || !ROUTER) return;
   (async () => {
-    const allowed = await ely().readContract({ address: token, abi: ERC20, functionName: "allowance", args: [signer.address, ROUTER as Address] }).catch(() => null);
-    if (allowed == null || allowed > MAX / 2n) return;
-    await signer.sendTx!(ELY_CHAIN, { to: token, data: encodeFunctionData({ abi: ERC20, functionName: "approve", args: [ROUTER as Address, MAX] }), gas: 80_000n });
+    await new Promise((r) => setTimeout(r, 4000)); // let the buy go first, so the two don't fight over a nonce
+    const allowed = await allowanceMax(signer.address, token);
+    if (allowed == null || allowed > MAX / 2n || pendGet(signer.address, token)) return;
+    const h = await signer.sendTx!(ELY_CHAIN, { to: token, data: encodeFunctionData({ abi: ERC20, functionName: "approve", args: [ROUTER as Address, MAX] }), gas: 80_000n });
+    pendSet(signer.address, token, h);
+    waitReceipt(h, 180_000).then(() => pendSet(signer.address, token, null), () => {});
   })().catch(() => {});
 }
 
@@ -345,20 +388,32 @@ export async function sell(signer: Signer, t: EToken, amountIn: bigint, minOut: 
   try {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
     const data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "sell", args: [p, amountIn, minOut, deadline] });
-    const allowed = await ely().readContract({ address: p.token, abi: ERC20, functionName: "allowance", args: [signer.address, ROUTER] });
+    const allowed = (await allowanceMax(signer.address, p.token)) ?? 0n;
     const approveData = encodeFunctionData({ abi: ERC20, functionName: "approve", args: [ROUTER, MAX] });
     if (allowed < amountIn) {
       onStep?.("Approving…");
-      // Nov 1: approval and sale sent back to back (consecutive nonces) left the sale stuck whenever the
-      // approval didn't reach the sequencer: the page said "Sold" and nothing happened. Now the sale only
-      // goes out once the approval is on chain. (Coins bought or launched here are approved in the
-      // background right away, so most sales skip this step.)
-      await wait(await signer.sendTx(ELY_CHAIN, { to: p.token, data: approveData, gas: 80_000n }));
-      for (let i = 0; i < 25; i++) {
-        const now = await ely().readContract({ address: p.token, abi: ERC20, functionName: "allowance", args: [signer.address, ROUTER] }).catch(() => 0n);
-        if (now >= amountIn) break;
-        await new Promise((r) => setTimeout(r, 300));
+      // Nov 1: approval and sale sent back to back left the sale stuck whenever the approval didn't reach
+      // the sequencer. The sale only goes out once the approval is on chain.
+      // Nov 4: an approval already on its way (from the background step after a buy, or an earlier tap) is
+      // waited for, not sent again; and "on chain" is checked on every node, not only the first to answer.
+      let h = pendGet(signer.address, p.token);
+      if (!h) { h = await signer.sendTx(ELY_CHAIN, { to: p.token, data: approveData, gas: 80_000n }); pendSet(signer.address, p.token, h); }
+      let ok = false;
+      try {
+        const rc = await waitReceipt(h, 60_000);
+        if (rc.status !== "success") { pendSet(signer.address, p.token, null); throw new TradeFail("Approval failed on chain. Please try again."); }
+        ok = await waitAllowance(signer.address, p.token, amountIn, 15_000);
+      } catch (e) {
+        if (!(e instanceof SlowTx)) throw e;
       }
+      // receipt not seen yet: the allowance itself is the proof, keep looking a little longer
+      if (!ok) ok = await waitAllowance(signer.address, p.token, amountIn, 45_000);
+      if (!ok) {
+        // a lost approval: forget it so the next tap sends a fresh one with a fresh counter
+        pendSet(signer.address, p.token, null);
+        throw new SlowTx("The approval didn't reach the network in time. Nothing was sold and no coins left your wallet. Tap Sell again.");
+      }
+      pendSet(signer.address, p.token, null);
     }
     onStep?.("Selling…");
     let gas: bigint;

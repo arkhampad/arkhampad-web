@@ -19,6 +19,8 @@ const noteSent = (addr: string, n: number) => {
   const was = sentNonce.get(k);
   if (!was || n >= was.n) sentNonce.set(k, { n, at: Date.now() });
 };
+// A transaction that never showed up on any node may never have reached the sequencer: stop counting past it.
+if (typeof window !== "undefined") window.addEventListener("ely:slowtx", () => sentNonce.clear());
 async function nextNonce(addr: Address): Promise<number | null> {
   const fresh = await freshNonce(addr);
   const mine = sentNonce.get(addr.toLowerCase());

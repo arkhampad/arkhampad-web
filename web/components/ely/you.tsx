@@ -91,7 +91,8 @@ export function YouPage() {
   // while sign-in is still loading after a refresh, show the last account's numbers instead of a blank page
   const me = live ?? (!w.ready ? lastAddress() : null);
   if (live) rememberAddress(live);
-  const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
+  const usdRead = usePoll(fetchHypeUsd, 30_000);
+  const usd = usdRead ?? 0;
   const hype = shownHype(me, usePoll(async () => (me ? hypeBalance(me as Address) : null), 5000, [me]) ?? cachedHype(me));
   // USDC sitting on Elysium itself (from coins that trade in USDC)
   const elyUsdc = useElyUsdc(me);
@@ -144,6 +145,9 @@ export function YouPage() {
   const usdcWait = waiting ? Number(waiting.usdc) / 1e6 : 0;
   const hypeWait = waiting ? fromWei(waiting.hype) : 0;
   const waitUsd = usdcWait + hypeWait * usd;
+  // about 0.01 HYPE always stays on HyperEVM to pay the bridge fee, so only what's above that can be moved
+  const hypeMovable = Math.max(0, hypeWait - 0.0105);
+  const moveUsd = usdcWait + hypeMovable * usd;
   const byAddr = new Map((holdings ?? []).map((h) => [h.t.address, h.t]));
 
   return (
@@ -160,7 +164,7 @@ export function YouPage() {
       <section className="e-balance">
         <div className="e-balance-top">
           <span>{tr("Total balance")}</span>
-          <b className="num">{hype == null ? "—" : money((hypeNum + tokensHype) * usd + waitUsd + elyUsdc)}</b>
+          <b className="num">{hype == null || !usdRead ? "—" : money((hypeNum + tokensHype) * usd + waitUsd + elyUsdc)}</b>
           <div className="e-balance-split">
             <span><i style={{ background: "var(--e-tealfill)" }} />{hypeNum.toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE <em>{money(hypeNum * usd)}</em></span>
             <span><i style={{ background: "#7c5cff" }} />{tr("Tokens")} <em>{money(tokensHype * usd)}</em></span>
@@ -175,11 +179,11 @@ export function YouPage() {
         </div>
       </section>
 
-      {waitUsd >= 0.5 && (
-        <Link href={`/bridge/?tab=${usdcWait >= hypeWait * usd ? "usdc" : "hype"}`} className="e-hint" style={{ fontSize: 15 }}>
-          {usdcWait >= hypeWait * usd
+      {moveUsd >= 0.5 && (
+        <Link href={`/bridge/?tab=${usdcWait >= hypeMovable * usd ? "usdc" : "hype"}`} className="e-hint" style={{ fontSize: 15 }}>
+          {usdcWait >= hypeMovable * usd
             ? tr("You have {n} USDC waiting. Move it to Elysium to start trading.", { n: usdcWait.toFixed(2) })
-            : tr("You have {n} HYPE on HyperEVM. Move it to Elysium to start trading.", { n: hypeWait.toFixed(4) })}{" "}
+            : tr("You have {n} HYPE on HyperEVM. Move it to Elysium to start trading.", { n: hypeMovable.toFixed(4) })}{" "}
           <b>{tr("Move it now →")}</b>
         </Link>
       )}
