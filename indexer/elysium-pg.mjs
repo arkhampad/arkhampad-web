@@ -4,6 +4,7 @@
 const COLS = ["address", "name", "symbol", "decimals", "supply", "uri", "image", "description", "venue", "pool", "manager", "whype", "token_is0", "fee", "tick_spacing", "hooks", "maker", "creator", "launchpad", "ours", "created_block", "created_at", "price_hype"];
 
 let windowsAt = 0;
+let fullAt = 0; // last full stats run (db/034)
 export async function makePgStore(pool) {
   const tokens = new Map();
   const { rows } = await pool.query(`select ${COLS.join(",")} from ely_tokens`);
@@ -64,7 +65,16 @@ export async function makePgStore(pool) {
     refreshStats: async () => {
       const r = await pool.query("select v from ely_meta where k='hype_usd'");
       const usd = Number(r.rows[0]?.v) || 0;
-      await pool.query("select ely_refresh_stats($1)", [usd]);
+      // db/034: every minute only coins that traded in the last 15 min; everything every 10 min. Rows are
+      // written only when a number changed (the old every-minute rewrite of ~2,000 rows ran the disk dry).
+      const full = Date.now() - fullAt > 10 * 60_000;
+      try {
+        await pool.query("select ely_refresh_stats_v2($1, $2)", [usd, !full]);
+        if (full) fullAt = Date.now();
+      } catch (e) {
+        if (!/ely_refresh_stats_v2/.test(String(e.message))) throw e;
+        await pool.query("select ely_refresh_stats($1)", [usd]); // db/034 not run yet
+      }
       // short windows for Discover's 5m / 1h / 6h filter (db/027), every 2 minutes
       if (Date.now() - windowsAt > 120_000) {
         windowsAt = Date.now();
