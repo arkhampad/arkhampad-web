@@ -26,8 +26,20 @@ async function rest<T>(path: string, ttl: number): Promise<T> {
 const withImg = <T extends { address: string; image?: string | null }>(t: T): T => {
   const x = t as unknown as { mcap_hype?: number | null; price_hype?: number | null; supply?: string | number | null; decimals?: number | null };
   const fix = !x.mcap_hype && x.price_hype && x.supply ? { mcap_hype: x.price_hype * (Number(x.supply) / 10 ** (x.decimals ?? 18)) } : {};
-  return { ...t, ...fix, image: `/api/ely-img?a=${t.address}` };
+  return { ...t, ...fix, ...readableNames(t as unknown as { address: string; name?: string | null; symbol?: string | null }), image: `/api/ely-img?a=${t.address}` };
 };
+/**
+ * Some coins are named with nothing but blocks or symbols (e.g. "█████"), which shows as solid bars all over
+ * the site. A name or ticker without a single letter, digit or emoji is replaced: "Unnamed coin" and the start of
+ * the contract address (the real name stays on chain; only how we show it changes).
+ */
+const hasText = (s: string | null | undefined) => !!s && /[\p{L}\p{N}\p{Extended_Pictographic}]/u.test(s); // letters, digits or emoji
+export function readableNames(t: { address: string; name?: string | null; symbol?: string | null }) {
+  const out: { name?: string; symbol?: string } = {};
+  if (!hasText(t.symbol)) out.symbol = t.address.slice(0, 6).toUpperCase().replace(/^0X/, "0x");
+  if (!hasText(t.name)) out.name = "Unnamed coin";
+  return out;
+}
 const TR_COLS = "id,token,tx,log_index,at,side,hype,amount,price_hype,trader";
 
 export type EToken = {

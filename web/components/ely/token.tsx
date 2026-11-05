@@ -22,7 +22,7 @@ import { chainActivity, isFresh, mergeTrades } from "@/lib/elyfresh";
 import { pendingTrade } from "@/lib/holdings";
 import { ago, compact, fetchClusters, fetchHolders, fetchHypeUsd, fetchMyCoinTrades, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
 import { ascendBuy, ascendQuote, ascendSell, isAscend, quoteToken, type QuoteToken } from "@/lib/ascend";
-import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, pendingToken, SlowTx, taxedTokens, sellable, USER_NO } from "@/lib/elytrade";
+import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, Reverted, chainToken, pendingToken, SlowTx, taxedTokens, sellable, USER_NO } from "@/lib/elytrade";
 
 const GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays for gas on "Max"
 const supplyOf = (t: EToken) => Number(BigInt(t.supply || "0")) / 10 ** (t.decimals ?? 18);
@@ -55,7 +55,10 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
   const w = useWallet();
   const [side, setSide] = useState<"buy" | "sell">(side0);
   const [val, setVal] = useState(preset && side0 === "buy" ? preset : "");
-  const [slip, setSlip] = useState(5);
+  // a coin under an hour old moves fast: 5% slippage stopped many buys on chain, so new coins start at 10%
+  const youngCoin = !!t.created_at && Date.now() - Date.parse(t.created_at) < 3600e3;
+  const [slip, setSlip] = useState(youngCoin ? 10 : 5);
+  useEffect(() => setSlip(youngCoin ? 10 : 5), [t.address, youngCoin]);
   const [out, setOut] = useState<bigint | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -114,12 +117,23 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
     ? [...(qt.usd ? ["5", "10", "50"] : ["0.1", "0.5", "1"]).map((v) => ({ l: v, v, x: null as bigint | null })), (() => { const x = hype != null && hype > keep ? hype - keep : 0n; return { l: tr("Max"), v: hype != null ? trim(formatUnits(x, qDec)) : "", x: hype != null ? x : null }; })()]
     : [25, 50, 75, 100].map((p) => { const x = bal != null ? (bal * BigInt(p)) / 100n : null; return { l: `${p}%`, v: x != null ? trim(formatUnits(x, dec)) : "", x }; });
 
-  // one trade at a time: the button is locked from the first tap until the network has taken the trade
-  // (a second or two); then the result shows at once and the chain's confirmation follows in the background
+  // one trade at a time: the button is locked from the first tap until the chain has confirmed the trade
+  // (or said no); only then does the result show
   const going = useRef(false);
+  // a trade of this coin still on its way (also after a page reload): no second one on top of it, they would
+  // fight over the same wallet counter. After 3 minutes the button frees up again whatever happened.
+  const txs = useTxLog(addr, t.address);
+  const waitingLast = txs.some((x) => x.state === "pending" && Date.now() - x.at < 180_000);
+  // free the button again the moment the 3 minutes are up (nothing else re-draws it then)
+  useEffect(() => {
+    const open = txs.filter((x) => x.state === "pending" && Date.now() - x.at < 180_000);
+    if (!open.length) return;
+    const id = setTimeout(() => setTick((x) => x + 1), Math.max(1000, 180_000 - (Date.now() - Math.min(...open.map((x) => x.at)))));
+    return () => clearTimeout(id);
+  }, [txs]);
   async function go() {
     if (!w.signedIn || !w.signer) return w.login();
-    if (going.current) return;
+    if (going.current || waitingLast) return;
     going.current = true;
     (document.activeElement as HTMLElement | null)?.blur?.(); // close the phone keyboard
     setMsg(null);
@@ -135,31 +149,44 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
         : side === "buy" ? await buy(w.signer, t, amountIn, min) : await sell(w.signer, t, amountIn, min, step);
       const label0 = `${side === "buy" ? "Buy" : "Sell"} ${sym}`;
       logTx(addr, { hash: sent.hash, label: label0, token: t.address.toLowerCase() });
-      const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : qNative ? tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) }) : `${tr("Sold for")} ${fromWei(q, qDec).toFixed(qt.usd ? 2 : 4)} ${qSym}`;
-      // the network has it: show the result and the new balances now
+      // Nov 5: "Bought ✓" used to show the moment the network took the trade, with the new balances, and a
+      // trade the chain then stopped left coins on screen that weren't there. Now nothing is shown as done
+      // until the chain has it: the button says "Confirming…" for those few seconds.
+      setBusy(tr("Confirming…"));
       const h0 = hype ?? 0n;
       const b0 = bal ?? 0n;
+      try {
+        await sent.confirmed;
+      } catch (e) {
+        setTick((x) => x + 1);
+        if (e instanceof SlowTx) {
+          // the log keeps it as "on its way" and keeps checking; the button stays locked for this coin meanwhile
+          setMsg({ ok: false, text: tr("Not confirmed yet. Check your balance in a minute before trying again.") });
+          return;
+        }
+        setTxState(addr, sent.hash, "failed");
+        if (e instanceof Reverted) {
+          setMsg({ ok: false, text: side === "buy"
+            ? tr("Not bought: the price moved more than {s}% before your trade went through, so it was stopped. No coins were bought and your HYPE stayed in your wallet (only a tiny network fee was used). Try again, or pick a higher slippage.", { s: slip })
+            : tr("Not sold: the price moved more than {s}% before your trade went through, so it was stopped. Your coins stayed in your wallet (only a tiny network fee was used). Try again, or pick a higher slippage.", { s: slip }) });
+          return;
+        }
+        setMsg({ ok: false, text: tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.") });
+        return;
+      }
+      setTxState(addr, sent.hash, "ok");
+      funnel(addr, "trade");
+      const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : qNative ? tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) }) : `${tr("Sold for")} ${fromWei(q, qDec).toFixed(qt.usd ? 2 : 4)} ${qSym}`;
+      // confirmed: some nodes still show the old balances for a few seconds, so show the new ones meanwhile
       const nextHype = side === "buy" ? (h0 > amountIn ? h0 - amountIn : 0n) : h0 + q;
       const nextBal = side === "buy" ? b0 + q : b0 > amountIn ? b0 - amountIn : 0n;
-      setAfter({ hype: nextHype, bal: nextBal, until: Date.now() + 90_000 });
-      // the header and You move HYPE and the coin together (no jump while the trade is on its way)
+      setAfter({ hype: nextHype, bal: nextBal, until: Date.now() + 30_000 });
       if (addr) pendingTrade(addr, t, { hypeFrom: qNative ? h0 : null, hypeTo: qNative ? nextHype : null, tokFrom: b0, tokTo: nextBal });
       setMsg({ ok: true, text: `${done} ✓` });
       setVal("");
       setExact(null);
-      setBusy(null);
-      going.current = false;
-      sent.confirmed.then(
-        () => { setTxState(addr, sent.hash, "ok"); funnel(addr, "trade"); setAfter(null); setTick((x) => x + 1); onDone?.(); },
-        (e) => {
-          if (!(e instanceof SlowTx)) setTxState(addr, sent.hash, "failed");
-          // not confirmed after two minutes: don't leave "Sold"/"Bought" on screen as if it happened
-          if (e instanceof SlowTx) { setAfter(null); setTick((x) => x + 1); setMsg({ ok: false, text: tr("Not confirmed yet. Check your balance in a minute before trying again.") }); return; }
-          setAfter(null);
-          setTick((x) => x + 1);
-          setMsg({ ok: false, text: tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.") });
-        },
-      );
+      setTick((x) => x + 1);
+      onDone?.();
     } catch (e) {
       // no hash came back: almost always the trade never left the wallet. Say how to be sure before retrying.
       const why = tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.");
@@ -172,13 +199,14 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
   }
 
   let label = tr(side === "buy" ? "Buy {sym}" : "Sell {sym}", { sym });
-  let disabled = !!busy;
+  let disabled = !!busy || waitingLast;
   if (!w.signedIn) label = tr("Log in to trade");
   else if (!ROUTER && !asc) { label = tr("Trading opens soon"); disabled = true; }
   else if (!tradable || (noRoute && inWei > 0n)) { label = tr("Not tradable here yet"); disabled = true; }
   else if (side === "buy" && unsellable) { label = tr("Can't be sold here"); disabled = true; }
   else if (inWei <= 0n) { label = tr("Enter an amount"); disabled = true; }
   else if (short1) { label = side === "buy" ? (qNative ? tr("Not enough HYPE") : `${tr("Not enough")} ${qSym}`) : tr("Not enough {sym}", { sym }); disabled = true; }
+  if (waitingLast && !busy) label = tr("Waiting for your last trade…");
   if (busy) label = busy;
 
   return (
@@ -208,6 +236,7 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
       </div>
       <button type="button" className={`e-go ${side}`} disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={go}>{label}</button>
       {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
+      {youngCoin && <div className="e-hint" style={{ marginTop: 8 }}>{tr("New coin: prices move fast in the first hour, so slippage starts at 10%.")}</div>}
       <TxRecovery me={addr} token={t.address} />
       {side === "buy" && unsellable && <div className="e-msg bad" role="status">{tr("This coin takes a tax on trades and may not be sellable here. Trade it on its own site.")}</div>}
       {asc && !qNative && <div className="e-hint" style={{ marginTop: 8 }}>{tr("This coin trades in {q}. You pay and receive {q} on Elysium; gas is paid in HYPE.", { q: qSym })}</div>}
@@ -232,7 +261,7 @@ function TxRecovery({ me, token }: { me: string | null; token: string }) {
           <span className="e-txrec-dot" aria-hidden />
           <span className="e-txrec-t">
             <b>{x.label}</b>
-            <span className="dim">{x.state === "pending" ? tr("On its way. Don't send it again, it's still being confirmed.") : x.state === "ok" ? tr("Went through.") : tr("Failed on chain. Your funds stayed in your wallet, minus the network fee.")} · {ago(new Date(x.at).toISOString())}</span>
+            <span className="dim">{x.state === "pending" ? tr("On its way. Don't send it again, it's still being confirmed.") : x.state === "ok" ? tr("Went through.") : tr("Didn't go through. Your funds stayed in your wallet; only a tiny network fee was used.")} · {ago(new Date(x.at).toISOString())}</span>
           </span>
           <a className="dim" href={EXPLORER_TX(x.hash)} target="_blank" rel="noopener noreferrer">{tr("View")}</a>
           {x.state !== "pending" && <button type="button" className="e-txrec-x" aria-label={tr("Dismiss")} onClick={() => dismissTx(me, x.hash)}>✕</button>}

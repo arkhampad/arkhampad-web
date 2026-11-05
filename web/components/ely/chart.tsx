@@ -38,10 +38,12 @@ function fmt(v: number, mc: boolean): string {
   if (!Number.isFinite(v)) return "";
   const a = Math.abs(v);
   if (mc || a >= 1000) {
+    // enough digits that neighbouring axis lines never read the same ($2,450 and $2,480 were both "$2.5K")
     if (a >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-    if (a >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
-    if (a >= 1e3) return `$${(v / 1e3).toFixed(1)}K`;
-    return `$${v.toFixed(0)}`;
+    if (a >= 1e6) return `$${(v / 1e6).toFixed(a >= 1e8 ? 1 : a >= 1e7 ? 2 : 3)}M`;
+    if (a >= 1e5) return `$${(v / 1e3).toFixed(1)}K`;
+    if (a >= 1e4) return `$${(v / 1e3).toFixed(2)}K`;
+    return `$${Math.round(v).toLocaleString("en-US")}`;
   }
   if (v >= 1) return `$${v.toFixed(4)}`;
   if (v <= 0) return "$0";

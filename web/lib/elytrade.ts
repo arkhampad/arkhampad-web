@@ -297,9 +297,11 @@ export async function waitReceipt(hash: Hex, ms = 120_000): Promise<RawReceipt> 
   try { window.dispatchEvent(new CustomEvent("ely:slowtx", { detail: hash })); } catch {}
   throw new SlowTx(SLOW_HELP);
 }
+/** The chain ran the trade and stopped it (almost always: the price moved past the slippage limit). */
+export class Reverted extends TradeFail {}
 export async function wait(hash: Hex) {
   const r = await waitReceipt(hash);
-  if (r.status !== "success") throw new TradeFail("Trade failed on chain. Nothing was spent except gas.");
+  if (r.status !== "success") throw new Reverted("Trade failed on chain. Nothing was spent except gas.");
   return hash;
 }
 

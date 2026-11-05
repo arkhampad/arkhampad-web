@@ -216,6 +216,17 @@ export function makeElysium(cfg, store) {
   let tipNow = 0;
   let win = null; // { from, to, tFrom, tTo }
   const recent = (b) => tipNow - b < (cfg.liveBlocks ?? 300);
+  // Who traded. Near the chain tip: the transaction's sender. Further back (catching up after a busy spell)
+  // the event's own address saves a lookup per trade, but for a trade through a router that address is the
+  // router, not the person: then the sender is looked up anyway (Nov 5: "Your entry" was missing for
+  // ArkhamPad trades indexed while the indexer was behind).
+  const ROUTERS = new Set([...String(process.env.ELY_ROUTERS || "").split(","), "0xb1eecb952d4853eafcd219c0060218eac6f2150a", lc(cfg.router || "")].map((x) => x.trim().toLowerCase()).filter((x) => /^0x[0-9a-f]{40}$/.test(x)));
+  async function traderOf(l) {
+    const t1 = l.topics[1] ? addrTopic(l.topics[1]) : null;
+    const t2 = l.topics[2] ? addrTopic(l.topics[2]) : null;
+    if (recent(Number(l.blockNumber)) || ROUTERS.has(t1) || ROUTERS.has(t2)) return (await txField(txFrom, l.transactionHash, "from")) ?? t2;
+    return t2;
+  }
   async function timeOf(b) {
     if (!recent(b) && win && b >= win.from && b <= win.to && win.to > win.from) {
       return Math.round(win.tFrom + ((b - win.from) / (win.to - win.from)) * (win.tTo - win.tFrom));
@@ -582,7 +593,7 @@ export function makeElysium(cfg, store) {
         hype,
         amount,
         price_hype: priceFromSqrt(sqrt, t.token_is0, t.decimals ?? 18, qDec) * toHype,
-        trader: recent(Number(l.blockNumber)) ? await txField(txFrom, l.transactionHash, "from") : addrTopic(l.topics[2]),
+        trader: await traderOf(l),
       });
     };
     const jobs = [];
