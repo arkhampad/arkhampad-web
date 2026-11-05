@@ -79,6 +79,8 @@ async function uploadImage(buf) {
 }
 // X allows only one $CASHTAG per post: keep the first, the rest lose their "$"
 function oneCashtag(text) {
+  // a ticker with a symbol inside ("e/acc", "pepe.hl", "a-b") isn't a cashtag: X would read "$e" and show Ethereum
+  text = text.replace(/\$([A-Za-z0-9_]+)(?=[\/\-.'’][A-Za-z0-9])/g, "$1");
   let seen = false;
   return text.replace(/\$([A-Za-z][A-Za-z0-9_]{0,14})\b/g, (m, sym) => (seen ? sym : ((seen = true), m)));
 }
