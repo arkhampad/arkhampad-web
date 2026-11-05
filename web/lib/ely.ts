@@ -243,6 +243,11 @@ export async function fetchCreated(creator: string): Promise<EToken[]> {
   const rows = await rest<EToken[]>(`ely_tokens?select=${LIST_COLS}&creator=eq.${creator.toLowerCase()}&ours=eq.true&order=created_at.desc&limit=100`, 10);
   return rows.map(withImg);
 }
+/** One wallet's trades in one coin, oldest first (for "Your position"). */
+export async function fetchMyCoinTrades(trader: string, token: string): Promise<ETrade[]> {
+  if (MOCK) return [];
+  return rest<ETrade[]>(`ely_trades?select=${TR_COLS}&token=eq.${token.toLowerCase()}&trader=eq.${trader.toLowerCase()}&order=at.asc,id.asc&limit=1000`, 4);
+}
 export async function fetchMyTrades(trader: string, limit = 40): Promise<ETrade[]> {
   if (MOCK) return [];
   return rest<ETrade[]>(`ely_trades?select=${TR_COLS}&trader=eq.${trader.toLowerCase()}&order=at.desc&limit=${limit}`, 4);

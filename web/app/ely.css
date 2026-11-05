@@ -1041,3 +1041,32 @@ html { overscroll-behavior-y: none; }
 .e-onb-toast a { margin-left: auto; color: var(--e-teal); font-weight: 700; white-space: nowrap; }
 @media (min-width: 900px) { .e-onb-toast { bottom: 24px; } }
 .e-onb { border-radius: 22px; }
+
+/* Transaction recovery: trades sent from this browser and what the chain says about them */
+.e-txrec { display: grid; gap: 6px; margin-top: 10px; }
+.e-txrec-r { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 12px; border: 1px solid var(--e-line); background: var(--e-card2); font-size: 12.5px; min-width: 0; }
+.e-txrec-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--e-dim); }
+.e-txrec-r.pending .e-txrec-dot { background: #f5a524; animation: e-txpulse 1.2s ease-in-out infinite; }
+.e-txrec-r.ok .e-txrec-dot { background: var(--e-up); }
+.e-txrec-r.failed { border-color: color-mix(in srgb, var(--e-down) 40%, transparent); }
+.e-txrec-r.failed .e-txrec-dot { background: var(--e-down); }
+.e-txrec-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.e-txrec-t b { color: var(--e-text); font-weight: 650; }
+.e-txrec-t .dim { overflow-wrap: anywhere; }
+.e-txrec-r a { flex: none; text-decoration: underline; }
+.e-txrec-x { flex: none; border: 0; background: none; color: var(--e-dim); cursor: pointer; padding: 2px 4px; font-size: 12px; }
+@keyframes e-txpulse { 50% { opacity: .35; } }
+
+/* Your position */
+.e-pos { padding: 14px 16px; display: grid; gap: 12px; }
+.e-pos-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.e-pos-h > b { font-size: 15px; color: var(--e-text); }
+.e-pos-g { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.e-pos-g > div { display: flex; flex-direction: column; gap: 3px; padding: 11px 12px; border-radius: 12px; background: var(--e-card2); border: 1px solid var(--e-line); min-width: 0; }
+.e-pos-g span { font-size: 11.5px; color: var(--e-dim); }
+.e-pos-g b { font-size: 19px; color: var(--e-text); overflow-wrap: anywhere; }
+.e-pos-g b.up, .e-pos-g small.up { color: var(--e-up); }
+.e-pos-g b.down, .e-pos-g small.down { color: var(--e-down); }
+.e-pos-g small { font-size: 12px; }
+.e-pos-l { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; }
+.e-pos-l b { color: var(--e-text2); font-weight: 600; }

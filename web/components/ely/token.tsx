@@ -9,7 +9,9 @@ import { useWallet } from "@/components/wallet";
 import { funnel } from "@/lib/funnel";
 import { RingAvatar, TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
-import { EChart } from "./chart";
+import { EChart, type ChartMark } from "./chart";
+import { positionFrom } from "@/lib/position";
+import { EXPLORER_TX, dismissTx, logTx, setTxState, useTxLog } from "@/lib/txlog";
 import { ScoutPanel } from "./scout";
 import { ShieldPanel } from "./shield";
 import { useShield, useDevRecord } from "@/lib/shield";
@@ -18,9 +20,9 @@ import { ShareButton } from "./share";
 import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
 import { chainActivity, isFresh, mergeTrades } from "@/lib/elyfresh";
 import { pendingTrade } from "@/lib/holdings";
-import { ago, compact, fetchClusters, fetchHolders, fetchHypeUsd, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
+import { ago, compact, fetchClusters, fetchHolders, fetchHypeUsd, fetchMyCoinTrades, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
 import { ascendBuy, ascendQuote, ascendSell, isAscend, quoteToken, type QuoteToken } from "@/lib/ascend";
-import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, pendingToken, SlowTx, taxedTokens, sellable } from "@/lib/elytrade";
+import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, chainToken, pendingToken, SlowTx, taxedTokens, sellable, USER_NO } from "@/lib/elytrade";
 
 const GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays for gas on "Max"
 const supplyOf = (t: EToken) => Number(BigInt(t.supply || "0")) / 10 ** (t.decimals ?? 18);
@@ -131,6 +133,8 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
       const sent = asc
         ? side === "buy" ? await ascendBuy(w.signer, t, amountIn, min, step) : await ascendSell(w.signer, t, amountIn, min, step)
         : side === "buy" ? await buy(w.signer, t, amountIn, min) : await sell(w.signer, t, amountIn, min, step);
+      const label0 = `${side === "buy" ? "Buy" : "Sell"} ${sym}`;
+      logTx(addr, { hash: sent.hash, label: label0, token: t.address.toLowerCase() });
       const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : qNative ? tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) }) : `${tr("Sold for")} ${fromWei(q, qDec).toFixed(qt.usd ? 2 : 4)} ${qSym}`;
       // the network has it: show the result and the new balances now
       const h0 = hype ?? 0n;
@@ -146,8 +150,9 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
       setBusy(null);
       going.current = false;
       sent.confirmed.then(
-        () => { funnel(addr, "trade"); setAfter(null); setTick((x) => x + 1); onDone?.(); },
+        () => { setTxState(addr, sent.hash, "ok"); funnel(addr, "trade"); setAfter(null); setTick((x) => x + 1); onDone?.(); },
         (e) => {
+          if (!(e instanceof SlowTx)) setTxState(addr, sent.hash, "failed");
           // not confirmed after two minutes: don't leave "Sold"/"Bought" on screen as if it happened
           if (e instanceof SlowTx) { setAfter(null); setTick((x) => x + 1); setMsg({ ok: false, text: tr("Not confirmed yet. Check your balance in a minute before trying again.") }); return; }
           setAfter(null);
@@ -156,7 +161,10 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
         },
       );
     } catch (e) {
-      setMsg({ ok: false, text: tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.") });
+      // no hash came back: almost always the trade never left the wallet. Say how to be sure before retrying.
+      const why = tr(e instanceof TradeFail ? e.message : "Trade failed. Please try again.");
+      const rejected = USER_NO.test(String((e as Error)?.message ?? ""));
+      setMsg({ ok: false, text: rejected ? why : `${why} ${tr("No trade shows in your wallet? Then nothing was sent and it's safe to try again.")}` });
     } finally {
       setBusy(null);
       going.current = false;
@@ -200,6 +208,7 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
       </div>
       <button type="button" className={`e-go ${side}`} disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={go}>{label}</button>
       {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
+      <TxRecovery me={addr} token={t.address} />
       {side === "buy" && unsellable && <div className="e-msg bad" role="status">{tr("This coin takes a tax on trades and may not be sellable here. Trade it on its own site.")}</div>}
       {asc && !qNative && <div className="e-hint" style={{ marginTop: 8 }}>{tr("This coin trades in {q}. You pay and receive {q} on Elysium; gas is paid in HYPE.", { q: qSym })}</div>}
       {w.signedIn && hype === 0n && side === "buy" && qNative && <Link href="/bridge/" className="e-hint">{tr("No HYPE on Elysium yet.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}
@@ -209,6 +218,61 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
 
 /** Shows an exact amount without a long tail: at most 6 decimals, trailing zeros dropped (rounded down). */
 const trim = (v: string) => { const [a, b = ""] = v.split("."); const d = b.slice(0, 6).replace(/0+$/, ""); return d ? `${a}.${d}` : a; };
+
+/** Trades sent from this browser whose result isn't settled or wasn't seen yet: the chain's own answer. */
+function TxRecovery({ me, token }: { me: string | null; token: string }) {
+  const tr = useT();
+  const list = useTxLog(me, token);
+  const shown = list.filter((x) => x.state !== "ok" || Date.now() - x.at < 10 * 60_000).slice(0, 3);
+  if (!me || !shown.length) return null;
+  return (
+    <div className="e-txrec">
+      {shown.map((x) => (
+        <div key={x.hash} className={`e-txrec-r ${x.state}`}>
+          <span className="e-txrec-dot" aria-hidden />
+          <span className="e-txrec-t">
+            <b>{x.label}</b>
+            <span className="dim">{x.state === "pending" ? tr("On its way. Don't send it again, it's still being confirmed.") : x.state === "ok" ? tr("Went through.") : tr("Failed on chain. Your funds stayed in your wallet, minus the network fee.")} · {ago(new Date(x.at).toISOString())}</span>
+          </span>
+          <a className="dim" href={EXPLORER_TX(x.hash)} target="_blank" rel="noopener noreferrer">{tr("View")}</a>
+          {x.state !== "pending" && <button type="button" className="e-txrec-x" aria-label={tr("Dismiss")} onClick={() => dismissTx(me, x.hash)}>✕</button>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Your position in this coin: held, average entry, profit or loss (from your own trades). */
+function PositionPanel({ t, usd, me }: { t: EToken; usd: number; me: string | null }) {
+  const tr = useT();
+  const mine = usePoll(async () => (me ? fetchMyCoinTrades(me, t.address) : null), 10_000, [me, t.address]);
+  const bal = usePoll(async () => (me ? tokenBalance(t.address as Address, me as Address) : null), 10_000, [me, t.address]);
+  const p = useMemo(() => (mine && me ? positionFrom(mine, me) : null), [mine, me]);
+  if (!me || !p) return null;
+  const dec = t.decimals ?? 18;
+  const held = bal != null ? fromWei(bal, dec) : p.held;
+  const priceH = t.price_hype ?? 0;
+  const value = held * priceH;
+  const ok = p.complete && p.held > 0 && Math.abs(held - p.held) <= Math.max(p.held * 0.02, 1e-9);
+  const unreal = ok ? value - p.cost : 0;
+  const pnl = (ok ? unreal : 0) + p.realized;
+  const pnlPct = p.boughtHype > 0 ? (pnl / p.boughtHype) * 100 : 0; // against everything you put in
+  const sup = supplyOf(t);
+  const entryMc = p.entryPrice ? p.entryPrice * sup * usd : 0;
+  return (
+    <section className="e-panel e-pos">
+      <div className="e-pos-h"><b>{tr("Your position")}</b>{entryMc > 0 && <span className="dim">{tr("Avg entry MC")} <b className="num">{money(entryMc)}</b></span>}</div>
+      <div className="e-pos-g">
+        <div><span>{tr("Holding")}</span><b className="num">{amt(held)} {t.symbol}</b><small className="dim num">{money(value * usd)}</small></div>
+        <div><span>{tr("PnL")}</span>{ok || p.held <= 0 ? <><b className={`num ${pnl >= 0 ? "up" : "down"}`}>{pnl >= 0 ? "+" : "−"}{money(Math.abs(pnl) * usd)}</b><small className={`num ${pnl >= 0 ? "up" : "down"}`}>{pnl >= 0 ? "+" : "−"}{Math.abs(pnlPct).toFixed(1)}%</small></> : <><b className="num dim">—</b><small className="dim">{tr("Some coins came from a transfer, so profit can't be worked out exactly.")}</small></>}</div>
+      </div>
+      <div className="e-pos-l dim">
+        <span>{tr("Bought")} <b className="num">{amt(p.bought)}</b> {tr("for")} <b className="num">{p.boughtHype.toFixed(p.boughtHype < 1 ? 4 : 2)} HYPE</b></span>
+        <span>{tr("Sold")} <b className="num">{amt(p.sold)}</b> {tr("for")} <b className="num">{p.soldHype.toFixed(p.soldHype < 1 ? 4 : 2)} HYPE</b></span>
+      </div>
+    </section>
+  );
+}
 
 function MiniTrades({ t, usd, chain }: { t: EToken; usd: number; chain?: ETrade[] | null }) {
   const tr = useT();
@@ -352,6 +416,19 @@ export function TokenPage() {
   const links = useCoinLinks(t ?? null);
   const shield = useShield(t ?? null, trades, usd);
   const dev = useDevRecord(t?.creator, usd);
+  const w = useWallet();
+  const me = (w.signedIn && w.address ? w.address.toLowerCase() : null);
+  // the creator's buys/sells (DB / DS) and yours, drawn on the chart; your average buy price as a dashed line
+  const marks = useMemo<ChartMark[]>(() => {
+    const cr = (t?.creator || "").toLowerCase();
+    return (trades ?? []).flatMap((x): ChartMark[] => {
+      const who = (x.trader || "").toLowerCase();
+      if (cr && who === cr) return [{ at: x.at, side: x.side, who: "dev" as const }];
+      if (me && who === me) return [{ at: x.at, side: x.side, who: "you" as const }];
+      return [];
+    });
+  }, [trades, t?.creator, me]);
+  const myEntry = useMemo(() => (me && trades ? positionFrom(trades, me)?.entryPrice ?? null : null), [trades, me]);
 
   useEffect(() => { if (t) document.title = `${t.symbol} · ${money((t.mcap_hype ?? 0) * usd)} · ArkhamPad`; }, [t, usd]);
   useEffect(() => {
@@ -426,13 +503,15 @@ export function TokenPage() {
           {/* phones have no side column: keep Shield up top, right by the Buy bar, never buried */}
           <div className="shield-m"><ShieldPanel token={t} shield={shield} dev={dev} /></div>
 
-          <section className="e-panel"><EChart trades={trades} usd={usd} supply={supplyOf(t)} height={420} /></section>
+          <section className="e-panel"><EChart trades={trades} usd={usd} supply={supplyOf(t)} height={420} marks={marks} entry={myEntry} /></section>
 
           {/* phones: live trades full width; Buy / Sell sit in a bar at the bottom and open a sheet */}
           <section className="e-split">
             <div className="e-split-feed"><MiniTrades t={t} usd={usd} chain={live?.trades} /></div>
             <div className="e-panel e-split-box" id="trade"><TradeBox t={t} usd={usd} compact preset={buyPreset} /></div>
           </section>
+
+          <PositionPanel t={t} usd={usd} me={me} />
 
           <ScoutPanel token={t} />
 

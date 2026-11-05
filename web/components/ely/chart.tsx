@@ -1,10 +1,12 @@
 "use client";
 // Candle chart for an Elysium token, built from its trades (TradingView Lightweight Charts, Apache-2.0).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
+import { CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, LineStyle, createChart, createSeriesMarkers, type IChartApi, type IPriceLine, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time, type UTCTimestamp } from "lightweight-charts";
 import type { ETrade } from "@/lib/ely";
 import { useT } from "@/lib/i18n";
 
+/** A trade drawn on the chart: the creator's buys/sells (DB / DS) and your own. */
+export type ChartMark = { at: string; side: "buy" | "sell"; who: "dev" | "you" };
 export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
 const FRAMES = [
   { id: "1m", s: 60 },
@@ -53,12 +55,14 @@ function palette(el: Element | null) {
   return { up: g("--e-up", "#0b9a64"), down: g("--e-down", "#e0464b"), text: g("--e-dim", "#82919b"), line: g("--e-line", "#e4e9ed"), label: g("--e-text2", "#26343d") };
 }
 
-export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[] | undefined; usd: number; supply: number; height?: number }) {
+export function EChart({ trades, usd, supply, height = 400, marks, entry }: { trades: ETrade[] | undefined; usd: number; supply: number; height?: number; marks?: ChartMark[]; entry?: number | null }) {
   const tr = useT();
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const candle = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const vol = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const markApi = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const entryLine = useRef<IPriceLine | null>(null);
   const [frame, setFrame] = useState<number>(300);
   const [mc, setMc] = useState(true);
   const fitKey = useRef("");
@@ -104,6 +108,7 @@ export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[]
         return { ...r, priceRange: { minValue: Math.max(0, mid - pad), maxValue: mid + pad } };
       },
     });
+    markApi.current = createSeriesMarkers(candle.current, []);
     vol.current = c.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
     c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 }, visible: false });
     chart.current = c;
@@ -144,7 +149,7 @@ export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[]
       });
     });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => { el.removeEventListener("touchstart", ts); el.removeEventListener("touchmove", tm); el.removeEventListener("touchend", te); mo.disconnect(); c.remove(); chart.current = null; candle.current = null; vol.current = null; fitKey.current = ""; };
+    return () => { el.removeEventListener("touchstart", ts); el.removeEventListener("touchmove", tm); el.removeEventListener("touchend", te); mo.disconnect(); c.remove(); chart.current = null; candle.current = null; vol.current = null; markApi.current = null; entryLine.current = null; fitKey.current = ""; };
   }, []);
 
   useEffect(() => {
@@ -162,6 +167,37 @@ export function EChart({ trades, usd, supply, height = 400 }: { trades: ETrade[]
       else { c.timeScale().applyOptions({ barSpacing: 12 }); c.timeScale().scrollToRealTime(); }
     }
   }, [candles, mc, usd, supply, frame]);
+
+  // creator buys / sells (DB / DS) and your own trades, one marker per candle and side
+  useEffect(() => {
+    const m = markApi.current;
+    if (!m || !candles) return;
+    const p = palette(box.current);
+    const seen = new Set<string>();
+    const out: SeriesMarker<Time>[] = [];
+    for (const x of marks ?? []) {
+      const t = Math.floor(Date.parse(x.at) / 1000 / frame) * frame;
+      const k = `${t}|${x.side}|${x.who}`;
+      if (!Number.isFinite(t) || seen.has(k)) continue;
+      seen.add(k);
+      const buy = x.side === "buy";
+      out.push(x.who === "dev"
+        ? { time: t as UTCTimestamp, position: buy ? "belowBar" : "aboveBar", shape: "circle", color: buy ? p.up : p.down, text: buy ? "DB" : "DS", size: 1 }
+        : { time: t as UTCTimestamp, position: buy ? "belowBar" : "aboveBar", shape: buy ? "arrowUp" : "arrowDown", color: "#7c5cff", text: tr(buy ? "You bought" : "You sold"), size: 1 });
+    }
+    out.sort((a, b) => (a.time as number) - (b.time as number));
+    m.setMarkers(out);
+  }, [marks, candles, frame, tr]);
+
+  // "Your entry": a dashed line at your average buy price (or market cap)
+  useEffect(() => {
+    const s = candle.current;
+    if (!s) return;
+    if (entryLine.current) { s.removePriceLine(entryLine.current); entryLine.current = null; }
+    const k = (mc ? supply : 1) * (usd || 0);
+    if (!entry || !k || !candles?.length) return;
+    entryLine.current = s.createPriceLine({ price: entry * k, color: "#7c5cff", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: tr("Your entry") });
+  }, [entry, mc, usd, supply, candles, tr]);
 
   return (
     <div className="e-chart">
