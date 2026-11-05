@@ -20,6 +20,8 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_ELY_ROUTER: process.env.NEXT_PUBLIC_ELY_ROUTER || ely.arkhamRouter || "",
     NEXT_PUBLIC_ELY_LAUNCHER: process.env.NEXT_PUBLIC_ELY_LAUNCHER || ely.launcher || "",
+    // version 2 (the "25K" fee rules), saved to the same deploy record when it is deployed; empty until then
+    NEXT_PUBLIC_ELY_LAUNCHER2: process.env.NEXT_PUBLIC_ELY_LAUNCHER2 || ely.launcherV2 || "",
     NEXT_PUBLIC_ELY_TEST_LAUNCHER: test.launcher || "",
     NEXT_PUBLIC_ELY_TEST_ROUTER: test.arkhamRouter || "",
     NEXT_PUBLIC_ELY_TEST_WHYPE: test.whype || "",

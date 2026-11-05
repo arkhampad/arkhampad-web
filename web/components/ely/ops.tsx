@@ -36,6 +36,8 @@ async function logsFrom<T>(fn: (from: bigint, to: bigint) => Promise<T[]>): Prom
   return out;
 }
 const FEES = parseAbiItem("event FeesCollected(address indexed coin, uint256 coinToCreator, uint256 coinToTreasury, uint256 nativeToCreator, uint256 nativeToTreasury)");
+// version 2 only: a held share that went to ArkhamPad (the coin didn't reach $25K in its first day)
+const HELD_TO_TREASURY = parseAbiItem("event HeldToTreasury(address indexed coin, uint256 coinAmount, uint256 nativeAmount)");
 const TREASURY_ADDR = "0xd9D46EB26c9D753135683b7736FC2be097e7B099" as Address;
 const KEEPER_ADDR = "0x8F7635FABfAd137E16E33ad808DdeC1D26491Af6" as Address;
 
@@ -50,13 +52,23 @@ function Earnings() {
   const chain = usePoll(async () => {
     const collected = new Map<string, number>();
     let collectedAll = 0;
-    if (LAUNCHER) {
-      const logs = await logsFrom((fromBlock, toBlock) => ely().getLogs({ address: LAUNCHER as Address, event: FEES, fromBlock, toBlock }));
+    for (const L of [LAUNCHER, LAUNCHER2]) {
+      if (!L) continue;
+      const logs = await logsFrom((fromBlock, toBlock) => ely().getLogs({ address: L as Address, event: FEES, fromBlock, toBlock }));
       for (const l of logs) {
         const v = Number(l.args.nativeToTreasury ?? 0n) / 1e18;
         collectedAll += v;
         const k = String(l.args.coin).toLowerCase();
         collected.set(k, (collected.get(k) ?? 0) + v);
+      }
+      if (L === LAUNCHER2) {
+        const held = await logsFrom((fromBlock, toBlock) => ely().getLogs({ address: L as Address, event: HELD_TO_TREASURY, fromBlock, toBlock }));
+        for (const l of held) {
+          const v = Number(l.args.nativeAmount ?? 0n) / 1e18;
+          collectedAll += v;
+          const k = String(l.args.coin).toLowerCase();
+          collected.set(k, (collected.get(k) ?? 0) + v);
+        }
       }
     }
     return { collected, collectedAll };
@@ -110,8 +122,9 @@ function Activity() {
         const t = await logsFrom((fromBlock, toBlock) => ely().getLogs({ address: ROUTER as Address, event: TRADE, fromBlock, toBlock }));
         for (const l of t) acts.push({ kind: l.args.isBuy ? "buy" : "sell", who: l.args.user as Address, token: l.args.token as Address, hype: Number(l.args.hypeAmount) / 1e18, fee: Number(l.args.fee) / 1e18, block: l.blockNumber ?? 0n, tx: l.transactionHash as Hex });
       }
-      if (LAUNCHER) {
-        const t = await logsFrom((fromBlock, toBlock) => ely().getLogs({ address: LAUNCHER as Address, event: LAUNCHED, fromBlock, toBlock }));
+      for (const L of [LAUNCHER, LAUNCHER2]) {
+        if (!L) continue;
+        const t = await logsFrom((fromBlock, toBlock) => ely().getLogs({ address: L as Address, event: LAUNCHED, fromBlock, toBlock }));
         for (const l of t) acts.push({ kind: "launch", who: l.args.creator as Address, token: l.args.coin as Address, hype: Number(l.args.firstBuyIn) / 1e18, fee: 0, block: l.blockNumber ?? 0n, tx: l.transactionHash as Hex, label: `$${l.args.symbol}` });
       }
       acts.sort((a, b) => Number(b.block - a.block));
@@ -166,6 +179,8 @@ function Activity() {
 }
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
+// version 2 ("25K" fee rules): same Launched / FeesCollected events; its own settings are below
+const LAUNCHER2 = (process.env.NEXT_PUBLIC_ELY_LAUNCHER2 || "") as Address | "";
 const KEEPER = "0x8F7635FABfAd137E16E33ad808DdeC1D26491Af6" as Address;
 const TREASURY = "0xd9D46EB26c9D753135683b7736FC2be097e7B099" as Address;
 const ABI = parseAbi([
@@ -257,6 +272,76 @@ function Funnel() {
   );
 }
 
+const V2_ABI = parseAbi([
+  "function owner() view returns (address)",
+  "function treasury() view returns (address)",
+  "function startMc() view returns (uint256)",
+  "function launchFee() view returns (uint256)",
+  "function paused() view returns (bool)",
+  "function level1Mc() view returns (uint256)",
+  "function level2Mc() view returns (uint256)",
+  "function keeper() view returns (address)",
+  "function coinCount() view returns (uint256)",
+  "function setSettings(address treasury, uint256 startMc, uint256 launchFee, bool paused, uint256 level1Mc, uint256 level2Mc)",
+]);
+/** Version 2 ("25K" fee rules): its levels in HYPE, and one button to re-set them to $25K / $100K at today's HYPE price. */
+function V2Settings() {
+  const w = useWallet();
+  const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [tick, setTick] = useState(0);
+  const s = usePoll(async () => {
+    if (!LAUNCHER2) return null;
+    const c = { address: LAUNCHER2 as Address, abi: V2_ABI } as const;
+    const [owner, treasury, startMc, launchFee, paused, l1, l2, keeper, n] = await Promise.all([
+      ely().readContract({ ...c, functionName: "owner" }), ely().readContract({ ...c, functionName: "treasury" }), ely().readContract({ ...c, functionName: "startMc" }),
+      ely().readContract({ ...c, functionName: "launchFee" }), ely().readContract({ ...c, functionName: "paused" }), ely().readContract({ ...c, functionName: "level1Mc" }),
+      ely().readContract({ ...c, functionName: "level2Mc" }), ely().readContract({ ...c, functionName: "keeper" }), ely().readContract({ ...c, functionName: "coinCount" }),
+    ]);
+    return { owner: owner as Address, treasury: treasury as Address, startMc: startMc as bigint, launchFee: launchFee as bigint, paused: paused as boolean, l1: l1 as bigint, l2: l2 as bigint, keeper: keeper as Address, n: Number(n) };
+  }, 60_000, [tick]);
+  if (!LAUNCHER2) return null;
+  const h = (x: bigint) => Number(x) / 1e18;
+  const isOwner = !!s && !!w.address && w.address.toLowerCase() === s.owner.toLowerCase();
+  // $25K / $100K in HYPE at today's price, rounded to whole HYPE
+  const want1 = usd > 0 ? BigInt(Math.round(25_000 / usd)) * 10n ** 18n : 0n;
+  const want2 = usd > 0 ? BigInt(Math.round(100_000 / usd)) * 10n ** 18n : 0n;
+  async function reset() {
+    if (!s || !w.signer?.sendTx || !want1 || want1 <= s.startMc || want2 <= want1) return;
+    setBusy(true);
+    setMsg("Confirm in your wallet…");
+    try {
+      const data = encodeFunctionData({ abi: V2_ABI, functionName: "setSettings", args: [s.treasury, s.startMc, s.launchFee, s.paused, want1, want2] });
+      const hash = (await w.signer.sendTx(ELY_CHAIN, { to: LAUNCHER2 as Address, data })) as Hex;
+      setMsg("Waiting for Elysium…");
+      const r = await waitReceipt(hash, 150_000);
+      setMsg(r.status === "success" ? "Done. Coins launched from now on use the new levels." : "Failed on chain.");
+      setTick((x) => x + 1);
+    } catch (e) {
+      setMsg(/reject|denied|cancel/i.test(String((e as Error)?.message)) ? "Cancelled." : "Failed. Make sure the ArkhamPad Admin wallet is connected.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="e-panel"><div className="e-trade">
+      <h3 style={{ margin: "0 0 8px", fontSize: 15 }}>Launcher v2 · 25K fee rules</h3>
+      {!s ? <p className="dim">Loading…</p> : (
+        <>
+          <p>{s.n} coins · keeper <b className="num">{short(s.keeper)}</b> · fees to <b className="num">{short(s.treasury)}</b>{s.paused ? " · PAUSED" : ""}</p>
+          <p>Level 1 (50%): <b className="num">{h(s.l1).toLocaleString("en-US")} HYPE</b>{usd ? <span className="dim"> ≈ ${(h(s.l1) * usd).toLocaleString("en-US", { maximumFractionDigits: 0 })}</span> : null} · Level 2 (60%): <b className="num">{h(s.l2).toLocaleString("en-US")} HYPE</b>{usd ? <span className="dim"> ≈ ${(h(s.l2) * usd).toLocaleString("en-US", { maximumFractionDigits: 0 })}</span> : null}</p>
+          <p className="dim" style={{ fontSize: 14 }}>Each coin keeps the levels it launched with. When HYPE moves a lot, re-set them so new coins aim at $25K / $100K again.</p>
+          {w.signedIn && isOwner && usd > 0 && (
+            <button type="button" className="e-btn pri" disabled={busy} onClick={reset}>Set to $25K / $100K at today's price ({Number(want1 / 10n ** 18n)} / {Number(want2 / 10n ** 18n)} HYPE)</button>
+          )}
+          {msg && <p className="e-msg" role="status">{msg}</p>}
+        </>
+      )}
+    </div></section>
+  );
+}
+
 export function OpsPage() {
   const w = useWallet();
   const [s, setS] = useState<S | null>(null);
@@ -315,6 +400,7 @@ export function OpsPage() {
       <Funnel />
       <Earnings />
       <Activity />
+      <V2Settings />
       <section className="e-panel"><div className="e-trade">
         {!LAUNCHER ? <p>Launcher not deployed.</p> : !s ? <p className="dim">Loading…</p> : (
           <>

@@ -164,6 +164,9 @@ export function makeElysium(cfg, store) {
   let progressLogAt = 0;
   let span = step; // blocks per read right now: shrinks when the nodes are busy, grows back after
   const launcher = lc(cfg.launcher);
+  // version 2 of the launcher ("25K" fee rules); its coins are ArkhamPad's too
+  const launcher2 = lc(cfg.launcher2);
+  const isOurs = (maker) => !!maker && ((!!launcher && maker === launcher) || (!!launcher2 && maker === launcher2));
   const symbolCache = new Map(); // address -> symbol ("" when not a token)
   const isHypeWrap = new Map(); // address -> bool (a WHYPE: symbol WHYPE and wraps native)
   // USD stablecoins some launchpads pair with instead of HYPE (Ascend: USDC). Env ELY_USD_QUOTES (comma list).
@@ -185,6 +188,7 @@ export function makeElysium(cfg, store) {
   const txFrom = new Map(); // tx hash -> from (the trader)
   const launchpadOf = new Map(Object.entries(KNOWN_CONTRACTS)); // contract -> name
   if (launcher) launchpadOf.set(launcher, "ArkhamPad");
+  if (launcher2) launchpadOf.set(launcher2, "ArkhamPad");
   // Ascend (Elysium's partner launchpad) contracts, so its coins are labelled "Ascend": pool managers and
   // launchpads, comma-separated (testnet addresses until Nov 9, then mainnet's)
   for (const a of String(process.env.ASCEND_CONTRACTS || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)) launchpadOf.set(a, "Ascend");
@@ -311,7 +315,7 @@ export function makeElysium(cfg, store) {
       const creator = !t.creator && hash ? await txField(txFrom, hash, "from") : t.creator;
       const next = { ...t };
       if (info && info.symbol && info.symbol !== "?") Object.assign(next, info);
-      if (maker) { next.maker = maker; next.ours = !!launcher && maker === launcher; next.launchpad = launchpadFor(maker, t.manager); }
+      if (maker) { next.maker = maker; next.ours = isOurs(maker); next.launchpad = launchpadFor(maker, t.manager); }
       if (creator) next.creator = creator;
       if (next.symbol !== t.symbol || next.maker !== t.maker || next.creator !== t.creator) { await store.upsertToken(next); fixed++; }
     }
@@ -518,7 +522,7 @@ export function makeElysium(cfg, store) {
       maker,
       creator,
       launchpad: launchpadFor(maker, p.manager),
-      ours: !!launcher && maker === launcher,
+      ours: isOurs(maker),
       created_block: p.block,
       created_at: new Date(await timeOf(p.block)).toISOString(),
       price_hype: p.sqrt ? priceFromSqrt(p.sqrt, p.tokenIs0, info.decimals, p.hype === ZERO ? 18 : await decOf(p.hype)) * (await hypePerQuote(p.hype)) : null,

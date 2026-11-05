@@ -473,8 +473,9 @@ export function balanceChanged() {
 }
 
 // ---------------------------------------------------------------- brand-new coins
-/** ArkhamPad's launcher (from the deploy record). */
+/** ArkhamPad's launcher (from the deploy record), and version 2 once deployed (lib/launchers.ts). */
 export const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
+const LAUNCHER_V2 = (process.env.NEXT_PUBLIC_ELY_LAUNCHER2 || "") as Address | "";
 const LAUNCHER_READ = parseAbi([
   "function coins(address) view returns (uint256 tokenId, address pool, address creator, uint16 creatorBps, bool coinIsToken0)",
   "function wrapped() view returns (address)",
@@ -487,13 +488,21 @@ const SLOT0_READ = parseAbi(["function slot0() view returns (uint160 sqrtPriceX9
  * (right after someone launches). Enough to show the page and trade it; null if it isn't ours.
  */
 export async function chainToken(address: string): Promise<EToken | null> {
-  if (!LAUNCHER) return null;
+  // version 2 first (where new coins launch once it is live), then version 1; both have the same coins()
+  for (const L of [LAUNCHER_V2, LAUNCHER]) {
+    if (!L) continue;
+    const t = await chainTokenFrom(L, address);
+    if (t) return t;
+  }
+  return null;
+}
+async function chainTokenFrom(launcher: Address, address: string): Promise<EToken | null> {
   const a = address.toLowerCase() as Address;
   try {
     const c = ely();
     const [info, wrapped] = await Promise.all([
-      c.readContract({ address: LAUNCHER, abi: LAUNCHER_READ, functionName: "coins", args: [a] }),
-      c.readContract({ address: LAUNCHER, abi: LAUNCHER_READ, functionName: "wrapped" }),
+      c.readContract({ address: launcher, abi: LAUNCHER_READ, functionName: "coins", args: [a] }),
+      c.readContract({ address: launcher, abi: LAUNCHER_READ, functionName: "wrapped" }),
     ]);
     const [, pool, creator, , tokenIs0] = info as readonly [bigint, Address, Address, number, boolean];
     if (!pool || /^0x0{40}$/i.test(pool)) return null;

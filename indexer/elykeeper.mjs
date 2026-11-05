@@ -138,3 +138,91 @@ export async function keeperLoop({ rpc, launcher, key, pool, log }) {
     await new Promise((r) => setTimeout(r, EVERY_MS));
   }
 }
+
+// ------------------------------------------------------------------------------------------------------
+// Launcher version 2 ("25K" fee rules, contracts-elysium/src/ArkhamV3LauncherV2.sol). Every 3 to 7 minutes
+// (a random wait each time, so nobody can time a short pump around the checks) the keeper pokes the coins
+// whose fee level can change: launched in the last 72 hours (the held share settles after 24-25 hours; the
+// extra time covers a keeper that was down for a while), traded in the last 3 hours, or near/above level 1. A poke collects the fees at the level in
+// force, then moves the coin between levels from its market cap; only this wallet (the contract's keeper)
+// or the owner may poke. Coin-side fees that land here (treasury routed through the keeper) are forwarded
+// like version 1's; native HYPE is forwarded by keeperLoop above.
+const V2_ABI = parseAbi([
+  "function pokeMany(address[] list)",
+  "function keeper() view returns (address)",
+  "function treasury() view returns (address)",
+  "function level1Mc() view returns (uint256)",
+]);
+const V2_MIN_MS = 3 * 60_000;
+const V2_MAX_MS = 7 * 60_000;
+const V2_BATCH = 20;
+
+export async function levelLoop({ rpc, launcher, key, pool, log }) {
+  const urls = [...new Set(["https://rpc-live.elysp.com", ...String(rpc).split(",").map((u) => u.trim()).filter(Boolean), "https://arkhampad.com/api/ely-rpc"])];
+  const transport = () => fallback(urls.map((u) => http(u, { timeout: 10_000, retryCount: 1 })));
+  const chain = defineChain({ id: 99901, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: urls } } });
+  const account = privateKeyToAccount(key.startsWith("0x") ? key : `0x${key}`);
+  const pub = createPublicClient({ chain, transport: transport() });
+  const wallet = createWalletClient({ chain, account, transport: transport() });
+  const lc = (a) => String(a || "").toLowerCase();
+  let warned = false;
+  log(`keeper v2: checking fee levels every 3-7 min on ${launcher} from ${account.address}`);
+  for (;;) {
+    try {
+      const k = lc(await pub.readContract({ address: launcher, abi: V2_ABI, functionName: "keeper" }));
+      if (k !== lc(account.address)) {
+        if (!warned) log(`keeper v2: this wallet is not the launcher's keeper (${k}); set it on /ops or redeploy with it`);
+        warned = true;
+      } else {
+        warned = false;
+        const l1 = Number(await pub.readContract({ address: launcher, abi: V2_ABI, functionName: "level1Mc" })) / 1e18;
+        const { rows } = await pool.query(
+          `select address from ely_tokens
+            where lower(maker) = $1
+              and (created_at > now() - interval '72 hours'
+                   or last_trade_at > now() - interval '3 hours'
+                   or coalesce(mcap_hype, 0) >= $2)
+            order by address`,
+          [lc(launcher), l1 * 0.8]
+        );
+        const coins = rows.map((r) => r.address);
+        for (let i = 0; i < coins.length; i += V2_BATCH) {
+          const list = coins.slice(i, i + V2_BATCH);
+          try {
+            const hash = await wallet.writeContract({ address: launcher, abi: V2_ABI, functionName: "pokeMany", args: [list] });
+            await pub.waitForTransactionReceipt({ hash, timeout: 180_000, pollingInterval: 1000 });
+          } catch {
+            // one bad coin must not hold the others back: one by one
+            for (const c of list) {
+              try {
+                const hash = await wallet.writeContract({ address: launcher, abi: V2_ABI, functionName: "pokeMany", args: [[c]] });
+                await pub.waitForTransactionReceipt({ hash, timeout: 180_000, pollingInterval: 1000 });
+              } catch (e2) {
+                log(`keeper v2: ${c} ${String(e2.shortMessage || e2.message).slice(0, 120)}`);
+              }
+            }
+          }
+        }
+        if (coins.length) log(`keeper v2: checked ${coins.length} coins`);
+        // coin-side fees routed through this wallet go on to the treasury
+        const routed = lc(await pub.readContract({ address: launcher, abi: V2_ABI, functionName: "treasury" })) === lc(account.address);
+        if (routed && lc(FORWARD_TO) !== lc(account.address)) {
+          for (const c of coins) {
+            try {
+              const amt = await pub.readContract({ address: c, abi: ERC20, functionName: "balanceOf", args: [account.address] }).catch(() => 0n);
+              if (amt > 0n) {
+                const h = await wallet.writeContract({ address: c, abi: ERC20, functionName: "transfer", args: [FORWARD_TO, amt] });
+                await pub.waitForTransactionReceipt({ hash: h, timeout: 120_000 });
+              }
+            } catch (e) {
+              log(`keeper v2: forward coin ${c}: ${String(e.shortMessage || e.message).slice(0, 100)}`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      log(`keeper v2: ${String(e.shortMessage || e.message).slice(0, 200)}`);
+    }
+    await new Promise((r) => setTimeout(r, V2_MIN_MS + Math.floor(Math.random() * (V2_MAX_MS - V2_MIN_MS))));
+  }
+}

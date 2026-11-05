@@ -13,8 +13,10 @@ import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHypeUsd, fetchMyTrades, money, pct, short, usePoll, type EToken } from "@/lib/ely";
 import { lastAddress, rememberAddress, shownHype, useElyUsdc, useHoldings } from "@/lib/holdings";
 import { ELY_CHAIN, ely, fromWei, hypeBalance, cachedHype, pendingTokens, waitReceipt } from "@/lib/elytrade";
+import { HOLD_MS, V2_LIVE, feeStatus, launcherOf } from "@/lib/launchers";
 
 const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
+// a coin is collected from the launcher that made it (version 1, or version 2 once that is live)
 const COLLECT = parseAbi(["function collect(address coin) returns (uint256 coinAmount, uint256 nativeAmount)"]);
 
 function Collect({ coin }: { coin: string }) {
@@ -24,10 +26,11 @@ function Collect({ coin }: { coin: string }) {
   async function go() {
     if (!w.signer?.sendTx || !LAUNCHER) return;
     setState("Checking…");
+    const from = (await launcherOf(coin)) || LAUNCHER;
     // the keeper already sends creator fees every 30 minutes; check first so an empty collect never
     // costs gas or shows "Failed"
     try {
-      await ely().simulateContract({ account: w.signer.address, address: LAUNCHER, abi: COLLECT, functionName: "collect", args: [coin as Address] });
+      await ely().simulateContract({ account: w.signer.address, address: from, abi: COLLECT, functionName: "collect", args: [coin as Address] });
     } catch {
       setState("Nothing new yet");
       setTimeout(() => setState(null), 3500);
@@ -35,7 +38,7 @@ function Collect({ coin }: { coin: string }) {
     }
     setState("Collecting…");
     try {
-      const hash = await w.signer.sendTx(ELY_CHAIN, { to: LAUNCHER, data: encodeFunctionData({ abi: COLLECT, functionName: "collect", args: [coin as Address] }), gas: 300_000n });
+      const hash = await w.signer.sendTx(ELY_CHAIN, { to: from, data: encodeFunctionData({ abi: COLLECT, functionName: "collect", args: [coin as Address] }), gas: 300_000n });
       const r = await waitReceipt(hash as Hex, 120_000);
       setState(r.status === "success" ? "Collected" : "Nothing new yet");
     } catch {
@@ -44,6 +47,35 @@ function Collect({ coin }: { coin: string }) {
     setTimeout(() => setState(null), 3500);
   }
   return <button type="button" className="e-btn" disabled={!!state || !LAUNCHER} onClick={go}>{tr(state ?? "Collect fees")}</button>;
+}
+
+/** "25K" fee rules (version-2 coins only): where the coin stands and what the creator earns. */
+function FeeLevel({ coin, usd }: { coin: string; usd: number }) {
+  const tr = useT();
+  const s = usePoll(async () => feeStatus(coin).catch(() => null), 30_000, [coin]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(id); }, []);
+  if (!s) return null;
+  const $ = (hype: number) => (usd ? money(hype * usd) : `${hype.toFixed(1)} HYPE`);
+  const left = (ms: number) => { const m = Math.max(0, Math.ceil(ms / 60_000)); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
+  const pctTo1 = Math.max(0, Math.min(100, (s.mc / s.level1) * 100));
+  const windowOpen = !s.heldSettled && now < s.windowEnds;
+  let line: string;
+  if (s.level === 2) line = tr("You earn {p}% of every trade's fee. Your coin is above {a}.", { p: s.creatorPct, a: $(s.level2) });
+  else if (s.level === 1) line = tr("You earn {p}% of every trade's fee. Above {a} it's 60%.", { p: s.creatorPct, a: $(s.level2) });
+  else if (s.aboveSince > 0 && s.aboveSince + HOLD_MS - now > 60_000) line = tr("Above {a} now: {t} to go until you earn 50%.", { a: $(s.level1), t: left(s.aboveSince + HOLD_MS - now) });
+  else if (s.aboveSince > 0) line = tr("Above {a} for an hour: your 50% starts at the next check, in a few minutes.", { a: $(s.level1) });
+  else line = tr("You earn {p}%. Get above {a} for 1 hour and you earn 50%.", { p: s.creatorPct, a: $(s.level1) });
+  return (
+    <div className="e-lvl">
+      <div className="e-lvl-t"><b>{line}</b></div>
+      {s.level === 0 && <div className="e-lvl-bar" aria-hidden="true"><i style={{ width: `${pctTo1}%` }} /></div>}
+      {s.level === 0 && <div className="e-lvl-s dim">{tr("Market cap {m} of {a}", { m: $(s.mc), a: $(s.level1) })}</div>}
+      {windowOpen && s.heldHype + s.heldCoin > 0 && (
+        <div className="e-lvl-s">{tr("{h} held for you: paid out if your coin makes it within {t}.", { h: $(s.heldHype), t: left(s.windowEnds - now) })}</div>
+      )}
+    </div>
+  );
 }
 
 function AddMoneyHelp({ me }: { me: string }) {
@@ -214,11 +246,12 @@ export function YouPage() {
                 <Link href={`/t/?a=${t.address}`} className="e-tok"><TokenAvatar t={t} size={36} /><span><span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span></span><small>{tr("{age} old", { age: ago(t.created_at) })} · {money((t.mcap_hype ?? 0) * usd)} {tr("mcap")}</small></span></Link>
                 <span className="r num e-hide-m">{money((t.vol24_hype || 0) * usd)} {tr("24h vol")}</span>
                 <Collect coin={t.address} />
+                {V2_LIVE && <FeeLevel coin={t.address} usd={usd} />}
               </div>
             ))}
             {created.length > FIRST && <button type="button" className="e-more" onClick={() => setAllMade((v) => !v)}>{allMade ? tr("Show less") : tr("Show all {n}", { n: created.length })}</button>}
           </div>
-          <p className="e-note" style={{ padding: "0 16px 14px" }}>{tr("Your 30% of the trading fees is sent to your wallet automatically every 30 minutes: the HYPE part to your balance, the coin part as small amounts of your coin (they show up under Your coins). You can also collect it now.")}</p>
+          <p className="e-note" style={{ padding: "0 16px 14px" }}>{V2_LIVE ? tr("Your share of the trading fees is sent to your wallet automatically: the HYPE part to your balance, the coin part as small amounts of your coin (they show up under Your coins). Coins launched before the new fee rules keep their 30%. You can also collect it now.") : tr("Your 30% of the trading fees is sent to your wallet automatically every 30 minutes: the HYPE part to your balance, the coin part as small amounts of your coin (they show up under Your coins). You can also collect it now.")}</p>
         </section>
       )}
 

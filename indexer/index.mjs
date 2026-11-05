@@ -430,16 +430,21 @@ async function elysiumLoop() {
   const rpc = (process.env.ELYSIUM_RPC || "").trim();
   if (!rpc || process.env.ONCE) return;
   let launcher = (process.env.ELY_LAUNCHER || "").trim();
+  // version 2 ("25K" fee rules), once deployed: ELY_LAUNCHER2 or launcherV2 in the deploy record
+  let launcher2 = (process.env.ELY_LAUNCHER2 || "").trim();
   // ArkhamPad's own pool factory (for the fast lane); mainnet's from the deploy record
   let factory = (process.env.ELY_FACTORY || "0x75656d8d2a59293dbda4178f11af6ee506ef60dd").trim().toLowerCase();
   try {
     const d = JSON.parse(fs.readFileSync(new URL("../contracts-elysium/deployments/99901.json", import.meta.url), "utf8"));
     if (!launcher) launcher = d.launcher || "";
+    if (!launcher2) launcher2 = d.launcherV2 || "";
     if (d.factory) factory = String(d.factory).toLowerCase();
   } catch {}
   const key = (process.env.KEEPER_KEY || "").trim();
   if (key && launcher) {
     import("./elykeeper.mjs").then(({ keeperLoop }) => keeperLoop({ rpc, launcher, key, pool, log })).catch((e) => log(`keeper: ${e.message}`));
+    // version 2: moves coins between fee levels (and collects) every few minutes
+    if (launcher2) import("./elykeeper.mjs").then(({ levelLoop }) => levelLoop({ rpc, launcher: launcher2, key, pool, log })).catch((e) => log(`keeper v2: ${e.message}`));
   }
   // Smart Money Radar poster (Telegram). No-ops unless TG_SCOUT_TOKEN / TG_SCOUT_CHANNEL are set.
   import("./scout.mjs").then(({ startScout }) => startScout(pool, { log })).catch((e) => log(`scout: ${e.message}`));
@@ -448,7 +453,7 @@ async function elysiumLoop() {
   for (;;) {
     try {
       const store = await makePgStore(pool);
-      await makeElysium({ rpc, launcher, factory, log }, store).loop();
+      await makeElysium({ rpc, launcher, launcher2, factory, log }, store).loop();
     } catch (e) {
       log(`elysium: ${e.message}; restarting in 30 s`);
       await sleep(30_000);

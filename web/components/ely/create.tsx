@@ -12,8 +12,10 @@ import { useT } from "@/lib/i18n";
 import { fetchHypeUsd, money, usePoll } from "@/lib/ely";
 import { ELY_CHAIN, NONCE_HELP, USER_NO, SlowTx, savePending, waitReceipt, ely, fromWei, hypeBalance, cachedHype, rememberToken, toWei, prepareSell } from "@/lib/elytrade";
 import type { EToken } from "@/lib/ely";
+import { CREATE_LAUNCHER, V2_LIVE } from "@/lib/launchers";
 
-const LAUNCHER = (process.env.NEXT_PUBLIC_ELY_LAUNCHER || "") as Address | "";
+// new coins launch on version 2 once it is deployed ("25K" fee rules), on version 1 until then
+const LAUNCHER = CREATE_LAUNCHER;
 const START_MC_DEFAULT = 60; // HYPE, whole supply (the live value is read from the launcher; set on /ops)
 const ABI = parseAbi([
   "function launch(string name, string symbol, string uri, address creator, uint256 minOut) payable returns (address coin, uint256 bought)",
@@ -278,7 +280,7 @@ export function CreatePage() {
         <div>
           <span className="e-eyebrow">{tr("Create")}</span>
           <h1>{tr("Launch a coin on Elysium")}</h1>
-          <p>{tr("Takes about 30 seconds. You earn 30% of the trading fees on your coin, forever.")}</p>
+          <p>{V2_LIVE ? tr("Takes about 30 seconds. Get your coin above $25K for an hour and you earn HALF of every trade's fee.") : tr("Takes about 30 seconds. You earn 30% of the trading fees on your coin, forever.")}</p>
         </div>
       </section>
       <div className="e-bridge">
@@ -337,7 +339,7 @@ export function CreatePage() {
             <div className="e-prev-grid">
               <div><span>{tr("Market cap")}</span><b>{usd ? money(START_MC * usd) : `${START_MC} HYPE`}</b></div>
               <div><span>{tr("Supply")}</span><b>1B</b></div>
-              <div><span>{tr("You earn")}</span><b>30%</b></div>
+              <div><span>{tr("You earn")}</span><b>{V2_LIVE ? tr("up to 60%") : "30%"}</b></div>
             </div>
           </section>
           <div className="e-panel e-bside">
@@ -346,7 +348,13 @@ export function CreatePage() {
             <li>{tr("All 1,000,000,000 coins go into the pool. No team share, no presale.")}</li>
             <li>{tr("Starts at a {n} HYPE market cap", { n: START_MC })}{usd ? ` (≈ ${money(START_MC * usd)})` : ""}.</li>
             <li>{tr("Liquidity is locked forever. Nobody can pull it, including you and us.")}</li>
-            <li>{tr("Every trade pays a 1% fee. 30% of it goes to you, paid in HYPE and in your coin.")}</li>
+            {V2_LIVE ? (
+              <>
+                <li>{tr("Every trade pays a 1% fee. You get 20% of it from the first trade, paid in HYPE and in your coin.")}</li>
+                <li>{tr("Your coin stays above $25K for 1 hour: you get 50% of every fee. Above $100K: 60%.")}</li>
+                <li>{tr("In the first 24 hours another 15% is held for you, paid out the moment your coin makes it.")}</li>
+              </>
+            ) : <li>{tr("Every trade pays a 1% fee. 30% of it goes to you, paid in HYPE and in your coin.")}</li>}
             <li>{tr("Your coin shows up on Discover right away, with a chart and holders.")}</li>
           </ul>
           <Link href="/learn/create-a-token-on-elysium/" className="e-more" style={{ display: "grid", placeItems: "center", textDecoration: "none" }}>{tr("Full guide")}</Link>

@@ -1085,3 +1085,12 @@ html { overscroll-behavior-y: none; }
 .e-mn-t .n { text-align: right; font-variant-numeric: tabular-nums; }
 .e-mn-t a { font-weight: 600; }
 @media (max-width: 640px) { .e-mn-g { grid-template-columns: repeat(2, minmax(0, 1fr)); } .e-mn-k b { font-size: 17px; } }
+
+/* "25K" fee rules on You → Coins you created (version-2 coins only) */
+.e-row.e-made .e-lvl { grid-column: 1 / -1; display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--e-card2); border: 1px solid var(--e-line); min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.e-row.e-made .e-lvl > * { min-width: 0; white-space: normal; }
+.e-lvl-t { font-size: 13px; line-height: 1.4; }
+.e-lvl-t b { font-weight: 600; color: var(--e-text); }
+.e-lvl-bar { height: 6px; border-radius: 99px; background: var(--e-raise); overflow: hidden; }
+.e-lvl-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--e-teal), var(--e-up)); }
+.e-lvl-s { font-size: 12px; line-height: 1.4; }
