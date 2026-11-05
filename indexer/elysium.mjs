@@ -39,7 +39,16 @@ export const KNOWN_CONTRACTS = {
   "0x2da68edff4588a77b55a829689c382f2acb39502": "Kleos",
   "0x893217cbf5c054fd6ee56893b313a4b98c4403e4": "Kleos",
   "0x8ca88b12bc89b58034c583f1a5df02f7e67d62e1": "Boxa",
-  "0xa338c80bbec54f3439f6af22d21723226abc48bd": "ElysPump",
+  // Nov 5: 0xa338… is PerpMe's Uniswap v4 factory (listed on perpme.fun/elysium); it was filed under ElysPump
+  // by its logo host on Nov 4. ElysPump's own makers are 0xe11c… and 0x5afe….
+  "0xa338c80bbec54f3439f6af22d21723226abc48bd": "PerpMe",
+  "0x682dc0458815d1f4927d366fa91e645c71024d7b": "PerpMe", // PerpMe's Ramses v3 factory
+  "0xe35b622b0d37d57bf3e4d6930a057e58e7ba30be": "PerpMe", // PerpMe's Uniswap v3 factory
+  "0xe11cafa5901b0aab51eb78251488400f9e4320cc": "ElysPump",
+  "0x5afe876a625a6fe230dd361b9a5bef8e9bea6fe3": "ElysPump",
+  // Nov 5: found by their coins (CHAMELEON → montramarkets.xyz; VOLTA → volta.family, 1B supply, burns)
+  "0x38d3ef3a06d18fa3286fb5deafe611be725fcd15": "Montra",
+  "0x3ab88ddc3cf2a012af88b60828edb4553697e5dc": "Volta",
   "0x5f702244f102183313e1b035fa846632c8b7e49f": "Eleos",
   "0xe954a18cffb3205f9452bd968ef27b9e84e8850d": "Stockium",
   "0x1cb9e9093c940d027c08c63bf7321e146ba0656c": "Elyxa",
