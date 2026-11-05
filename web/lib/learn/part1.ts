@@ -321,24 +321,28 @@ Your HYPE is not lost during that time. It is waiting for the challenge window t
   {
     slug: "elysium-mainnet-launch",
     cat: "elysium",
-    title: "Elysium Mainnet Launch: What Traders Should Know",
-    desc: "Elysium mainnet launch guide for traders: the November 9, 2026 date, chain ID 99901, what is live at launch, what comes later, and how to prepare safely.",
+    updated: "2026-11-05",
+    live: true,
+    title: "Elysium Mainnet (Nov 9, 2026): Live Coins & How to Start",
+    desc: "Elysium mainnet goes public Nov 9, 2026, but coins already trade. Live volume and coins, chain ID 99901, and how to make your first trade with HYPE or USDC.",
     keywords: [
+      "elysium mainnet",
       "elysium mainnet launch",
       "elysium mainnet date",
+      "is elysium mainnet live",
       "when does elysium launch",
       "elysium mainnet chain id",
+      "elysium early mainnet",
       "elysium airdrop",
       "is there an elysium token",
-      "elysium hypercore upgrade",
+      "how to buy coins on elysium mainnet",
       "how to prepare for elysium mainnet",
       "elysium launch day trading",
-      "elysium mainnet withdrawals",
       "launch a coin on elysium mainnet",
     ],
     read: "7 min",
     short:
-      "Kinetiq announced November 9, 2026 as the public mainnet launch date for Elysium, its Layer 2 for Hyperliquid (chain ID 99901). At launch, gas is paid in HYPE, one sequencer orders transactions, and official bridge withdrawals take about 5.5 days. An upgrade that connects Elysium contracts to HyperCore market data is planned for about a month later.",
+      "Kinetiq set November 9, 2026 as the public mainnet launch of Elysium, its Layer 2 for Hyperliquid (chain ID 99901). Mainnet is already running in early access: thousands of coins are trading on it right now, and you can buy them on ArkhamPad with HYPE or USDC, logging in with email, Google or a wallet. Gas is paid in HYPE.",
     sections: [
       [
         "When does Elysium mainnet launch?",
@@ -350,6 +354,22 @@ The core mainnet details:
 - Gas token: HYPE, bridged 1:1 from HyperEVM
 - Settles to: HyperEVM (chain ID 999)
 - Compatibility: full EVM, so standard wallets and Solidity contracts work`,
+      ],
+      [
+        "Is Elysium mainnet live already?",
+        `Yes, in early access. Chain 99901 has been producing blocks for days, and coins are being created and traded on it right now. The live numbers above come straight from the chain.
+
+What November 9 adds is the official side: Kinetiq's public RPC and block explorer, so wallets, bridges and tools can list Elysium normally, and many more traders arriving at once.
+
+So you do not have to wait for the date. You can already [buy Elysium tokens](/learn/how-to-buy-elysium-tokens/) or [create a token](/learn/create-a-token-on-elysium/) today.`,
+      ],
+      [
+        "How to make your first trade on Elysium mainnet",
+        `1. **Log in.** On ArkhamPad you can use email, Google or your own wallet. An email or Google login creates a wallet for you, no seed phrase to manage. See [trade crypto with email login](/learn/trade-crypto-with-email-login/).
+2. **Add funds.** Bridge HYPE from HyperEVM, or bring USDC from Base. See [bridge HYPE to Elysium](/learn/bridge-hype-to-elysium/) and [buy Elysium tokens with USDC](/learn/buy-elysium-tokens-with-usdc/).
+3. **Find a coin.** The [Discover page](/) lists every Elysium coin with market cap, volume, holders and top 10 share.
+4. **Check it.** Look at holders, top 10 share and whether the creator has sold. [How to spot a rug pull](/learn/spot-a-rug-pull/) lists the warning signs.
+5. **Buy, and keep some HYPE for gas.** You need gas to sell later.`,
       ],
       [
         "What is live at launch, and what comes later?",
@@ -417,6 +437,10 @@ Two safeguards help. You can force-include a transaction through the delayed inb
       [
         "What is the Elysium mainnet launch date?",
         "Kinetiq announced November 9, 2026 as the public mainnet launch date for Elysium. Elysium is a Layer 2 for the Hyperliquid ecosystem that settles to HyperEVM and uses HYPE for gas. Follow Kinetiq's official channels for any change to the schedule, and be wary of unofficial posts claiming early access.",
+      ],
+      [
+        "Is Elysium mainnet live already?",
+        "Yes, in early access. Elysium mainnet (chain ID 99901) is already producing blocks and thousands of coins are trading on it. November 9, 2026 is when Kinetiq's official RPC and explorer go public. You can trade Elysium coins on ArkhamPad today with HYPE or USDC.",
       ],
       [
         "What is the Elysium mainnet chain ID?",

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CATS, LEARN_DATE, POSTS, postBySlug } from "@/lib/learn";
 import { Md } from "@/components/ely/md";
+import { MainnetLive } from "@/components/ely/mainnet-live";
 
 export function generateStaticParams() {
   return POSTS.map((p) => ({ slug: p.slug }));
@@ -18,7 +19,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     description: p.desc,
     keywords: p.keywords,
     alternates: { canonical: `/learn/${slug}/` },
-    openGraph: { title: p.title, description: p.desc, type: "article", url: `/learn/${slug}/`, publishedTime: LEARN_DATE, modifiedTime: LEARN_DATE },
+    openGraph: { title: p.title, description: p.desc, type: "article", url: `/learn/${slug}/`, publishedTime: LEARN_DATE, modifiedTime: p.updated || LEARN_DATE },
     twitter: { card: "summary_large_image", title: p.title, description: p.desc },
   };
 }
@@ -39,7 +40,7 @@ export default async function Article({ params }: { params: Promise<{ slug: stri
       description: p.desc,
       keywords: p.keywords.join(", "),
       datePublished: LEARN_DATE,
-      dateModified: LEARN_DATE,
+      dateModified: p.updated || LEARN_DATE,
       mainEntityOfPage: url,
       image: "https://arkhampad.com/og.png",
       author: { "@type": "Organization", name: "ArkhamPad", url: "https://arkhampad.com" },
@@ -62,8 +63,9 @@ export default async function Article({ params }: { params: Promise<{ slug: stri
         <article className="e-article">
           <nav className="e-crumb" aria-label="Breadcrumb"><Link href="/learn/">Learn</Link><span>/</span><span>{CATS[p.cat]}</span></nav>
           <h1>{p.title}</h1>
-          <div className="e-ameta dim">{p.read} read · Updated {new Date(LEARN_DATE).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>
+          <div className="e-ameta dim">{p.read} read · Updated {new Date(p.updated || LEARN_DATE).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>
           <div className="e-short"><b>In short</b><p>{p.short}</p></div>
+          {p.live && <MainnetLive />}
           {p.sections.map(([h, body]) => (
             <section key={h} id={anchor(h)}>
               <h2>{h}</h2>
@@ -106,6 +108,7 @@ export default async function Article({ params }: { params: Promise<{ slug: stri
         </article>
         <aside className="e-toc" aria-label="On this page">
           <span className="dim">On this page</span>
+          {p.live && <a href="#live-now">Live numbers</a>}
           {p.sections.map(([h]) => <a key={h} href={`#${anchor(h)}`}>{h}</a>)}
           <a href="#faq">FAQ</a>
         </aside>

@@ -13,6 +13,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   ];
   return [
     ...pages.map(([p, priority, changeFrequency]) => ({ url: `${SITE}${p}`, lastModified: now, changeFrequency, priority })),
-    ...POSTS.map((p) => ({ url: `${SITE}/learn/${p.slug}/`, lastModified: new Date(LEARN_DATE), changeFrequency: "monthly" as const, priority: 0.7 })),
+    ...POSTS.map((p) => ({ url: `${SITE}/learn/${p.slug}/`, lastModified: new Date(p.updated || LEARN_DATE), changeFrequency: (p.live ? "daily" : "monthly") as "daily" | "monthly", priority: p.live ? 0.9 : 0.7 })),
   ];
 }

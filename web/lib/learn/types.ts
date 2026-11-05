@@ -12,5 +12,7 @@ export type Post = {
   sections: [string, string][]; // [heading, body]
   faq: [string, string][]; // 4-6 real questions people search
   related: string[]; // 3 slugs
+  updated?: string; // YYYY-MM-DD when this article was refreshed after LEARN_DATE
+  live?: boolean; // show the live Elysium numbers box under the short answer
 };
 export const CATS: Record<Cat, string> = { elysium: "Elysium basics", money: "Deposits & withdrawals", trade: "Trading", create: "Create a coin", safety: "Safety" };
