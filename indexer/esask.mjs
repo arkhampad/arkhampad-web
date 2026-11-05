@@ -25,7 +25,7 @@ export async function ai(messages, max = 220) {
   return typeof out === "string" ? out.trim() : out != null ? JSON.stringify(out) : null;
 }
 
-export const INTENTS = ["coin", "top_gainers", "top_volume", "new_coins", "smart_money", "launchpads", "general", "about", "off_topic", "chitchat"];
+export const INTENTS = ["coin", "top_gainers", "top_volume", "new_coins", "smart_money", "launchpads", "buybacks", "general", "about", "off_topic", "chitchat"];
 
 /** What is being asked, in which language, about which coin (if any). */
 export async function classify(text) {
@@ -36,13 +36,14 @@ export async function classify(text) {
   try {
     const out = await ai([
       { role: "system", content: `You label tweets sent to @elyscreener, a live screener for the Elysium blockchain (Kinetiq's Hyperliquid L2). Reply with ONLY a JSON object: {"lang":"<ISO 639-1 code of the tweet's language>","intent":"<one of ${INTENTS.join("|")}>","coin":"<ticker or name of the one coin asked about, else null>"}.
-coin = asks about one specific coin (safe? price? holders? how is it doing?). top_gainers = biggest risers / pumping now. top_volume = most traded. new_coins = new launches. smart_money = what smart wallets / whales buy. launchpads = which launchpad is best/biggest/safest or comparing launchpads. general = any other question about Elysium (bridging, gas, wallets, DEXs, NFTs, mainnet, Kinetiq, HYPE on Elysium). about = what is ElyScreener / what can you do. off_topic = not about Elysium or crypto on Elysium. chitchat = greetings, thanks, no question.` },
+coin = asks about one specific coin (safe? price? holders? how is it doing?). top_gainers = biggest risers / pumping now. top_volume = most traded. new_coins = new launches. smart_money = what smart wallets / whales buy. launchpads = which launchpad is best/biggest/safest or comparing launchpads. buybacks = Ascend's buybacks / what Ascend is buying back. general = any other question about Elysium (bridging, gas, wallets, DEXs, NFTs, mainnet, Kinetiq, HYPE on Elysium). about = what is ElyScreener / what can you do. off_topic = not about Elysium or crypto on Elysium. chitchat = greetings, thanks, no question.` },
       { role: "user", content: clean.slice(0, 500) || "(empty)" },
     ], 80);
     r = JSON.parse(out.match(/\{[\s\S]*\}/)?.[0] || "null");
   } catch {}
   // if the AI is unavailable: a few common words in several languages
-  const guess = /launch ?pad|launchpad|ランチパッド|发射台/i.test(clean) ? "launchpads"
+  const guess = /buy ?back/i.test(clean) ? "buybacks"
+    : /launch ?pad|launchpad|ランチパッド|发射台/i.test(clean) ? "launchpads"
     : /gainer|pump|moon|top|yüksel|artan|上昇|涨|sube|steig/i.test(clean) ? "top_gainers"
     : /volume|hacim|出来高|交易量|volumen/i.test(clean) ? "top_volume"
     : /new coin|yeni coin|新しい|新币|nuevo/i.test(clean) ? "new_coins"

@@ -8,6 +8,8 @@
 //   ES_X_API_KEY, ES_X_API_SECRET, ES_X_ACCESS_TOKEN, ES_X_ACCESS_SECRET   the ElyScreener app's keys
 //   DATABASE_URL     the same Postgres as the indexer (reads coins/trades, remembers what was posted)
 //   ELYSIUM_RPC      comma list of Elysium nodes (to read a coin's metadata for its X account)
+//   ES_BUYBACK_WALLETS  Ascend's buyback wallet(s), comma-separated (from Nov 9). Each new buyback → a post with a
+//                    card tagging ES_BUYBACK_X (default @AscendLaunch); also "/buybacks" on Telegram and answers on X.
 //   ES_PAD_X         optional, launchpads' X handles: "Boxa=@boxa_club,Kleos=@kleosfun"
 //   ES_X_DRY=1       log + save the cards to /tmp/esx, post nothing      ES_X_OFF=1   switch off
 //   ES_X_NOW=1       post one right away on start (for a first test)
@@ -503,6 +505,16 @@ async function answerFor(c) {
     const card = padsCard({ title: c.quiet ? "LAUNCHPAD VOLUME · LAST 24H" : "LAUNCHPADS · 24H VOLUME · % RATED SAFE", rows: rows.map((r) => ({ name: r.pad, vol: usd(r.v), label: c.quiet ? money(usd(r.v)) : `${money(usd(r.v))} · ${r.safe ?? 0}% safe` })) });
     return { facts: [head, ...lines, "Your call, not financial advice."].join("\n"), fallback: ["launchpads on Elysium, by the numbers:", ...lines.slice(0, 4)].join("\n"), card };
   }
+  if (c.intent === "buybacks") {
+    if (!BB_WALLETS.length) return { facts: `${BB_NAME} buys back coins launched on it with its protocol fees, starting when Elysium mainnet opens on November 9. ElyScreener will show every buyback live in its Buybacks tab.`, fallback: `${BB_NAME} buybacks start nov 9. every single one will show up live on ElyScreener (Buybacks tab) the moment it hits the chain` };
+    const rows = await q(`select tr.token, sum(tr.hype)::float8 h, count(*)::int n, max(tr.at) last, t.symbol, t.image, t.launchpad from ely_trades tr join ely_tokens t on lower(t.address) = lower(tr.token) where lower(tr.trader) = any($1) and tr.side = 'buy' and tr.at > now() - interval '7 days' group by tr.token, t.symbol, t.image, t.launchpad order by max(tr.at) desc limit 4`, [BB_WALLETS]);
+    const total = await bbTotal();
+    if (!rows.length) return { facts: `No ${BB_NAME} buybacks in the last 7 days. All-time total: ${money(usd(total))}.`, fallback: `no ${BB_NAME} buybacks in the last 7 days. all-time total ${money(usd(total))}` };
+    const head = `Latest ${BB_NAME} buybacks (7d), all-time total ${money(usd(total))}:`;
+    const lines = rows.map((r, i) => `${i + 1}. $${r.symbol}: ${money(usd(r.h))} bought back, last ${ago(r.last)} ago`);
+    const card = listCard({ title: `${BB_NAME.toUpperCase()} BUYBACKS`, tag: "LAST 7 DAYS", rows: await Promise.all(rows.map(async (r) => ({ symbol: `$${r.symbol}`, sub: `${padName(r.launchpad)} · ${r.n} buy${r.n > 1 ? "s" : ""}`, value: money(usd(r.h)), up: true, image: await logo(r.image) }))) });
+    return { facts: [head, ...lines].join("\n"), fallback: [head, ...lines].join("\n"), card };
+  }
   if (c.intent === "general" || c.intent === "about") {
     return { facts: `Answer the question using only this background (if it isn't covered, say you only know live Elysium data and point to ElyScreener's Learn pages):\n${KB}`, fallback: c.intent === "about" ? "I'm ElyScreener: every coin on Elysium live. tag me with a ticker like $BLOB and I'll check it for you: safety, holders, bot clusters, smart money" : "good one. I mostly know live Elysium data, tag me with a ticker like $BLOB and I'll check it. guides are on ElyScreener's Learn pages", general: true };
   }
@@ -531,6 +543,44 @@ async function coinCheck(t) {
   ].filter(Boolean);
   return { text: lines.join("\n"), card: checkCard(c) };
 }
+// ------------------------------------------------------------------ Ascend buybacks
+const BB_WALLETS = env("ES_BUYBACK_WALLETS").split(",").map((a) => a.trim().toLowerCase()).filter((a) => /^0x[0-9a-f]{40}$/.test(a));
+const BB_NAME = env("ES_BUYBACK_NAME") || "Ascend";
+const BB_X = env("ES_BUYBACK_X") || "@AscendLaunch";
+const bbTotal = async () => Number((await q(`select coalesce(sum(hype), 0)::float8 h from ely_trades where lower(trader) = any($1) and side = 'buy'`, [BB_WALLETS]))[0]?.h || 0);
+/** New buybacks since the last check → one post (every coin bought back since, biggest first). At most one post per 20 min. */
+async function watchBuybacks() {
+  if (!BB_WALLETS.length) return;
+  await q(`create table if not exists es_bb_seen (trade_id bigint primary key, at timestamptz not null default now())`);
+  const first = !(await q(`select 1 from es_bb_seen limit 1`)).length;
+  const fresh = await q(`select tr.id, tr.token, tr.hype::float8 h, tr.at from ely_trades tr where lower(tr.trader) = any($1) and tr.side = 'buy' and not exists (select 1 from es_bb_seen s where s.trade_id = tr.id) order by tr.at limit 500`, [BB_WALLETS]);
+  if (!fresh.length) return;
+  const mark = () => q(`insert into es_bb_seen (trade_id) select unnest($1::bigint[]) on conflict do nothing`, [fresh.map((r) => r.id)]);
+  if (first) { await mark(); log(`buybacks: watching ${BB_WALLETS.length} wallet(s), ${fresh.length} earlier buys skipped`); return; } // never post the backlog
+  const lastPost = (await q(`select max(at) m from es_x_posts where kind = 'buyback'`))[0]?.m;
+  if (lastPost && Date.now() - new Date(lastPost).getTime() < 20 * 60e3) return; // collect, post together later
+  await loadHype();
+  const by = new Map();
+  for (const r of fresh) { const g = by.get(r.token) || { token: r.token, h: 0, n: 0 }; g.h += r.h; g.n++; by.set(r.token, g); }
+  const groups = [...by.values()].sort((a, b) => b.h - a.h);
+  const toks = await q(`select address, symbol, name, image, launchpad from ely_tokens where lower(address) = any($1)`, [groups.map((g) => g.token.toLowerCase())]);
+  const tk = new Map(toks.map((t) => [t.address.toLowerCase(), t]));
+  const list = groups.map((g) => ({ ...g, t: tk.get(g.token.toLowerCase()) })).filter((g) => g.t);
+  if (!list.length) { await mark(); return; }
+  const total = await bbTotal();
+  const sym = (t) => `$${t.symbol}`;
+  const text = list.length === 1
+    ? nl(`${BB_NAME} just bought back ${sym(list[0].t)} 🔁`, "", `${money(usd(list[0].h))} (${list[0].h.toFixed(2)} HYPE)${list[0].n > 1 ? ` over ${list[0].n} buys` : ""}`, `${BB_NAME} buybacks so far: ${money(usd(total))}`, "", BB_X)
+    : nl(`${BB_NAME} buyback round 🔁`, "", ...list.slice(0, 4).map((g) => `${sym(g.t)} ${money(usd(g.h))}`), "", `${BB_NAME} buybacks so far: ${money(usd(total))}`, "", BB_X);
+  const card = listCard({ title: `${BB_NAME.toUpperCase()} BUYBACK`, tag: "LIVE ON ELYSIUM", rows: await Promise.all(list.slice(0, 4).map(async (g) => ({ symbol: `$${g.t.symbol}`, sub: `${padName(g.t.launchpad)} · bought back`, value: money(usd(g.h)), up: true, image: await logo(g.t.image) }))) });
+  let id = null;
+  if (DRY) log(`[dry] buyback post:\n${text}`);
+  else id = await tweet(text, { mediaId: await uploadImage(card) });
+  await mark();
+  await q(`insert into es_x_posts (kind, token, tpl, text, tweet_id) values ('buyback', $1, null, $2, $3)`, [list[0].token, text, id]);
+  log(`buyback post ${id || "(dry)"}: ${list.length} coin(s)`);
+}
+
 async function answerMentions() {
   if (env("ES_X_REPLIES") === "0" || DRY || !KEYS.apiKey) return;
   if (!myId) {
@@ -584,7 +634,7 @@ async function tg(method, body, file) {
   if (!j.ok) throw new Error(`telegram ${method}: ${j.description}`);
   return j.result;
 }
-const TG_HELLO = "hey 👋 I'm ElyScreener, live data for every coin on Elysium.\n\nask me anything about Elysium in any language, or:\n/check $TICKER  (or a contract address)\n/top  biggest movers\n/new  new coins with traction\n/smart  where smart money is buying\n/pads  launchpads by the numbers\n\nin groups: use the commands or mention me.";
+const TG_HELLO = "hey 👋 I'm ElyScreener, live data for every coin on Elysium.\n\nask me anything about Elysium in any language, or:\n/check $TICKER  (or a contract address)\n/top  biggest movers\n/new  new coins with traction\n/smart  where smart money is buying\n/pads  launchpads by the numbers\n/buybacks  what Ascend is buying back\n\nin groups: use the commands or mention me.";
 async function telegramLoop() {
   const me = await tg("getMe", {});
   const handle = `@${me.username}`.toLowerCase();
@@ -592,6 +642,7 @@ async function telegramLoop() {
   await tg("setMyCommands", { commands: [
     { command: "check", description: "check a coin: /check $BLOB" }, { command: "top", description: "biggest movers on Elysium" },
     { command: "new", description: "new coins with traction" }, { command: "smart", description: "where smart money is buying" }, { command: "pads", description: "launchpads by the numbers" },
+    { command: "buybacks", description: "what Ascend is buying back" },
   ] }).catch(() => {});
   let offset = 0;
   const per = new Map(); // chat → answers in the last minute (keeps busy groups calm)
@@ -614,7 +665,7 @@ async function telegramLoop() {
       try {
         await loadHype();
         let c;
-        const fixed = { top: "top_gainers", new: "new_coins", smart: "smart_money", pads: "launchpads", volume: "top_volume" }[cmd?.[1]];
+        const fixed = { top: "top_gainers", new: "new_coins", smart: "smart_money", pads: "launchpads", volume: "top_volume", buybacks: "buybacks" }[cmd?.[1]];
         if (fixed) c = { intent: fixed, lang: "en", text, coin: null };
         else if (cmd?.[1] === "check") { const arg = (cmd[2] || "").trim(); c = /^\$?[A-Za-z][A-Za-z0-9]{0,14}$|^0x[0-9a-fA-F]{40}$/.test(arg) ? { lang: "en", intent: "coin", text: arg, coin: arg.replace(/^\$/, "") } : await classify(arg); c.intent = "coin"; c.coin = c.coin || cmd[2].replace(/^\$/, "").trim() || null; if (!c.coin) { await tg("sendMessage", { chat_id: m.chat.id, text: "which one? /check $TICKER or paste the contract address", reply_to_message_id: m.message_id }); continue; } }
         else c = await classify(text);
@@ -652,6 +703,8 @@ async function main() {
     const loop = async () => { for (;;) { await answerMentions().catch((e) => log("mentions:", e.message)); await sleep(75_000); } };
     loop();
   }
+  // Ascend buybacks: checked every 2 min
+  if (BB_WALLETS.length) (async () => { for (;;) { await watchBuybacks().catch((e) => log("buybacks:", e.message)); await sleep(120_000); } })();
   log(`on${DRY ? " (dry)" : ""}; today: ${plan(trDay(Date.now())).map((t) => new Date(t + TR).toISOString().slice(11, 16)).join(" ")} (TR)`);
   if (env("ES_X_NOW") === "1") await postOne(0).catch((e) => log("post failed:", e.message));
   if (env("ES_X_ONCE") === "1") { await pool.end(); return; }
