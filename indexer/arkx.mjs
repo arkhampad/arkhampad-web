@@ -21,6 +21,7 @@
 // posted (a 10-day no-repeat window in the database), so text and hashtags change every time.
 
 import { createHmac, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import { buildResponse, QUERIES } from "./scout-engine.mjs";
 import { writePost } from "./esask.mjs";
@@ -57,6 +58,41 @@ async function postTweet(keys, text, replyTo = null) {
     method: "POST",
     headers: { authorization: oauthHeader("POST", url, keys), "content-type": "application/json" },
     body: JSON.stringify({ text, ...(replyTo ? { reply: { in_reply_to_tweet_id: replyTo } } : {}) }),
+  });
+  const body = await r.text();
+  if (!r.ok) throw new Error(`X /2/tweets ${r.status}: ${body.slice(0, 300)}`);
+  try { return JSON.parse(body)?.data?.id ?? null; } catch { return null; }
+}
+
+/** An image for a post (PNG bytes): X's v2 media upload, the older v1.1 endpoint as a fallback. */
+async function uploadImage(keys, buf) {
+  const tries = [
+    ["https://api.x.com/2/media/upload", (j) => j?.data?.id ?? j?.id ?? j?.media_id_string],
+    ["https://upload.twitter.com/1.1/media/upload.json", (j) => j?.media_id_string],
+  ];
+  let last;
+  for (const [url, pick] of tries) {
+    try {
+      const fd = new FormData();
+      fd.append("media", new Blob([buf], { type: "image/png" }), "card.png");
+      fd.append("media_category", "tweet_image");
+      const r = await fetch(url, { method: "POST", headers: { authorization: oauthHeader("POST", url, keys) }, body: fd });
+      const t = await r.text();
+      if (!r.ok) throw new Error(`${url} ${r.status}: ${t.slice(0, 200)}`);
+      const id = pick(JSON.parse(t));
+      if (id) return String(id);
+      throw new Error(`no media id: ${t.slice(0, 200)}`);
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
+
+async function postTweetWithImage(keys, text, mediaId) {
+  const url = `${API}/2/tweets`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { authorization: oauthHeader("POST", url, keys), "content-type": "application/json" },
+    body: JSON.stringify({ text, media: { media_ids: [mediaId] } }),
   });
   const body = await r.text();
   if (!r.ok) throw new Error(`X /2/tweets ${r.status}: ${body.slice(0, 300)}`);
@@ -112,6 +148,37 @@ function POSTS() {
     ["b10", `before you buy: who holds it, did the dev sell, is it sellable at all\n\nArkhamPad checks it on every Elysium coin, then you trade\n\n${LINK}\n\n#Elysium #CryptoSafety #RugCheck #DYOR #DeFi`],
     ["b11", `Arkham is Elysium's launchpad.\n\nmake a coin, trade any coin, see the smart money. that's it, that's the app\n\n${LINK}\n\n#Elysium #Web3 #SmartMoney #CreateToken #HYPE`],
     ["b12", `the crowd on @Enter_Elysium is growing every day 👀\n\nlaunch your coin now and be the one they find. ArkhamPad\n\n${LINK}\n\n#Elysium #TokenLaunch #Altcoins #Crypto #GEM`],
+  ];
+}
+
+// ------------------------------------------------------------------ creator campaign (Nov 5: the "25K" fee rules)
+// 8 posts a day, each with one of 8 images (xcards/creator-1..8.png, 1600x900, every one shows arkhampad.com).
+// They go first at their own slots. The text carries no link (X charges far more for a post with a link, and
+// shows it to fewer people); set ARK_X_CREATOR_LINK=1 to also add arkhampad.com as a reply under each one.
+// ARK_X_CREATOR_OFF=1 stops the campaign. The facts, fixed: creators start at 20% of every trade fee; above
+// $25K for 1 hour, 50%; above $100K, 60%; in the first 24h an extra 15% is held, paid out if the coin makes it.
+const CREATOR_PLAN = ["09:40", "11:20", "13:10", "15:00", "16:40", "18:10", "19:40", "21:10"];
+const CREATOR_ON = () => process.env.ARK_X_CREATOR_OFF !== "1";
+const card = (n) => readFileSync(new URL(`./xcards/creator-${n}.png`, import.meta.url));
+/** [id, text, image number]. */
+function CREATOR() {
+  return [
+    ["c1", `Arkham is Elysium's launchpad.\n\nbig update: get your coin above $25K and you take HALF of every trade fee on it\n\n#Elysium #CreatorFees`, 1],
+    ["c2", `launched a coin on Elysium? on ArkhamPad you now earn half of every trade fee once it holds $25K for an hour 👀\n\n#Elysium #Memecoins`, 1],
+    ["c3", `quick math for creators: $100K daily volume on your coin = $500 a day to you on ArkhamPad\n\n#Elysium #PassiveIncome`, 2],
+    ["c4", `your coin trades, you get paid. half of every fee, every trade, once it's above $25K. that's ArkhamPad now\n\n#Elysium #CryptoCreators`, 2],
+    ["c5", `Arkham is Elysium's launchpad.\n\nfirst 24 hours of your coin? we put an extra 15% of every fee aside for you. hit $25K and it's yours\n\n#Elysium #TokenLaunch`, 3],
+    ["c6", `the first day matters most. ArkhamPad holds a bonus 15% of fees for every new coin's creator, paid the moment it makes it\n\n#Elysium #LaunchDay`, 3],
+    ["c7", `20% at launch. 50% above $25K. 60% above $100K.\n\nthe bigger your coin gets on ArkhamPad, the bigger your cut\n\n#Elysium #Memecoin`, 4],
+    ["c8", `your coin can pay you up to 60% of every trade fee on ArkhamPad. the bigger it gets, the more you make\n\n#Elysium #HYPE`, 4],
+    ["c9", `the rule is simple on ArkhamPad: $25K market cap for 1 hour = half of every trade fee is yours\n\n#Elysium #DeFi`, 5],
+    ["c10", `Arkham is Elysium's launchpad.\n\nhold $25K for an hour and the switch flips: you earn 50% of every trade on your coin\n\n#Elysium #OnChain`, 5],
+    ["c11", `launch → pass $25K → earn half of every trade fee\n\nno code, about a minute to launch on ArkhamPad\n\n#Elysium #CreateToken`, 6],
+    ["c12", `got a coin idea? ArkhamPad puts it live on Elysium in a minute, and once it holds $25K half the fees are yours\n\n#Elysium #Web3`, 6],
+    ["c13", `every coin on ArkhamPad starts around $3.9K. $25K is the line. cross it and half of every trade fee goes to you\n\n#Elysium #Altcoins`, 7],
+    ["c14", `who's launching the first coin to cross $25K on ArkhamPad? that creator starts earning half of every trade 👀\n\n#Elysium #Crypto`, 7],
+    ["c15", `liquidity locked forever, no team tokens, no presale. and now creators earn up to 60% of fees. ArkhamPad\n\n#Elysium #FairLaunch`, 8],
+    ["c16", `Arkham is Elysium's launchpad.\n\nfair launch for your community, real money for you: up to 60% of every trade fee\n\n#Elysium #CryptoTwitter`, 8],
   ];
 }
 
@@ -232,7 +299,7 @@ async function main() {
   await pool.query(`alter table arkx_posts add column if not exists coin text`).catch(() => {});
   await pool.query(`alter table arkx_posts add column if not exists text text`).catch(() => {});
   const fomoOff = process.env.ARK_X_FOMO_OFF === "1";
-  log(`on${dry ? " (dry run)" : ""}; ${fomoOff ? 0 : PLAN.length} FOMO posts/day + ${SCOUT_ON() ? `up to ${SCOUT_PLAN.length} Scout signals/day` : "Scout off (no Supabase)"}`);
+  log(`on${dry ? " (dry run)" : ""}; ${CREATOR_ON() ? `${CREATOR_PLAN.length} creator posts/day with images + ` : ""}${fomoOff ? 0 : PLAN.length} FOMO posts/day + ${SCOUT_ON() ? `up to ${SCOUT_PLAN.length} Scout signals/day` : "Scout off (no Supabase)"}`);
 
   // a tiny health endpoint so Railway sees the service as up
   if (process.env.PORT) {
@@ -251,9 +318,38 @@ async function main() {
       const es = await pool.query(`select 1 from es_x_posts where tweet_id is not null and at > now() - interval '10 minutes' limit 1`).catch(() => ({ rows: [] }));
       const quiet = (recent.rows.length === 0 && es.rows.length === 0) || dry;
 
-      // 1) Scout live signals take priority at their slots (strong catches only; never floods).
       let posted = false;
-      if (quiet && SCOUT_ON()) {
+      // 0) The creator campaign first, at its own slots: a post with its image (and the link as a reply if
+      //    ARK_X_CREATOR_LINK=1).
+      if (quiet && CREATOR_ON()) {
+        for (const at of CREATOR_PLAN) {
+          const t = slotTime(at, now);
+          if (now < t || now > t + 2 * 3600e3) continue; // due, and no more than 2h late
+          const cslot = `creator:${at}`;
+          const done = await pool.query(`select 1 from arkx_posts where slot = $1 and posted_at::date = $2 limit 1`, [cslot, today]).catch(() => ({ rows: [] }));
+          if (done.rows.length) continue;
+          const [tpl, line, img] = await fresh(pool, CREATOR());
+          const text = await compose(pool, line);
+          if (dry) {
+            log(`[dry] ${cslot} ${tpl} (image ${img})\n${text}`);
+            await pool.query(`insert into arkx_posts (slot, tpl, post_id, text) values ($1,$2,$3,$4)`, [cslot, tpl, "dry", text]);
+          } else {
+            const mediaId = await uploadImage(keys, card(img));
+            const id = await postTweetWithImage(keys, text, mediaId);
+            await pool.query(`insert into arkx_posts (slot, tpl, post_id, text) values ($1,$2,$3,$4)`, [cslot, tpl, id ?? "", text]);
+            log(`posted ${cslot} ${tpl} (image ${img}) -> ${id}`);
+            if (id && process.env.ARK_X_CREATOR_LINK === "1") {
+              await sleep(20_000 + Math.floor(Math.random() * 50_000));
+              await postTweet(keys, REPLIES[Math.floor(Math.random() * REPLIES.length)], id).catch((e) => log("link reply: " + String(e.message).slice(0, 160)));
+            }
+          }
+          posted = true;
+          break;
+        }
+      }
+
+      // 1) Scout live signals take priority at their slots (strong catches only; never floods).
+      if (quiet && !posted && SCOUT_ON()) {
         for (const at of SCOUT_PLAN) {
           const t = slotTime(at, now);
           if (now < t || now > t + 60 * 60e3) continue; // due, and no more than 1h late
