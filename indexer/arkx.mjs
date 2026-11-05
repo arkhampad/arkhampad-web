@@ -23,6 +23,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import pg from "pg";
 import { buildResponse, QUERIES } from "./scout-engine.mjs";
+import { writePost } from "./esask.mjs";
 
 const TR = 3 * 3600e3;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -50,12 +51,12 @@ function oauthHeader(method, url, keys, nonce = randomBytes(16).toString("hex"),
   return "OAuth " + Object.entries({ ...o, oauth_signature: sig }).map(([k, v]) => `${enc(k)}="${enc(v)}"`).join(", ");
 }
 
-async function postTweet(keys, text) {
+async function postTweet(keys, text, replyTo = null) {
   const url = `${API}/2/tweets`;
   const r = await fetch(url, {
     method: "POST",
     headers: { authorization: oauthHeader("POST", url, keys), "content-type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, ...(replyTo ? { reply: { in_reply_to_tweet_id: replyTo } } : {}) }),
   });
   const body = await r.text();
   if (!r.ok) throw new Error(`X /2/tweets ${r.status}: ${body.slice(0, 300)}`);
@@ -97,6 +98,20 @@ function POSTS() {
     ["a26", `Arkham is Elysium's launchpad.\n\ntrade any coin with USDC or HYPE, see the smart money, skip the rugs\n\n${LINK}\n\n#Elysium #SmartMoney #RugCheck #HYPE #DeFi`],
     ["a27", `momentum, buy pressure and fresh launches on @Enter_Elysium — ranked live so you know what's moving right now\n\ntrade it on ArkhamPad\n\n${LINK}\n\n#Elysium #SmartMoney #Trading #Altcoins #OnChain`],
     ["a28", `two ways in, one place to trade: USDC or HYPE, every Elysium coin, on ArkhamPad 👀\n\n${LINK}\n\n#Elysium #USDC #HYPE #OnChain #Trading #Memecoins`],
+    // Nov 5: create on Elysium + every coin on the chain trades here (new launches too), dev buys/sells on
+    // the chart, your position and PnL. These go first (the no-repeat rule picks unused lines first).
+    ["b1", `Arkham is Elysium's launchpad.\n\ngot a coin idea? name it, drop a logo, it's live on Elysium in about a minute. no code, email login\n\n${LINK}\n\n#Elysium #CreateToken #Memecoins #HYPE #Web3`],
+    ["b2", `every coin launched on Elysium today is tradeable on ArkhamPad. not some of them. all of them 👀\n\n${LINK}\n\n#Elysium #NewCoins #Altcoins #HYPE #Trading`],
+    ["b3", `the chart on ArkhamPad now shows exactly when the dev bought and when the dev sold\n\nno more finding out after the dump\n\n${LINK}\n\n#Elysium #DYOR #RugCheck #OnChain #Memecoins`],
+    ["b4", `launch your own coin on @Enter_Elysium before the crowd shows up 👀\n\nArkhamPad, one minute, you keep a cut of every trade\n\n${LINK}\n\n#Elysium #TokenLaunch #CreateToken #Crypto #DeFi`],
+    ["b5", `bought something on Elysium? ArkhamPad shows your entry, your PnL and the dev's moves on one screen\n\n${LINK}\n\n#Elysium #PnL #CryptoTrading #HYPE #Web3`],
+    ["b6", `Arkham is Elysium's launchpad.\n\nthe coins pumping 1000%+ on Elysium right now? you can buy them here in one tap. email login, no seed phrase\n\n${LINK}\n\n#Elysium #100x #Altcoins #Memecoins #Crypto`],
+    ["b7", `your coin, your name, your ticker, live on Elysium in 60 seconds 🚀\n\nthen share the link and let it run\n\n${LINK}\n\n#Elysium #LaunchYourCoin #Memecoins #HYPE #DeFi`],
+    ["b8", `new coins hit Elysium every few minutes. most die. the ones that run, people saw early 👀\n\nwatch them land live on ArkhamPad\n\n${LINK}\n\n#Elysium #NewChain #GEM #OnChain #Trading`],
+    ["b9", `@HyperliquidX's new chain is filling up with coins fast\n\ncreate one or trade them all on ArkhamPad, HYPE or USDC\n\n${LINK}\n\n#Elysium #Hyperliquid #HYPE #Memecoins #CryptoTrading`],
+    ["b10", `before you buy: who holds it, did the dev sell, is it sellable at all\n\nArkhamPad checks it on every Elysium coin, then you trade\n\n${LINK}\n\n#Elysium #CryptoSafety #RugCheck #DYOR #DeFi`],
+    ["b11", `Arkham is Elysium's launchpad.\n\nmake a coin, trade any coin, see the smart money. that's it, that's the app\n\n${LINK}\n\n#Elysium #Web3 #SmartMoney #CreateToken #HYPE`],
+    ["b12", `the crowd on @Enter_Elysium is growing every day 👀\n\nlaunch your coin now and be the one they find. ArkhamPad\n\n${LINK}\n\n#Elysium #TokenLaunch #Altcoins #Crypto #GEM`],
   ];
 }
 
@@ -133,6 +148,43 @@ function scoutLines(sym, n) {
     ["sc7", `smart money doesn't wait — ${n} winning wallets just bought ${S} on Elysium 🚨\n\nScout, live.\n\narkhampad.com\n\n#Elysium #DeFi #SmartMoney`],
     ["sc8", `Scout caught it: ${S} on Elysium, ${n} smart wallets buying in the last 10 min 👀\n\narkhampad.com\n\n#Elysium #Altcoins #SmartMoney`],
   ];
+}
+
+// ------------------------------------------------------------------ posting like a person
+// The post itself carries no link (X shows link posts to fewer people); a reply right under it a little
+// later carries arkhampad.com. Each line is reworded fresh by the AI (Cloudflare Workers AI: CF_ACCOUNT_ID +
+// CF_AI_TOKEN on this service) so no two posts read alike; without the AI, or if its wording drops a key word
+// or adds a number, the hand-written line goes out as it is.
+const OPENER = "Arkham is Elysium's launchpad.";
+const BRAND = "ArkhamPad, Elysium's launchpad: people create coins on Elysium in a minute and trade every Elysium coin there with HYPE or USDC, email login, safety checks on every coin";
+const REPLIES = [
+  `${LINK}`, `here 👉 ${LINK}`, `link: ${LINK}`, `try it → ${LINK}`, `${LINK} 👀`, `it's all on ${LINK}`,
+  `trade it here: ${LINK}`, `👇\n${LINK}`, `start here → ${LINK}`, `${LINK} (email login, takes a minute)`,
+];
+function splitLine(text) {
+  const lines = text.split("\n");
+  const tags = lines.filter((l) => /^\s*#/.test(l)).join(" ").trim();
+  let body = lines.filter((l) => !/^\s*#/.test(l) && !l.includes(LINK)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  let opener = "";
+  if (body.startsWith(OPENER)) { opener = OPENER; body = body.slice(OPENER.length).trim(); }
+  return { opener, body, tags };
+}
+async function compose(pool, text) {
+  const { opener, body, tags } = splitLine(text);
+  const must = [...new Set([...(body.match(/\$[A-Za-z0-9]+|@\w+/g) || []), ...(/ArkhamPad/i.test(body) ? ["ArkhamPad"] : [])])];
+  const recent = (await pool.query(`select text from arkx_posts where text is not null order by posted_at desc limit 8`).catch(() => ({ rows: [] }))).rows.map((r) => r.text);
+  const room = 270 - opener.length - tags.length - 4;
+  const out = await writePost({ facts: body, fallback: body, must, recent, max: room, brand: BRAND }).catch(() => body);
+  return [opener, out, tags].filter(Boolean).join("\n\n");
+}
+/** The post (no link), then the link as a reply under it 20–70 s later. Returns the post's id. */
+async function publish(keys, text) {
+  const id = await postTweet(keys, text);
+  if (id) {
+    await sleep(20_000 + Math.floor(Math.random() * 50_000));
+    await postTweet(keys, REPLIES[Math.floor(Math.random() * REPLIES.length)], id).catch((e) => log("link reply: " + String(e.message).slice(0, 160)));
+  }
+  return id;
 }
 
 // ------------------------------------------------------------------ the day's plan (Türkiye time)
@@ -178,6 +230,7 @@ async function main() {
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
   await pool.query(`create table if not exists arkx_posts (id bigserial primary key, slot text, tpl text, post_id text, posted_at timestamptz default now())`);
   await pool.query(`alter table arkx_posts add column if not exists coin text`).catch(() => {});
+  await pool.query(`alter table arkx_posts add column if not exists text text`).catch(() => {});
   const fomoOff = process.env.ARK_X_FOMO_OFF === "1";
   log(`on${dry ? " (dry run)" : ""}; ${fomoOff ? 0 : PLAN.length} FOMO posts/day + ${SCOUT_ON() ? `up to ${SCOUT_PLAN.length} Scout signals/day` : "Scout off (no Supabase)"}`);
 
@@ -192,9 +245,11 @@ async function main() {
       const now = Date.now();
       const today = new Date(now + TR).toISOString().slice(0, 10);
 
-      // Never two posts within ~18 min (keeps FOMO + Scout from clustering when their slots overlap).
-      const recent = await pool.query(`select 1 from arkx_posts where post_id <> 'dry' and posted_at > now() - interval '18 minutes' limit 1`).catch(() => ({ rows: [] }));
-      const quiet = recent.rows.length === 0 || dry;
+      // Never two posts within ~25 min (keeps FOMO + Scout from clustering when their slots overlap).
+      const recent = await pool.query(`select 1 from arkx_posts where post_id <> 'dry' and posted_at > now() - interval '25 minutes' limit 1`).catch(() => ({ rows: [] }));
+      // and not within 10 min of an ElyScreener post (same database), so the two accounts never post together
+      const es = await pool.query(`select 1 from es_x_posts where tweet_id is not null and at > now() - interval '10 minutes' limit 1`).catch(() => ({ rows: [] }));
+      const quiet = (recent.rows.length === 0 && es.rows.length === 0) || dry;
 
       // 1) Scout live signals take priority at their slots (strong catches only; never floods).
       let posted = false;
@@ -212,13 +267,14 @@ async function main() {
           const pick = radar.coins.find((c) => c.signal === "strong" && !blocked.has(String(c.address).toLowerCase()));
           if (!pick) { log(`${sslot}: no fresh strong catch — skipping`); break; }
           const n = pick.smartCount || pick.notableCount || pick.recentCount || 2;
-          const [tpl, text] = await fresh(pool, scoutLines(pick.symbol, n));
+          const [tpl, line] = await fresh(pool, scoutLines(pick.symbol, n));
+          const text = await compose(pool, line);
           if (dry) {
             log(`[dry] ${sslot} ${tpl} (${pick.symbol})\n${text}`);
-            await pool.query(`insert into arkx_posts (slot, tpl, coin, post_id) values ($1,$2,$3,$4)`, [sslot, tpl, pick.address, "dry"]);
+            await pool.query(`insert into arkx_posts (slot, tpl, coin, post_id, text) values ($1,$2,$3,$4,$5)`, [sslot, tpl, pick.address, "dry", text]);
           } else {
-            const id = await postTweet(keys, text);
-            await pool.query(`insert into arkx_posts (slot, tpl, coin, post_id) values ($1,$2,$3,$4)`, [sslot, tpl, pick.address, id ?? ""]);
+            const id = await publish(keys, text);
+            await pool.query(`insert into arkx_posts (slot, tpl, coin, post_id, text) values ($1,$2,$3,$4,$5)`, [sslot, tpl, pick.address, id ?? "", text]);
             log(`posted ${sslot} ${tpl} ${pick.symbol} -> ${id}`);
           }
           posted = true;
@@ -233,13 +289,14 @@ async function main() {
           if (now < t || now > t + 3 * 3600e3) continue; // its time has come, and no more than 3h late
           const done = await pool.query(`select 1 from arkx_posts where slot = $1 and posted_at::date = $2 limit 1`, [at, today]).catch(() => ({ rows: [] }));
           if (done.rows.length) continue;
-          const [tpl, text] = await fresh(pool, POSTS());
+          const [tpl, line] = await fresh(pool, POSTS());
+          const text = await compose(pool, line);
           if (dry) {
             log(`[dry] ${at} ${tpl}\n${text}`);
-            await pool.query(`insert into arkx_posts (slot, tpl, post_id) values ($1,$2,$3)`, [at, tpl, "dry"]);
+            await pool.query(`insert into arkx_posts (slot, tpl, post_id, text) values ($1,$2,$3,$4)`, [at, tpl, "dry", text]);
           } else {
-            const id = await postTweet(keys, text);
-            await pool.query(`insert into arkx_posts (slot, tpl, post_id) values ($1,$2,$3)`, [at, tpl, id ?? ""]);
+            const id = await publish(keys, text);
+            await pool.query(`insert into arkx_posts (slot, tpl, post_id, text) values ($1,$2,$3,$4)`, [at, tpl, id ?? "", text]);
             log(`posted ${at} ${tpl} -> ${id}`);
           }
           break; // one post per pass

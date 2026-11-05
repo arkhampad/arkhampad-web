@@ -99,12 +99,12 @@ ElyScreener shows every Elysium coin live: price, market cap, holders, bot clust
  * our template line. The AI may only rephrase: same numbers, same $tickers and @handles, no new claims.
  * Anything off (a number that isn't in the facts, a missing tag, too long) → the template goes out.
  */
-export async function writePost({ facts, fallback, must = [], recent = [], max = 240 }) {
+export async function writePost({ facts, fallback, must = [], recent = [], max = 240, brand = "ElyScreener, a live screener for the Elysium blockchain" }) {
   if (!env("CF_AI_TOKEN")) return fallback;
   let out = null;
   try {
     out = await ai([
-      { role: "system", content: `You write posts for ElyScreener, a live screener for the Elysium blockchain, on X. Write ONE short post in English from the facts, like a real crypto trader typing fast: mostly lowercase, casual, a bit of personality, no corporate tone, no "exciting", no "don't miss out", no hashtags, no links, at most one emoji. Use ONLY the facts: never add numbers, coins, claims or predictions, never give financial advice. Keep every $TICKER and @handle from the facts exactly as written. Under ${max - 20} characters. Don't start the way these recent posts start:\n${recent.slice(0, 6).map((x) => "- " + String(x).split("\n")[0].slice(0, 60)).join("\n") || "- (none)"}\nOutput only the post text.` },
+      { role: "system", content: `You write posts for ${brand}, on X. Write ONE short post in English from the facts, like a real crypto trader typing fast: mostly lowercase, casual, a bit of personality, no corporate tone, no "exciting", no "don't miss out", no hashtags, no links, at most one emoji. Use ONLY the facts: never add numbers, coins, claims or predictions, never give financial advice. Keep every $TICKER and @handle from the facts exactly as written. Under ${max - 20} characters. Don't start the way these recent posts start:\n${recent.slice(0, 6).map((x) => "- " + String(x).split("\n")[0].slice(0, 60)).join("\n") || "- (none)"}\nOutput only the post text.` },
       { role: "user", content: `Facts:\n${facts}\n\nA plain version for reference (say it differently):\n${fallback}` },
     ], 160);
   } catch {}
