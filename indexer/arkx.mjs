@@ -153,8 +153,9 @@ function POSTS() {
 
 // ------------------------------------------------------------------ creator campaign (Nov 5: the "25K" fee rules)
 // 8 posts a day, each with one of 8 images (xcards/creator-1..8.png, 1600x900, every one shows arkhampad.com).
-// They go first at their own slots. The text carries no link (X charges far more for a post with a link, and
-// shows it to fewer people); set ARK_X_CREATOR_LINK=1 to also add arkhampad.com as a reply under each one.
+// They go first at their own slots. The post itself carries no link (X shows link posts to fewer people and
+// charges more for them); arkhampad.com follows as a reply under it 20-70 s later. ARK_X_CREATOR_LINK=0 drops
+// that reply (the image already shows arkhampad.com).
 // ARK_X_CREATOR_OFF=1 stops the campaign. The facts, fixed: creators start at 20% of every trade fee; above
 // $25K for 1 hour, 50%; above $100K, 60%; in the first 24h an extra 15% is held, paid out if the coin makes it.
 const CREATOR_PLAN = ["09:40", "11:20", "13:10", "15:00", "16:40", "18:10", "19:40", "21:10"];
@@ -244,10 +245,13 @@ async function compose(pool, text) {
   const out = await writePost({ facts: body, fallback: body, must, recent, max: room, brand: BRAND }).catch(() => body);
   return [opener, out, tags].filter(Boolean).join("\n\n");
 }
-/** The post (no link), then the link as a reply under it 20–70 s later. Returns the post's id. */
+/**
+ * The post (no link). Nov 5: the link reply under FOMO and Scout posts is off by default to cut cost (X charges
+ * far more for a post with a link; 21+ a day added up). ARK_X_LINK_REPLIES=1 turns it back on. Returns the id.
+ */
 async function publish(keys, text) {
   const id = await postTweet(keys, text);
-  if (id) {
+  if (id && process.env.ARK_X_LINK_REPLIES === "1") {
     await sleep(20_000 + Math.floor(Math.random() * 50_000));
     await postTweet(keys, REPLIES[Math.floor(Math.random() * REPLIES.length)], id).catch((e) => log("link reply: " + String(e.message).slice(0, 160)));
   }
@@ -338,7 +342,7 @@ async function main() {
             const id = await postTweetWithImage(keys, text, mediaId);
             await pool.query(`insert into arkx_posts (slot, tpl, post_id, text) values ($1,$2,$3,$4)`, [cslot, tpl, id ?? "", text]);
             log(`posted ${cslot} ${tpl} (image ${img}) -> ${id}`);
-            if (id && process.env.ARK_X_CREATOR_LINK === "1") {
+            if (id && process.env.ARK_X_CREATOR_LINK !== "0") {
               await sleep(20_000 + Math.floor(Math.random() * 50_000));
               await postTweet(keys, REPLIES[Math.floor(Math.random() * REPLIES.length)], id).catch((e) => log("link reply: " + String(e.message).slice(0, 160)));
             }
