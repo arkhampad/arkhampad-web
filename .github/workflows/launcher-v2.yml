@@ -1,0 +1,113 @@
+name: Launcher v2
+
+# Started by hand, once. Deploys ArkhamPad's launcher version 2 ("25K" fee rules) on Elysium mainnet next to
+# version 1 (which keeps running unchanged for every existing coin), checks it with a tiny smoke coin, and
+# saves its address into contracts-elysium/deployments/99901.json as "launcherV2". The site and the indexer
+# switch new coins to version 2 when they rebuild from that commit. If any check fails, nothing is saved.
+on:
+  workflow_dispatch:
+    inputs:
+      level1_usd:
+        description: "Level 1 (creator gets 50%), in USD"
+        required: true
+        default: "25000"
+      level2_usd:
+        description: "Level 2 (creator gets 60%), in USD"
+        required: true
+        default: "100000"
+      keeper:
+        description: "Keeper wallet (KEEPER_KEY's address on Railway)"
+        required: true
+        default: "0x8F7635FABfAd137E16E33ad808DdeC1D26491Af6"
+      smoke:
+        description: "Smoke-test coin's first buy, in HYPE"
+        required: true
+        default: "0.002"
+      rpc:
+        description: "Elysium RPC"
+        required: true
+        default: "https://rpc-live.elysp.com"
+
+permissions:
+  contents: write
+
+env:
+  OWNER: "0xfae9d1aBac2a9fd4Ab68af9fF346eA871E819158"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: contracts-elysium
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+
+      - name: Libraries
+        run: |
+          rm -rf lib && mkdir -p lib
+          git clone -q --depth 1 --branch v1.9.6 https://github.com/foundry-rs/forge-std lib/forge-std
+          git clone -q --depth 1 --branch v5.1.0 https://github.com/OpenZeppelin/openzeppelin-contracts lib/openzeppelin-contracts
+
+      - name: All contract tests (version 1 and version 2)
+        run: forge test
+
+      - name: Not deployed yet?
+        run: |
+          if jq -e '.launcherV2' deployments/99901.json >/dev/null; then
+            echo "launcherV2 is already in deployments/99901.json: $(jq -r .launcherV2 deployments/99901.json). Not deploying a second one."
+            exit 1
+          fi
+
+      - name: Levels in HYPE at today's price
+        env:
+          L1_USD: ${{ inputs.level1_usd }}
+          L2_USD: ${{ inputs.level2_usd }}
+        run: |
+          PRICE=$(curl -s -X POST https://api.hyperliquid.xyz/info -H 'content-type: application/json' -d '{"type":"allMids"}' | jq -r '.HYPE')
+          echo "HYPE price: $PRICE"
+          export PRICE
+          python3 -c "import os; p=float(os.environ['PRICE']); assert 1 < p < 10000, 'bad price'"
+          L1=$(python3 -c "import os; print(round(float(os.environ['L1_USD']) / float(os.environ['PRICE'])))")
+          L2=$(python3 -c "import os; print(round(float(os.environ['L2_USD']) / float(os.environ['PRICE'])))")
+          echo "level 1: $L1 HYPE (\$$L1_USD), level 2: $L2 HYPE (\$$L2_USD)"
+          echo "LEVEL1_MC=$(cast to-wei "$L1")" >> "$GITHUB_ENV"
+          echo "LEVEL2_MC=$(cast to-wei "$L2")" >> "$GITHUB_ENV"
+
+      - name: Deploy and check on Elysium
+        env:
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_KEY }}
+          ELY_RPC: ${{ inputs.rpc }}
+          KEEPER: ${{ inputs.keeper }}
+          IN_SMOKE: ${{ inputs.smoke }}
+        run: |
+          test "$(cast chain-id --rpc-url "$ELY_RPC")" = "99901"
+          export SMOKE_BUY=$(cast to-wei "$IN_SMOKE")
+          forge script script/DeployLauncherV2.s.sol --rpc-url "$ELY_RPC" --broadcast --slow --gas-estimate-multiplier 300
+          cat deployments/99901-v2.json
+          # second run: checks the smoke coin end to end (its address is read from the chain)
+          if [ "$SMOKE_BUY" != "0" ]; then
+            forge script script/SmokeLauncherV2.s.sol --rpc-url "$ELY_RPC" --broadcast --slow --gas-estimate-multiplier 300
+            jq -e '.smokeCoinV2 != "0x0000000000000000000000000000000000000000"' deployments/99901-v2.json
+          fi
+          cat deployments/99901-v2.json
+
+      - name: Save the address
+        run: |
+          jq -s '.[0] * .[1]' deployments/99901.json deployments/99901-v2.json > /tmp/d.json
+          jq -e '.launcher and .launcherV2 and .whype and .positionManager' /tmp/d.json >/dev/null
+          mv /tmp/d.json deployments/99901.json
+          rm deployments/99901-v2.json
+          cat deployments/99901.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deployments/99901.json
+          git commit -m "Launcher v2 on Elysium mainnet"
+          for i in 1 2 3 4 5; do git pull --rebase && git push && exit 0; sleep 10; done
+          exit 1
