@@ -537,6 +537,7 @@ async function coinCheck(t) {
   };
   const lines = [
     `$${t.symbol} on ${c.pad}: ${label}${score != null ? ` (${score}/100)` : ""}`,
+    `market cap ${c.mc} · ${money(usd(t.vol24_hype || 0))} traded in 24h`,
     `${c.holders} holders · top 10 hold ${c.top10} · ${c.bots} in bot clusters`,
     s?.dev_sold ? "heads up, the creator has sold" : dev != null ? `creator ${c.dev}` : null,
     sm ? `${sm} smart wallet${sm > 1 ? "s" : ""} bought in the last 24h` : null,
@@ -581,6 +582,14 @@ async function watchBuybacks() {
   log(`buyback post ${id || "(dry)"}: ${list.length} coin(s)`);
 }
 
+/** The coin of the post a mention replies to, when that post is one of ours (a coin post or an answer). */
+async function contextCoin(m) {
+  const parent = (m.referenced_tweets || []).find((r) => r.type === "replied_to")?.id;
+  if (!parent) return null;
+  const r = (await q(`select token from es_x_posts where tweet_id = $1 and token is not null
+    union all select token from es_x_replies where reply_id = $1 and token is not null limit 1`, [parent]).catch(() => []))[0];
+  return r?.token || null;
+}
 async function answerMentions() {
   if (env("ES_X_REPLIES") === "0" || DRY || !KEYS.apiKey) return;
   if (!myId) {
@@ -589,7 +598,7 @@ async function answerMentions() {
     if (!myId) return;
   }
   const since = (await q(`select max(mention_id::numeric)::text m from es_x_replies where mention_id ~ '^[0-9]+$'`))[0]?.m;
-  const j = await xGet(`/2/users/${myId}/mentions?max_results=${since ? 50 : 5}&tweet.fields=author_id,created_at${since ? `&since_id=${since}` : ""}`);
+  const j = await xGet(`/2/users/${myId}/mentions?max_results=${since ? 50 : 5}&tweet.fields=author_id,created_at,referenced_tweets${since ? `&since_id=${since}` : ""}`);
   const list = (j?.data || []).sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
   // first run (nothing saved yet): skip only mentions older than an hour, answer the fresh ones
   const fresh = since ? list : list.filter((m) => Date.now() - Date.parse(m.created_at || 0) < 3600e3);
@@ -606,6 +615,14 @@ async function answerMentions() {
     if (today.n >= cap) { await save("daily cap"); continue; }
     if (today.a >= perUser) { await save("per-person daily limit"); continue; }
     const c = await classify(m.text || "");
+    // Nov 6: a reply under one of our own posts (or answers) is about that post's coin: "how deep is the
+    // liquidity?" under the $MESA post means $MESA, not "couldn't find that one"
+    const ctx = await contextCoin(m);
+    if (ctx) {
+      const named = c.intent === "coin" && c.coin ? await findCoin(c.coin).catch(() => null) : null;
+      const asks = /\?/.test(m.text || "") || /\b(liq|liquidity|safe|rug|holders?|dev|bots?|chart|mc|cap|volume|vol)\b/i.test(m.text || "");
+      if (!named && (c.intent === "coin" || (asks && ["general", "off_topic", "chitchat", "about"].includes(c.intent)))) { c.intent = "coin"; c.coin = ctx; }
+    }
     let a;
     try { a = await answerFor(c); } catch (e) { log("answer data:", e.message); a = null; }
     if (!a) { await save(`no answer (${c.intent})`); continue; }
