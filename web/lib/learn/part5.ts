@@ -6,7 +6,7 @@ export const part5: Post[] = [
     cat: "create",
     updated: "2026-11-06",
     title: "Elysium Launchpad: Launch Your Coin on Elysium (Nov 9)",
-    desc: "The Elysium launchpad for creating a coin in 30 seconds: no code, locked liquidity, 30% creator fees, and how to be ready for Elysium mainnet day on Nov 9.",
+    desc: "The Elysium launchpad for creating a coin in 30 seconds: no code, locked liquidity, creator fees up to 60%, and how to be ready for Elysium mainnet day on Nov 9.",
     keywords: [
       "elysium launchpad",
       "launch a coin on elysium",
@@ -23,7 +23,7 @@ export const part5: Post[] = [
     ],
     read: "7 min",
     short:
-      "ArkhamPad is a launchpad on Elysium, the Hyperliquid Layer 2 built by Kinetiq. You enter a name, ticker and image, confirm one transaction, and your coin is live in about 30 seconds with 1,000,000,000 tokens in a locked pool against HYPE. The creator earns 30% of trading fees. Elysium's public mainnet launches on November 9, 2026.",
+      "ArkhamPad is a launchpad on Elysium, the Hyperliquid Layer 2 built by Kinetiq. You enter a name, ticker and image, confirm one transaction, and your coin is live in about 30 seconds with 1,000,000,000 tokens in a locked pool against HYPE. Creators earn 20% of every trade fee from launch, 50% once the coin holds a $25K market cap for 1 hour, and 60% above $100K. Elysium's public mainnet launches on November 9, 2026.",
     sections: [
       [
         "What is an Elysium launchpad?",
@@ -37,7 +37,7 @@ On Elysium, the Layer 2 that Kinetiq built on top of Hyperliquid's HyperEVM, mos
 
 - **Liquidity that cannot be pulled.** If the creator can withdraw the pool, buyers cannot be safe. ArkhamPad places the liquidity in a locked pool so nobody can remove it. See [locked liquidity explained](/learn/locked-liquidity-explained/).
 - **A fixed, fair setup.** Every ArkhamPad coin has the same supply and the same starting market cap, so no creator can hide extra tokens for themselves.
-- **Creator fees.** You earn 30% of the 1% pool fee on every trade of your coin, about 0.3% of volume. [Read how creator fees work](/learn/earn-creator-fees/).
+- **Creator fees.** You earn 20% of every trade fee from the start, 50% once your coin holds a $25K market cap for 1 hour, and 60% above $100K. [Read how creator fees work](/learn/earn-creator-fees/).
 - **Easy buying.** If buyers cannot get HYPE or find your coin, it will not trade. ArkhamPad lets people log in with email or Google and fund with HYPE or USDC.`,
       ],
       [
@@ -72,7 +72,7 @@ Nothing here is financial advice. A launched coin can lose all its value, so onl
     faq: [
       [
         "What is the best launchpad on Elysium?",
-        "ArkhamPad is built for Elysium and sets every coin up the same way: 1,000,000,000 tokens in a locked pool against HYPE, with the creator earning 30% of trading fees. Launch takes about 30 seconds and needs no code.",
+        "ArkhamPad is built for Elysium and sets every coin up the same way: 1,000,000,000 tokens in a locked pool against HYPE, with the creator earning 20% of trading fees at launch, 50% above a $25K market cap and 60% above $100K. Launch takes about 30 seconds and needs no code.",
       ],
       [
         "How much does it cost to launch a coin on Elysium?",

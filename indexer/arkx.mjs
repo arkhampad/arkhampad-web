@@ -152,13 +152,17 @@ function POSTS() {
 }
 
 // ------------------------------------------------------------------ creator campaign (Nov 5: the "25K" fee rules)
-// 8 posts a day, each with one of 8 images (xcards/creator-1..8.png, 1600x900, every one shows arkhampad.com).
+// 19 posts a day (04:00-10:00 and 16:30-22:00), each with one of 16 images (xcards/creator-1..16.png, 1600x900, every one shows arkhampad.com).
 // They go first at their own slots. The post itself carries no link (X shows link posts to fewer people and
 // charges more for them); arkhampad.com follows as a reply under it 20-70 s later. ARK_X_CREATOR_LINK=0 drops
 // that reply (the image already shows arkhampad.com).
 // ARK_X_CREATOR_OFF=1 stops the campaign. The facts, fixed: creators start at 20% of every trade fee; above
 // $25K for 1 hour, 50%; above $100K, 60%; in the first 24h an extra 15% is held, paid out if the coin makes it.
-const CREATOR_PLAN = ["09:40", "11:20", "13:10", "15:00", "16:40", "18:10", "19:40", "21:10"];
+const CREATOR_PLAN = [
+  // Nov 6: denser in the two windows that matter (Türkiye time): 04:00-10:00 and 16:30-22:00
+  "04:00", "04:45", "05:30", "06:15", "07:00", "07:45", "08:30", "09:15", "10:00",
+  "16:30", "17:05", "17:40", "18:15", "18:50", "19:25", "20:00", "20:35", "21:10", "21:45",
+];
 const CREATOR_ON = () => process.env.ARK_X_CREATOR_OFF !== "1";
 const card = (n) => readFileSync(new URL(`./xcards/creator-${n}.png`, import.meta.url));
 /** [id, text, image number]. */
@@ -180,6 +184,38 @@ function CREATOR() {
     ["c14", `who's launching the first coin to cross $25K on ArkhamPad? that creator starts earning half of every trade 👀\n\n#Elysium #Crypto`, 7],
     ["c15", `liquidity locked forever, no team tokens, no presale. and now creators earn up to 60% of fees. ArkhamPad\n\n#Elysium #FairLaunch`, 8],
     ["c16", `Arkham is Elysium's launchpad.\n\nfair launch for your community, real money for you: up to 60% of every trade fee\n\n#Elysium #CryptoTwitter`, 8],
+    ["n1", `your coin hits $25K and stays there an hour → you take HALF of every trade fee. most launchpads never offered that. ArkhamPad did\n\n#Elysium #Memecoin #CryptoCreators #Hyperliquid #TokenLaunch`, 9],
+    ["n2", `Arkham is Elysium's launchpad.\n\nsomebody is about to launch the first coin past $25K and start collecting half the fees. why not you 👀\n\n#Elysium #Memecoins #Launchpad #HYPE #Web3`, 13],
+    ["n3", `think about it: you launch in a minute, no code, and if the coin holds $25K for an hour half of every trade fee lands in your wallet\n\n#Elysium #CreateToken #Crypto #Altcoins #OnChain`, 9],
+    ["n4", `$100K market cap on your own coin = 60% of every trade fee. yes, sixty. only on ArkhamPad\n\n#Elysium #CryptoTwitter #Memecoin #CreatorEconomy #HYPE`, 10],
+    ["n5", `everyone is trading Elysium coins. almost nobody is launching them. the creators get paid on every single trade 👀 ArkhamPad\n\n#Elysium #Memecoins #Hyperliquid #DeFi #Crypto`, 15],
+    ["n6", `20% of fees the second you launch. 50% once you hold $25K for an hour. 60% above $100K. the cut only goes up from here\n\n#Elysium #ArkhamPad #CryptoCreators #Altcoin #Web3`, 11],
+    ["n7", `Arkham is Elysium's launchpad.\n\nno presale, no team bags, liquidity locked, and the creator still gets up to 60% of fees. that's the whole pitch\n\n#Elysium #FairLaunch #Memecoin #CryptoNews`, 14],
+    ["n8", `got a meme in your head? name, ticker, picture, done. live on Elysium in about a minute. the money part starts at $25K\n\n#Elysium #MemeCoin #LaunchAToken #Crypto #NoCode`, 12],
+    ["n9", `every trade on your coin pays you. buys, sells, doesn't matter. fees in HYPE and your own coin. ArkhamPad\n\n#Elysium #PassiveIncome #Memecoins #HYPE #CryptoCreators`, 15],
+    ["n10", `first 24 hours of your coin: we quietly set 15% of the fee aside for you. cross $25K and it's all yours\n\n#Elysium #TokenLaunch #Crypto #Altcoins #ArkhamPad`, 16],
+    ["n11", `what would you do with half of every trade fee on a coin that blew up? you can find out on ArkhamPad 👀\n\n#Elysium #Memecoin #CryptoDreams #HYPE #Web3`, 9],
+    ["n12", `people on @Enter_Elysium keep asking where to launch. ArkhamPad: locked liquidity, creators earn up to 60% of fees\n\n#Elysium #Hyperliquid #Memecoins #Launchpad #Crypto`, 14],
+    ["n13", `the first creator to cross $25K on ArkhamPad is going to get a lot of attention. could be you\n\n#Elysium #Memecoin #CryptoTwitter #Altcoins #FirstMover`, 13],
+    ["n14", `$3.9K to $25K. that's the gap between a coin that exists and a coin that pays you half the fees\n\n#Elysium #Memecoins #TokenCreators #Crypto #HYPE`, 9],
+    ["n15", `Arkham is Elysium's launchpad.\n\nlaunch today, share it, get the crowd in. the fees follow the market cap\n\n#Elysium #CryptoCommunity #Memecoin #OnChain #ArkhamPad`, 11],
+    ["n16", `nobody can pull the liquidity on an ArkhamPad coin. not you, not us. buyers trust that, and that's how coins grow\n\n#Elysium #LockedLiquidity #Memecoin #DeFi #Web3`, 14],
+    ["n17", `3 steps. launch it. pass $25K. earn 50%. no code anywhere in there\n\n#Elysium #HowToLaunch #Crypto #Memecoins #ArkhamPad`, 12],
+    ["n18", `you can launch a coin before your coffee gets cold. whether it's a joke or a real project, ArkhamPad pays the creator on every trade\n\n#Elysium #Memecoin #Crypto #Altcoins #HYPE`, 12],
+    ["n19", `why launch on a pad that keeps the fees when you can launch on one that gives you up to 60%? ArkhamPad\n\n#Elysium #CryptoCreators #Memecoins #Launchpad #DeFi`, 10],
+    ["n20", `a coin with 60% of fees going to its creator gets promoted harder. that's just how it works. launch yours on ArkhamPad\n\n#Elysium #Memecoin #CryptoMarketing #Web3 #Altcoins`, 10],
+    ["n21", `Arkham is Elysium's launchpad.\n\nthe ladder: 20% at launch, 50% above $25K, 60% above $100K. which step are you on?\n\n#Elysium #Memecoin #CreatorFees #Crypto #HYPE`, 11],
+    ["n22", `dev pays gas, coin goes live, trades start, fees land. ArkhamPad is the shortest path from idea to income on Elysium\n\n#Elysium #Hyperliquid #Memecoins #Web3 #TokenLaunch`, 15],
+    ["n23", `people keep waiting for the next big Elysium coin. what if you launched it yourself and kept half the fees\n\n#Elysium #Memecoin #BuildInPublic #Crypto #Altcoin`, 9],
+    ["n24", `if your coin holds $25K for an hour the fee split flips to you. that one hour is the whole game on ArkhamPad\n\n#Elysium #Memecoins #CryptoCreators #DeFi #HYPE`, 9],
+    ["n25", `Arkham is Elysium's launchpad.\n\nlaunch fair, with locked liquidity, and still earn like a pro. creators get up to 60% of every trade fee\n\n#Elysium #FairLaunch #CryptoCreators #Memecoin #OnChain`, 14],
+    ["n26", `small coin today, $100K coin tomorrow? the higher it goes the more of the fees you keep. ArkhamPad\n\n#Elysium #Memecoin #Altcoins #HYPE #Crypto`, 10],
+    ["n27", `your community builds the market cap, the fees pay you. it's the simplest creator deal on Elysium right now 👀 ArkhamPad\n\n#Elysium #CryptoCommunity #Memecoins #Web3 #CreatorFees`, 15],
+    ["n28", `one minute to launch. one hour above $25K. half the fees. read that again 👀 ArkhamPad\n\n#Elysium #Crypto #Memecoin #TokenLaunch #Hyperliquid`, 12],
+    ["n29", `early Elysium creators are going to be the ones people remember. ArkhamPad is where you launch\n\n#Elysium #EarlyCrypto #Memecoins #Altcoins #HYPE`, 13],
+    ["n30", `still thinking about launching? the 15% we hold for your first day is waiting. pass $25K and it's yours\n\n#Elysium #Memecoin #Crypto #CryptoCreators #ArkhamPad`, 16],
+    ["n31", `Arkham is Elysium's launchpad.\n\nwake up, launch a coin, hold $25K for an hour, get paid half of every trade. repeat\n\n#Elysium #Memecoin #CryptoMorning #Web3 #HYPE`, 9],
+    ["n32", `evening idea: launch the coin, post it, watch the crowd come. at $25K the fee split turns in your favor. ArkhamPad\n\n#Elysium #Memecoins #CryptoTwitter #Altcoins #DeFi`, 13],
   ];
 }
 
