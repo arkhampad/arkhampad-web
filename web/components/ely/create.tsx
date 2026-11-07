@@ -128,11 +128,24 @@ export function CreatePage() {
   async function draw(pic = picture, nm = name, ds = desc) {
     setDrawing(true);
     setAiMsg(null);
-    try {
+    const once = async () => {
       const res = await fetch("/api/image", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: nm || "Elysium meme", description: ds, picture: pic }) });
+      // the server sends the raw picture (fast) or, from some models, JSON with a data URL
+      if (res.ok && (res.headers.get("content-type") || "").startsWith("image/")) {
+        const u = URL.createObjectURL(await res.blob());
+        try { return await shrink(u); } finally { URL.revokeObjectURL(u); }
+      }
       const j = await res.json().catch(() => ({}));
-      if (!res.ok || !j.dataUrl) throw new Error(j.error || "Couldn't draw an image right now. Try again.");
-      setImg(await shrink(j.dataUrl));
+      if (!res.ok || !j.dataUrl) { const err = new Error(j.error || "Couldn't draw an image right now. Try again."); (err as Error & { quota?: boolean }).quota = j.code === "QUOTA"; throw err; }
+      return await shrink(j.dataUrl);
+    };
+    try {
+      try {
+        setImg(await once());
+      } catch (e) {
+        if ((e as Error & { quota?: boolean }).quota) throw e; // today's limit: retrying won't help
+        setImg(await once()); // one quiet retry
+      }
     } catch (e) {
       setAiMsg((e as Error).message || "Couldn't draw an image right now. Try again.");
     } finally {

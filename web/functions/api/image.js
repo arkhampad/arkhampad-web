@@ -23,19 +23,20 @@ function prompt(name, description, picture) {
   const p = String(picture ?? "").replace(/[^\p{L}\p{N} .,'!?&-]/gu, "").slice(0, 240);
   const style = STYLES[Math.floor(Math.random() * STYLES.length)];
   // the idea's own art direction when the AI wrote one; otherwise built from the name and story
-  const subject = p || `Mascot for a meme coin called "${n}". ${d}`;
+  const subject = p || `Mascot for a meme coin called "${n}", glowing teal and gold Elysium paradise accents. ${d}`;
   return `${subject}. Crypto coin mascot logo, square app-icon composition, one centered character, head and shoulders, ${style}, rich detail, vibrant colors, smooth dark gradient background with a soft glow behind the subject, high contrast, ultra detailed, sharp focus, 4k, illustrated character not a photo of a real person, no text, no letters, no words, no watermark.`;
 }
 
-/** Turns any model output (base64 field, bytes, stream) into a data URL, or null. */
-async function toDataUrl(out) {
+/** Turns a model output into a Response: bytes go out as the raw image (no base64 work, which can blow the
+ *  tiny CPU budget of a free Worker), base64 text from the model goes out inside JSON. Null when empty. */
+async function toResponse(out, model) {
   if (!out) return null;
-  if (typeof out === "object" && typeof out.image === "string" && out.image.length > 1000) return `data:image/jpeg;base64,${out.image}`;
+  if (typeof out === "object" && typeof out.image === "string" && out.image.length > 1000) return json({ dataUrl: `data:image/jpeg;base64,${out.image}`, model });
   try {
     const bytes = out instanceof Uint8Array ? out : new Uint8Array(await new Response(out).arrayBuffer());
     if (bytes.length < 1000) return null;
     const png = bytes[0] === 0x89 && bytes[1] === 0x50;
-    return `data:image/${png ? "png" : "jpeg"};base64,${b64(bytes)}`;
+    return new Response(bytes, { headers: { "content-type": png ? "image/png" : "image/jpeg", "cache-control": "no-store", "x-model": model } });
   } catch { return null; }
 }
 
@@ -49,15 +50,24 @@ const MODELS = [
 /** Pollinations: free, keyless, slower and rate limited, so it's only the backup. */
 async function backup(p, seed) {
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), 25_000);
+  const t = setTimeout(() => ctl.abort(), 20_000);
   try {
     const r = await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(p.slice(0, 400))}?width=512&height=512&nologo=true&seed=${seed}`, { signal: ctl.signal });
     if (!r.ok || !/^image\//.test(r.headers.get("content-type") || "")) return null;
-    return await toDataUrl(new Uint8Array(await r.arrayBuffer()));
+    return await toResponse(new Uint8Array(await r.arrayBuffer()), "backup");
   } finally { clearTimeout(t); }
 }
 
 export async function onRequestPost({ request, env }) {
+  try {
+    return await draw(request, env);
+  } catch (e) {
+    // never answer with a crash page: the site always gets JSON it can show
+    return json({ error: "Couldn't draw an image right now. Please try again.", code: "FAILED", detail: [String(e?.message || e).slice(0, 160)] }, 502);
+  }
+}
+
+async function draw(request, env) {
   if (!env.AI) return json({ error: "AI images are not set up on this site yet.", code: "NO_AI_BINDING" }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ error: "bad request" }, 400); }
@@ -67,8 +77,8 @@ export async function onRequestPost({ request, env }) {
   const isQuota = (e) => /quota|limit|neurons|429|capacity/i.test(e);
   for (const [model, input] of MODELS) {
     try {
-      const url = await toDataUrl(await env.AI.run(model, input(p, seed)));
-      if (url) return json({ dataUrl: url, model });
+      const res = await toResponse(await env.AI.run(model, input(p, seed)), model.split("/").pop());
+      if (res) return res;
       errors.push(`${model.split("/").pop()}: empty`);
     } catch (e) {
       errors.push(`${model.split("/").pop()}: ${String(e?.message || e).slice(0, 120)}`);
@@ -77,8 +87,8 @@ export async function onRequestPost({ request, env }) {
   }
   // Backup when today's Cloudflare AI quota is used up: a free public image service (no key).
   try {
-    const url = await backup(p, seed);
-    if (url) return json({ dataUrl: url, model: "backup" });
+    const res = await backup(p, seed);
+    if (res) return res;
     errors.push("backup: empty");
   } catch (e) { errors.push(`backup: ${String(e?.message || e).slice(0, 120)}`); }
   const quota = errors.some(isQuota);
