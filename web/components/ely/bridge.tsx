@@ -330,7 +330,7 @@ const W_ABI = parseAbi([
   "event SendRootUpdated(bytes32 indexed outputRoot, bytes32 indexed l2BlockHash)",
 ]);
 const CHALLENGE_MS = 132 * 3600 * 1000; // about 5.5 days on Elysium mainnet
-const W_GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays on Elysium for gas
+const W_GAS_KEEP = 10_000_000_000_000_000n; // 0.01 HYPE stays on Elysium for gas
 
 type Wd = { position: bigint; caller: Address; destination: Address; arbBlockNum: bigint; ethBlockNum: bigint; timestamp: bigint; callvalue: bigint; data: Hex; tx: Hex };
 
@@ -450,7 +450,8 @@ function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
       onSent();
     } catch (e) {
       const m = String((e as Error)?.message ?? "");
-      setMsg({ ok: false, text: /reject|denied|cancel/i.test(m) ? "Cancelled." : "Withdrawal failed. Nothing was moved. Please try again." });
+      setMsg({ ok: false, text: /reject|denied|cancel/i.test(m) ? "Cancelled." : /insufficient|gas|fund/i.test(m) ? "Not enough HYPE left for gas. Try a slightly smaller amount." : "Withdrawal failed. Nothing was moved. Please try again." });
+      console.warn("withdraw failed:", m.slice(0, 300));
     } finally {
       setBusy(false);
     }
