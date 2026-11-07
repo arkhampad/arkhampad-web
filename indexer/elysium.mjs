@@ -52,6 +52,8 @@ export const KNOWN_CONTRACTS = {
   "0x5f702244f102183313e1b035fa846632c8b7e49f": "Eleos",
   "0xe954a18cffb3205f9452bd968ef27b9e84e8850d": "Stockium",
   "0x1cb9e9093c940d027c08c63bf7321e146ba0656c": "Elyxa",
+  // Nov 7: Mesa v4 (Agora shows the MESA coin 0xd1fe…0197 with the "Mesa v4" badge); its hook is also its maker
+  "0xe928f2336051cbd5b9d4531c25eadd13f9a82aec": "Mesa",
 };
 
 /** Runs async jobs, `n` at a time. */
