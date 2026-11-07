@@ -7,7 +7,7 @@ import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { usePoll } from "@/lib/ely";
 import { inviteLink } from "@/lib/referral";
-import { BANNERS_UNTIL, MAX_SUPPLY, MintFail, PIONEER, SAMPLES, TIERS, artPng, mintPioneer, pad, pioneerArt, pioneerState, tierOf } from "@/lib/pioneer";
+import { MAX_SUPPLY, MintFail, PIONEER, SAMPLES, TIERS, artPng, mintPioneer, pad, pioneerArt, pioneerState, tierOf } from "@/lib/pioneer";
 
 const XIcon = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M17.8 3h3.1l-6.8 7.7L22 21h-6.2l-4.9-6.3L5.3 21H2.2l7.3-8.3L2 3h6.4l4.4 5.8L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z" /></svg>;
 const sample = (id: number) => `/genesis/sample-${id}.svg`;
@@ -23,21 +23,15 @@ function useArt(id: number | null) {
   return src;
 }
 
-/** Banner for Discover and You. */
+/** Banner for Discover and You: launch your coin, earn up to 60% of fees. */
 export function PioneerBanner() {
   const tr = useT();
-  const st = usePoll(() => pioneerState(null).catch(() => null), 30_000);
-  const left = st ? MAX_SUPPLY - st.minted : null;
-  // gone from mainnet night on: the pages stay about coins (checked after load, so the static page matches)
-  const [over, setOver] = useState(false);
-  useEffect(() => { setOver(Date.now() >= BANNERS_UNTIL); }, []);
-  if (over) return null;
   return (
-    <Link href="/genesis/" className="e-airdrop e-pio-banner">
-      <img src={sample(42)} alt="" width={44} height={44} />
+    <Link href="/create/" className="e-airdrop e-pio-banner">
+      <span className="e-airdrop-ico" aria-hidden="true">🚀</span>
       <span>
-        <b>{tr("Free mint: ArkhamPad Genesis")}</b>
-        <small>{left != null ? tr("{n} of 10,000 left. One per wallet, free.", { n: left.toLocaleString("en-US") }) : tr("10,000 on-chain badges for the first people on Elysium. Free.")}</small>
+        <b>{tr("Launch your coin, earn up to 60%")}</b>
+        <small>{tr("Pass $25K market cap and keep up to 60% of every trading fee.")}</small>
       </span>
       <span className="e-airdrop-go" aria-hidden="true">→</span>
     </Link>
