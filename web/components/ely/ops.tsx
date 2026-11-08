@@ -349,9 +349,10 @@ const PLAN_NAMES: Record<string, string> = { profile: "Verified profile", boost1
 function ScreenerRevenue() {
   const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
   const data = usePoll(async () => {
+    let chainOk = true;
     const [rv, trades] = await Promise.all([
       fetch("/api/revenue", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
-      ROUTER ? logsFrom((fromBlock, toBlock) => ely().getLogs({ address: ROUTER as Address, event: TRADE, fromBlock, toBlock })) : Promise.resolve([]),
+      (ROUTER ? logsFrom((fromBlock, toBlock) => ely().getLogs({ address: ROUTER as Address, event: TRADE, fromBlock, toBlock })) : Promise.reject(new Error("no router"))).catch(() => { chainOk = false; return [] as never[]; }),
     ]);
     const swaps = new Set<string>(((rv?.swaps as string[]) ?? []).map((x) => x.toLowerCase()));
     const mine = trades.filter((l) => swaps.has(String(l.transactionHash).toLowerCase()));
@@ -361,7 +362,7 @@ function ScreenerRevenue() {
     const fee = (ls: typeof trades) => ls.reduce((a, l) => a + Number(l.args.fee ?? 0n) / 1e18, 0);
     const vol = (ls: typeof trades) => ls.reduce((a, l) => a + Number(l.args.hypeAmount ?? 0n) / 1e18, 0);
     return {
-      orders: ((rv?.orders as EsOrder[]) ?? []), pending: Number(rv?.pending ?? 0), known: swaps.size,
+      chainOk, sqlOk: Array.isArray(rv?.orders), orders: ((rv?.orders as EsOrder[]) ?? []), pending: Number(rv?.pending ?? 0), known: swaps.size,
       es: { n: mine.length, fee: fee(mine), vol: vol(mine) },
       all: { n: trades.length, fee: fee(trades) },
       recent: recent.map((l) => ({ tx: l.transactionHash as string, who: l.args.user as string, buy: !!l.args.isBuy, hype: Number(l.args.hypeAmount ?? 0n) / 1e18, fee: Number(l.args.fee ?? 0n) / 1e18, at: times.get(l.blockNumber as bigint) })),
@@ -379,6 +380,8 @@ function ScreenerRevenue() {
       <h3 className="e-ph" style={{ margin: 0 }}>ElyScreener income <span className="dim" style={{ fontSize: 12.5, fontWeight: 600 }}>swap fee (0.5%) on swaps made on elyscreener.com + paid promotions</span></h3>
       {!data ? <p className="dim">Loading…</p> : (
         <>
+          {!data.sqlOk && <div className="e-msg bad">Promotion numbers are not available yet: run es_031_revenue.sql in Supabase.</div>}
+          {!data.chainOk && <div className="e-msg bad">Could not read the router's swap fees from Elysium right now (the node did not answer). Promotions below are still correct; reload in a minute.</div>}
           <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", padding: 0, border: 0 }}>
             <div><span>Total income</span><b>{usd ? money(feeUsd + promoAll) : `${promoAll.toFixed(0)} USD + fees`}</b><small className="dim">fees + promotions</small></div>
             <div><span>Swap fees (0.5%)</span><b>{data.es.fee.toFixed(4)} HYPE</b><small className="dim">{usd ? money(feeUsd) : ""} · {data.es.n} swaps</small></div>
