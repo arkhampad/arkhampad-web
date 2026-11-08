@@ -143,7 +143,13 @@ async function freshest(method: string, params: unknown[]): Promise<string> {
     const b = typeof bn === "string" ? Number(BigInt(bn)) : 0;
     if (b > best.block) { best.block = b; best.result = res; }
   };
-  await Promise.allSettled(DIRECT.map(ask));
+  // first good answer, plus a short grace period for a node that is further along (not the slowest node's timeout)
+  await new Promise<void>((done) => {
+    let left = DIRECT.length, firstAt = 0;
+    const fin = () => done();
+    const tick = (ok: boolean) => { left--; if (ok && !firstAt) { firstAt = Date.now(); setTimeout(fin, 450); } if (left <= 0) fin(); };
+    DIRECT.forEach((u) => ask(u).then(() => tick(true), () => tick(false)));
+  });
   if (best.result == null) await ask(OWN_RPC).catch(() => {});
   if (best.result == null) throw new Error("no node answered");
   return best.result;
@@ -339,7 +345,7 @@ export async function buy(signer: Signer, t: EToken, hypeIn: bigint, minOut: big
  * sent in the background, no pop-up). The later sale is then a single transaction, with no approval racing
  * ahead of it through nodes that are a few seconds behind. Failing here costs nothing: sell() approves itself.
  */
-export async function allowanceMax(owner: Address, token: Address): Promise<bigint | null> {
+export async function allowanceMax(owner: Address, token: Address, need = 0n): Promise<bigint | null> {
   const data = encodeFunctionData({ abi: ERC20, functionName: "allowance", args: [owner, ROUTER as Address] });
   let best: bigint | null = null;
   const ask = async (url: string) => {
@@ -349,7 +355,12 @@ export async function allowanceMax(owner: Address, token: Address): Promise<bigi
     const v = BigInt(j.result);
     if (best == null || v > best) best = v;
   };
-  await Promise.allSettled(WATCH.map(ask));
+  // one node showing enough allowance is proof enough: don't wait for the slowest node
+  await new Promise<void>((done) => {
+    let left = WATCH.length;
+    const tick = () => { left--; if ((need > 0n && best != null && best >= need) || left <= 0) done(); };
+    WATCH.forEach((u) => ask(u).then(tick, tick));
+  });
   if (best == null) await ask(OWN_RPC).catch(() => {});
   return best;
 }
@@ -390,7 +401,7 @@ export async function sell(signer: Signer, t: EToken, amountIn: bigint, minOut: 
   try {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
     const data = encodeFunctionData({ abi: ROUTER_ABI, functionName: "sell", args: [p, amountIn, minOut, deadline] });
-    const allowed = (await allowanceMax(signer.address, p.token)) ?? 0n;
+    const allowed = (await allowanceMax(signer.address, p.token, amountIn)) ?? 0n;
     const approveData = encodeFunctionData({ abi: ERC20, functionName: "approve", args: [ROUTER, MAX] });
     if (allowed < amountIn) {
       onStep?.("Approving…");
