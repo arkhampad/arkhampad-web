@@ -14,6 +14,7 @@
 //   ES_X_DRY=1       log + save the cards to /tmp/esx, post nothing      ES_X_OFF=1   switch off
 //   ES_X_NOW=1       post one right away on start (for a first test)
 //   ES_X_LINK_REPLY=1  also reply under each post with the chart link (costs a second post each time)
+//   Threads: ten a day through Nov 15 (TR), then one at 20:40; each day's ten use ten different themes (THEMES).
 //   ES_X_DAILY_MAX   most posts per day (e.g. 16 on X's free plan); the day's slots are thinned evenly
 //   ES_X_REPLIES=0   switch off answering "@elyscreener check $XYZ"   ES_X_REPLY_MAX  answers per day (300)
 //   ES_X_USER_ID     the ElyScreener account's numeric id (else looked up once at start)
@@ -128,13 +129,20 @@ function plan(day) {
   if (!cap || cap >= all.length) return all;
   return Array.from({ length: cap }, (_, i) => all[Math.floor(((i + 0.5) * all.length) / cap)]);
 }
-/** "Elysium today" threads: up to Nov 9 three a day (06–07, 12–13, 20:40 TR), after that one at 20:40. */
+/** Threads: through THREAD_BUSY_UNTIL (TR days) ten a day spread over the day, after that one at 20:40 TR. */
+const THREAD_BUSY_UNTIL = "2026-11-15";
 function threadTimes(day) {
   const [y, m, d] = day.split("-").map(Number);
   const at = (h, min) => Date.UTC(y, m - 1, d, h, min) - TR;
   const r = rng(y * 10000 + m * 100 + d + 7);
-  const evening = at(20, 40);
-  return day <= "2026-11-09" ? [at(6, Math.floor(r() * 55)), at(12, Math.floor(r() * 55)), evening] : [evening];
+  if (day > THREAD_BUSY_UNTIL) return [at(20, 40)];
+  // 10 a day, roughly every 2 h from 05:00; a little tighter in the evening (US awake); minutes differ each day
+  return [[5, 0], [7, 15], [9, 30], [11, 30], [13, 30], [15, 30], [17, 30], [19, 0], [20, 40], [22, 30]].map(([h, mi]) => at(h, mi + Math.floor(r() * 25)));
+}
+/** Which theme a thread time gets: each day every theme once, the order shifts from day to day. */
+function themeFor(at) {
+  const day = trDay(at), i = threadTimes(day).findIndex((t) => Math.abs(t - at) < 60e3);
+  return (Math.max(i, 0) + Math.floor(Date.parse(day) / 86400e3)) % THEMES.length;
 }
 function nextThread(now) {
   for (const off of [0, 1]) { const t = threadTimes(trDay(now + off * 86400e3)).find((x) => x > now + 5e3); if (t) return t; }
@@ -345,17 +353,56 @@ async function feature(r) {
 
 // which kind goes in a slot: launchpad board once a day in the evening, a feature every few posts,
 // otherwise live coins (gainers most, then smart money and fresh launches)
-// once a day in the evening: a short thread "Elysium today" (launchpads, gainers, smart money, new coins)
-async function thread() {
-  const done = await q(`select 1 from es_x_posts where kind = 'thread' and at > now() - interval '3 hours'`);
+// threads: each theme is a different mix of boards and single-coin checks (a spec is an answerFor intent,
+// or {coin: kind} for one coin's check card), with its own hook so no two threads open alike
+const THEMES = [
+  { parts: ["launchpads", "top_gainers", "smart_money", "new_coins"], hook: "a quick tour of what is moving on Elysium right now across every launchpad", lead: "elysium right now, by launchpad 🧵" },
+  { parts: ["top_volume", { coin: "volume" }, "top_gainers"], hook: "where the volume is going, and what is behind the busiest coin", lead: "follow the volume 🧵" },
+  { parts: ["smart_money", { coin: "smart" }, "new_coins"], hook: "wallets with a winning record all buying the same thing", lead: "the good wallets are buying something 🧵" },
+  { parts: ["new_coins", { coin: "fresh" }, "launchpads"], hook: "brand new coins that already have real holders", lead: "fresh launches worth a look 🧵" },
+  { parts: ["top_gainers", { coin: "gainer" }, "smart_money"], hook: "the biggest movers and whether the top one holds up", lead: "biggest movers, then the receipts 🧵" },
+  { parts: ["launchpads", "top_volume", { coin: "volume" }], hook: "which launchpads are actually getting traded", lead: "who is getting traded 🧵" },
+  { parts: ["smart_money", "top_gainers", { coin: "smart" }], hook: "smart money versus the crowd", lead: "smart money vs everyone else 🧵" },
+  { parts: ["new_coins", "top_volume", { coin: "fresh" }], hook: "the newest coins and the most traded ones side by side", lead: "new vs busy 🧵" },
+  { parts: [{ coin: "gainer" }, "launchpads", "new_coins"], hook: "one coin running hard, then the wider picture", lead: "one coin everybody is watching 🧵" },
+  { parts: ["top_volume", "smart_money", "top_gainers", "launchpads"], hook: "the whole Elysium board in four posts", lead: "the whole board in four posts 🧵" },
+];
+const usedCoins = new Map(); // coin → when a thread last featured it (so threads through the day show different ones)
+async function pickCoin(kind) {
+  let rows = [];
+  if (kind === "smart") {
+    rows = (await q(`select token address, count(distinct trader)::int n from es_smart_buys(24) group by token order by 2 desc limit 8`).catch(() => []));
+  } else {
+    const where = kind === "fresh" ? `created_at > now() - interval '6 hours' and holders >= 20` : `last_trade_at > now() - interval '6 hours' and holders >= 25 and coalesce(vol24_hype, 0) * $1 >= 1000${kind === "gainer" ? " and change24 is not null" : ""}`;
+    const order = kind === "gainer" ? "change24 desc nulls last" : kind === "volume" ? "vol24_hype desc" : "holders desc";
+    rows = await q(`select address from ely_tokens where ${where} order by ${order} limit 8`, kind === "fresh" ? [] : [hype || 1]).catch(() => []);
+  }
+  const sc = await scores(rows.map((r) => r.address));
+  const now = Date.now();
+  for (const r of rows) {
+    const a = r.address.toLowerCase();
+    if ((sc.get(a) ?? 60) < 50 || now - (usedCoins.get(a) || 0) < 6 * 3600e3) continue;
+    return a;
+  }
+  return null;
+}
+async function thread(themeIdx = 0) {
+  const done = await q(`select 1 from es_x_posts where kind = 'thread' and at > now() - interval '40 minutes'`);
   if (done.length) return null;
+  const theme = THEMES[themeIdx % THEMES.length];
   const parts = [];
-  for (const intent of ["launchpads", "top_gainers", "smart_money", "new_coins"]) {
-    const a = await answerFor({ intent, lang: "en", text: "", quiet: true }).catch(() => null);
-    if (a?.card && !/^(No |Nothing)/.test(a.facts)) parts.push({ intent, ...a });
+  const seen = new Set();
+  for (const spec of theme.parts) {
+    let a = null;
+    if (typeof spec === "string") a = await answerFor({ intent: spec, lang: "en", text: "", quiet: true }).catch(() => null);
+    else {
+      const addr = await pickCoin(spec.coin);
+      if (addr && !seen.has(addr)) { a = await answerFor({ intent: "coin", coin: addr, lang: "en", text: "", quiet: true }).catch(() => null); if (a?.card) { seen.add(addr); usedCoins.set(addr, Date.now()); } }
+    }
+    if (a?.card && !/^(No |Nothing)/.test(a.facts)) parts.push({ intent: typeof spec === "string" ? spec : "coin", ...a });
   }
   if (parts.length < 2) return null;
-  return { kind: "thread", token: null, parts };
+  return { kind: "thread", token: null, parts, theme };
 }
 async function compose(slotIdx, r) {
   const hourTR = new Date(Date.now() + TR).getUTCHours();
@@ -370,10 +417,10 @@ async function compose(slotIdx, r) {
   return null;
 }
 
-async function postOne(slotIdx, asThread = false) {
+async function postOne(slotIdx, asThread = false, themeIdx = 0) {
   await loadHype();
   const r = rng(Date.now() & 0xffffffff);
-  const p = (asThread && (await thread().catch((e) => { log("thread:", e.message); return null; }))) || (await compose(slotIdx, r));
+  const p = (asThread && (await thread(themeIdx).catch((e) => { log("thread:", e.message); return null; }))) || (await compose(slotIdx, r));
   if (!p) { log("nothing worth posting, slot skipped"); return; }
   const recent = (await q(`select text from es_x_posts order by at desc limit 6`).catch(() => [])).map((x) => x.text);
   if (p.kind === "thread") return postThread(p, r, recent);
@@ -400,12 +447,14 @@ async function postOne(slotIdx, asThread = false) {
   await q(`insert into es_x_posts (kind, token, tpl, text, tweet_id) values ($1, $2, $3, $4, $5)`, [p.kind, p.token, p.tpl ?? null, text, p.tweetId ?? null]);
 }
 
+const CLOSERS = ["every coin on Elysium, live on ElyScreener", "all of it free on ElyScreener, no sign-up", "search any coin on ElyScreener and trade it right on its page", "wallets, whales and holders for every coin, on ElyScreener", "ElyScreener has the rest, every launchpad and every coin"];
 async function postThread(p, r, recent) {
-  const heads = { launchpads: "elysium today, by launchpad 👇", top_gainers: "biggest movers today (risky ones left out):", smart_money: "where the wallets with a winning record went:", new_coins: "new ones getting real traction:" };
   const texts = [];
   for (const [i, part] of p.parts.entries()) {
-    const fallback = `${i === 0 ? "elysium today 🧵\n\n" : ""}${part.fallback.length > 230 ? part.fallback.split("\n").slice(0, 4).join("\n") : part.fallback}`.slice(0, 260);
-    const t = await writePost({ facts: part.facts, fallback, recent: i === 0 ? recent : [], max: 270 });
+    const fallback = `${i === 0 ? `${p.theme.lead}\n\n` : ""}${part.fallback.length > 230 ? part.fallback.split("\n").slice(0, 4).join("\n") : part.fallback}`.slice(0, 260);
+    // the opening post gets a hook brief; the AI is told not to open like recent posts and never to talk dates
+    const facts = i === 0 ? `This is the FIRST post of a thread. Make people want to open it. Angle: ${p.theme.hook}. Never mention mainnet, launch dates or "tomorrow".\n${part.facts}` : part.facts;
+    const t = await writePost({ facts, fallback, recent: i === 0 ? recent : [], max: 270 });
     texts.push(i === 0 && !/🧵|thread/i.test(t) ? `${t} 🧵` : t);
   }
   // the first post is the one people see: it gets the launchpads' @handles (ES_PAD_X) and the hashtags
@@ -413,7 +462,7 @@ async function postThread(p, r, recent) {
   const handles = pads ? Object.entries(PAD_X).filter(([k]) => pads.facts.toLowerCase().includes(k)).map(([, v]) => v).slice(0, 4).join(" ") : "";
   const head = `${handles ? `\n\n${handles}` : ""}\n\n${tags(r, 2, "#Elysium")}`;
   texts[0] += xLength(texts[0] + head) <= 280 ? head : `\n\n${tags(r, 1, "#Elysium")}`;
-  const end = `\n\nevery coin on Elysium, live on ElyScreener`;
+  const end = `\n\n${pick(r, CLOSERS)}`;
   if (xLength(texts[texts.length - 1] + end) <= 280) texts[texts.length - 1] += end;
   for (let i = 0; i < texts.length; i++) while (xLength(texts[i]) > 280 && texts[i].includes("\n")) texts[i] = texts[i].split("\n").slice(0, -1).join("\n");
   if (DRY || !KEYS.apiKey) {
@@ -735,7 +784,7 @@ async function main() {
     // never two posts within 15 min (restarts, clock drift)
     const recent = await q(`select 1 from es_x_posts where at > now() - interval '15 minutes'`).catch(() => []);
     if (Date.now() < blockedUntil) log("X daily limit still on, slot skipped");
-    else if (isThread || !recent.length) await postOne(idx++, isThread).catch((e) => log("post failed:", e.message));
+    else if (isThread || !recent.length) await postOne(idx++, isThread, isThread ? themeFor(at) : 0).catch((e) => log("post failed:", e.message));
   }
 }
 main().catch((e) => { log("fatal", e.message); process.exit(1); });
