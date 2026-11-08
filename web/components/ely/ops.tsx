@@ -342,6 +342,8 @@ function V2Settings() {
   );
 }
 
+/** The shared swap router ElyScreener trades through (used when the site env var is not set). */
+const SCREENER_ROUTER = "0xB1EEcB952D4853EAFCD219c0060218EAc6F2150a";
 type EsOrder = { id: number; plan: string; kind: string; token: string | null; pay_asset: string; usd: number; paid_at: string };
 const PLAN_NAMES: Record<string, string> = { profile: "Verified profile", boost12: "Boost 12h", boost24: "Boost 24h", boost72: "Boost 72h", banner1: "Banner 1 day", banner7: "Banner 7 days" };
 
@@ -352,7 +354,7 @@ function ScreenerRevenue() {
     let chainOk = true;
     const [rv, trades] = await Promise.all([
       fetch("/api/revenue", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
-      (ROUTER ? logsFrom((fromBlock, toBlock) => ely().getLogs({ address: ROUTER as Address, event: TRADE, fromBlock, toBlock })) : Promise.reject(new Error("no router"))).catch(() => { chainOk = false; return [] as never[]; }),
+      logsFrom((fromBlock, toBlock) => ely().getLogs({ address: (ROUTER || SCREENER_ROUTER) as Address, event: TRADE, fromBlock, toBlock })).catch(() => { chainOk = false; return [] as never[]; }),
     ]);
     const swaps = new Set<string>(((rv?.swaps as string[]) ?? []).map((x) => x.toLowerCase()));
     const mine = trades.filter((l) => swaps.has(String(l.transactionHash).toLowerCase()));
