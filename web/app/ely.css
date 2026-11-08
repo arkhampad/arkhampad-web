@@ -4,7 +4,7 @@
   --e-bg: #f3f5f7; --e-bg2: #ffffff; --e-card: #ffffff; --e-card2: #f7f9fa; --e-raise: #edf1f4; --e-line: #e4e9ed; --e-line2: #d2dbe1;
   --e-text: #0c1419; --e-text2: #26343d; --e-muted: #5a6b76; --e-dim: #82919b;
   --e-teal: #0a9a8d; --e-tealfill: #3fe3d4; --e-tealink: #04201d; --e-glow: rgba(10, 154, 141, 0.1);
-  --e-up: #0b9a64; --e-down: #e0464b; --e-upbg: rgba(11, 154, 100, 0.1); --e-downbg: rgba(224, 70, 75, 0.1);
+  --e-buy: #0a7448; --e-sell: #c0282f; --e-up: #0b9a64; --e-down: #e0464b; --e-upbg: rgba(11, 154, 100, 0.1); --e-downbg: rgba(224, 70, 75, 0.1);
   --e-shadow: 0 1px 2px rgba(12, 20, 25, 0.04), 0 6px 20px rgba(12, 20, 25, 0.05);
   --e-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --e-max: 1320px;
@@ -17,7 +17,7 @@
   --e-bg: #070b0f; --e-bg2: #0b1116; --e-card: #0e151b; --e-card2: #111a21; --e-raise: #16212a; --e-line: #18252e; --e-line2: #22343f;
   --e-text: #eaf1f5; --e-text2: #c3d0d8; --e-muted: #8ea2ae; --e-dim: #6c808c;
   --e-teal: #3fe3d4; --e-glow: rgba(63, 227, 212, 0.13);
-  --e-up: #2fd39a; --e-down: #ff6b6b; --e-upbg: rgba(47, 211, 154, 0.12); --e-downbg: rgba(255, 107, 107, 0.12);
+  --e-buy: #0e8a58; --e-sell: #c8323a; --e-up: #2fd39a; --e-down: #ff6b6b; --e-upbg: rgba(47, 211, 154, 0.12); --e-downbg: rgba(255, 107, 107, 0.12);
   --e-shadow: none;
 }
 html:has(.ely), body:has(.ely) { background: var(--e-bg, #f3f5f7); overflow-x: clip; padding-bottom: 0 !important; }
@@ -231,8 +231,8 @@ a.e-row:hover { background: var(--e-card2); }
 .e-trade { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
 .e-bs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--e-raise); }
 .e-bs button { height: 40px; border: 0; border-radius: 9px; background: none; color: var(--e-muted); font-weight: 800; font-size: 15px; cursor: pointer; }
-.e-bs button.on.buy { background: var(--e-up); color: #fff; }
-.e-bs button.on.sell { background: var(--e-down); color: #fff; }
+.e-bs button.on.buy { background: var(--e-buy); color: #fff; }
+.e-bs button.on.sell { background: var(--e-sell); color: #fff; }
 .e-amt { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--e-line); background: var(--e-card2); cursor: text; transition: border-color .15s, box-shadow .15s; }
 .e-amt:focus-within { border-color: var(--e-teal); box-shadow: 0 0 0 3px var(--e-glow); }
 .e-amt-top { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--e-muted); font-weight: 600; }
@@ -246,8 +246,8 @@ a.e-row:hover { background: var(--e-card2); }
 .e-quick button:disabled { opacity: .45; cursor: default; }
 .e-recv, .e-slip { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; }
 .e-recv b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.e-go { height: 50px; border: 0; border-radius: 14px; font-weight: 800; font-size: 16px; cursor: pointer; color: #fff; background: var(--e-up); transition: filter .15s, transform .1s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 12px; }
-.e-go.sell { background: var(--e-down); }
+.e-go { height: 50px; border: 0; border-radius: 14px; font-weight: 800; font-size: 16px; cursor: pointer; color: #fff; background: var(--e-buy); transition: filter .15s, transform .1s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 12px; }
+.e-go.sell { background: var(--e-sell); }
 .e-go:hover:not(:disabled) { filter: brightness(1.06); }
 .e-go:active:not(:disabled) { transform: scale(.98); }
 .e-go:disabled { background: var(--e-raise); color: var(--e-dim); cursor: default; }
@@ -1015,8 +1015,8 @@ html { overscroll-behavior-y: none; }
   .e-split-box { display: none !important; }
   .e-mbar { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px; background: linear-gradient(to bottom, transparent, var(--e-bg) 38%) !important; border-top: 0 !important; padding-top: 14px !important; }
   .e-mbar .e-go { height: 50px; border-radius: 14px; font-size: 16px; font-weight: 700; }
-  .e-mbar .e-go.buy { background: var(--e-up); color: #fff; }
-  .e-mbar .e-go.sell { background: color-mix(in srgb, var(--e-down) 14%, var(--e-card)); color: var(--e-down); }
+  .e-mbar .e-go.buy { background: var(--e-buy); color: #fff; }
+  .e-mbar .e-go.sell { background: var(--e-sell); color: #fff; }
   .e-mini-r { grid-template-columns: 44px minmax(0, 1fr) auto; }
   .e-sheet-in > .e-trade, .e-sheet-in .e-trade { padding: 0 16px 6px; }
 }
@@ -1094,3 +1094,12 @@ html { overscroll-behavior-y: none; }
 .e-lvl-bar { height: 6px; border-radius: 99px; background: var(--e-raise); overflow: hidden; }
 .e-lvl-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--e-teal), var(--e-up)); }
 .e-lvl-s { font-size: 12px; line-height: 1.4; }
+
+/* ely: holder trend colours + a little life: rows and numbers flash when they move */
+.ely .hold.up { color: var(--e-up); font-weight: 700; } .ely .hold.down { color: var(--e-down); font-weight: 700; }
+.ely .hold.fl-up, .ely .hold.fl-down { animation: eFlash 1.6s ease-out; border-radius: 6px; }
+.ely .e-row.fl-up { animation: eRowUp 1.4s ease-out; } .ely .e-row.fl-down { animation: eRowDown 1.4s ease-out; }
+@keyframes eFlash { 0% { background: color-mix(in srgb, currentColor 30%, transparent); } 100% { background: transparent; } }
+@keyframes eRowUp { 0% { background: var(--e-upbg); } 100% { background: transparent; } }
+@keyframes eRowDown { 0% { background: var(--e-downbg); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .ely .hold.fl-up, .ely .hold.fl-down, .ely .e-row.fl-up, .ely .e-row.fl-down { animation: none; } }

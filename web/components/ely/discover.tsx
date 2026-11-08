@@ -12,6 +12,7 @@ import { AirdropBanner } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
 import { ScoutBadge } from "./scout";
 import { DevFlag } from "./shield";
+import { useFlash, useHolderTrend } from "@/lib/holdtrend";
 import { devRepsFromTokens, type DevRep } from "@/lib/shield";
 
 type Sort = "trending" | "new" | "top" | "gainers" | "losers" | "ours" | "live";
@@ -248,8 +249,12 @@ function Row({ t, i, usd, w, rep }: { t: EToken; i: number; usd: number; w: Win;
   const c = chg(t, w);
   const tr = useT();
   const mc = money((t.mcap_hype ?? 0) * usd);
+  const [hd, hf] = useHolderTrend(t.address, t.holders || 0);
+  const pf = useFlash(t.price_hype);
+  const hCls = `hold ${hd > 0 ? "up" : hd < 0 ? "down" : ""} ${hf ? "fl-" + hf : ""}`;
+  const hArrow = hd > 0 ? "▲ " : hd < 0 ? "▼ " : "";
   return (
-    <Link href={`/t/?a=${t.address}`} className="e-row">
+    <Link href={`/t/?a=${t.address}`} className={`e-row ${pf ? "fl-" + pf : ""}`}>
       <span className="dim num e-hide-m">{i + 1}</span>
       <span className="e-tok">
         <RingAvatar t={t} size={34} />
@@ -257,14 +262,14 @@ function Row({ t, i, usd, w, rep }: { t: EToken; i: number; usd: number; w: Win;
           <span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span><DevFlag rep={rep} />{t.ours && <span className="e-lock">LP locked</span>}<ScoutBadge address={t.address} /></span>
           <small>
             <span className="e-hide-m">{tr("by {who}", { who: short(t.creator) })} · {tr("{age} old", { age: ago(t.created_at) })}</span>
-            <span className="e-only-m-inline">{tr("{age} old", { age: ago(t.created_at) })} · {tr("{n} holders", { n: compact(t.holders || 0) })}</span>
+            <span className="e-only-m-inline">{tr("{age} old", { age: ago(t.created_at) })} · <span className={hCls}>{hArrow}{tr("{n} holders", { n: compact(t.holders || 0) })}</span></span>
           </small>
         </span>
       </span>
       <span className={`r num e-hide-m ${upDown(c)}`}>{pct(c)}</span>
       <span className="r num e-hide-m">{money(volOf(t, w) * usd)}</span>
       <span className="r num e-hide-t e-hide-m"><span className="up">{t.buys24}</span><span className="dim"> / </span><span className="down">{t.sells24}</span></span>
-      <span className="r num e-hide-m">{compact(t.holders || 0)}</span>
+      <span className={`r num e-hide-m ${hCls}`}>{hArrow}{compact(t.holders || 0)}</span>
       <span className="r num muted e-hide-t e-hide-m">{t.top10_pct == null ? "—" : `${Math.min(100, t.top10_pct).toFixed(0)}%`}</span>
       <span className="r num e-hide-m"><b>{mc}</b></span>
       <span className="e-mc"><span className="e-mc-px"><b>{mc}</b><small>{tinyPrice((t.price_hype ?? 0) * usd)}</small></span><span className={`e-pill fill ${upDown(c)}`}>{pct(c)}</span></span>
