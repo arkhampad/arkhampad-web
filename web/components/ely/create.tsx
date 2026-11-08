@@ -100,6 +100,10 @@ export function CreatePage() {
   const b = fromWei(buyWei) * 0.99;
   const pctOfSupply = b > 0 ? (b / (START_MC + b)) * 100 : 0;
   const ok = name.trim().length > 0 && sym.trim().length > 0;
+  // every coin must come with a real first buy of at least $2 (a little extra so a price tick can't push it under)
+  const MIN_BUY_USD = 2;
+  const minHype = usd > 0 ? Math.ceil(((MIN_BUY_USD / usd) * 1.03) * 1e4) / 1e4 : 0;
+  const buyLow = usd <= 0 || fromWei(buyWei) < minHype;
 
   async function pick(f: File | undefined) {
     if (!f) return;
@@ -202,6 +206,7 @@ export function CreatePage() {
   async function launch() {
     if (!w.signedIn || !w.signer?.sendTx || !me) return w.login();
     if (!LAUNCHER || going.current) return;
+    if (buyLow) { setMsg(usd > 0 ? `Put at least $${MIN_BUY_USD} (${minHype} HYPE) into the first buy to launch.` : "Loading the HYPE price, try again in a moment."); return; }
     going.current = true;
     (document.activeElement as HTMLElement | null)?.blur?.();
     setMsg(null);
@@ -283,6 +288,8 @@ export function CreatePage() {
   else if (!LAUNCHER) { label = "Launching opens soon"; disabled = true; }
   else if (!ok) { label = "Add a name and ticker"; disabled = true; }
   else if (hype != null && buyWei > 0n && buyWei > hype) { label = "Not enough HYPE"; disabled = true; }
+  else if (usd <= 0) { label = "Loading price…"; disabled = true; }
+  else if (buyLow) { label = `First buy: $${MIN_BUY_USD} minimum`; disabled = true; }
   // no HYPE at all: launching still costs a little gas, so point to Add money instead of failing
   else if (hype === 0n) { label = "Add HYPE for gas first"; disabled = true; }
   if (busy) label = busy;
@@ -328,12 +335,12 @@ export function CreatePage() {
               <label className="e-field"><span>{tr("Website")}</span><input value={site} onChange={(e) => setSite(e.target.value)} placeholder="https://" inputMode="url" autoCapitalize="off" /></label>
             </details>
             <label className="e-amt e-fb">
-              <span className="e-amt-top"><span>{tr("First buy")} <i className="dim">{tr("optional")}</i></span><span className="dim">{tr("Balance")} {hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—"}</span></span>
+              <span className="e-amt-top"><span>{tr("First buy")} <i className="dim">{usd > 0 ? `min $${MIN_BUY_USD} ≈ ${minHype} HYPE` : ""}</i></span><span className="dim">{tr("Balance")} {hype != null ? `${fromWei(hype).toFixed(4)} HYPE` : "—"}</span></span>
               {hype != null && <span className="e-note e-fb-note" style={{ display: "block", margin: "2px 0 6px" }}>{tr("You can put up to {n} HYPE into the first buy (a little stays for the network fee).", { n: maxBuy.toFixed(4) })}</span>}
               <span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={buy} onChange={(e) => setBuy(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="First buy in HYPE" /><b>HYPE</b></span>
-              <span className={`dim${b > 0 ? "" : " e-fb-hint"}`} style={{ fontSize: 12.5 }}>{b > 0 ? `≈ ${money(fromWei(buyWei) * usd)} · ${tr("about {p}% of the supply", { p: pctOfSupply.toFixed(1) })}` : tr("Be the first buyer of your own coin, in the same transaction.")}</span>
+              <span className={`dim${b > 0 ? "" : " e-fb-hint"}`} style={{ fontSize: 12.5 }}>{b > 0 ? `≈ ${money(fromWei(buyWei) * usd)} · ${tr("about {p}% of the supply", { p: pctOfSupply.toFixed(1) })}` : tr(`Every coin starts with a first buy of at least $${MIN_BUY_USD}, in the same transaction.`)}</span>
             </label>
-            <div className="e-quick">{["0.1", "0.5", "1"].map((v) => <button key={v} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(v)}>{v}</button>)}<button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(maxBuy > 0 ? String(Math.floor(maxBuy * 10000) / 10000) : "0")}>{tr("Max")}</button></div>
+            <div className="e-quick">{[String(minHype || 0.1), "0.5", "1"].filter((v, i) => i === 0 || Number(v) > minHype).map((v, i) => <button key={v} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(v)}>{i === 0 && minHype ? `Min ${v}` : v}</button>)}<button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setBuy(maxBuy > 0 ? String(Math.floor(maxBuy * 10000) / 10000) : "0")}>{tr("Max")}</button></div>
             <button type="button" className="e-go" disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={launch}>{tr(label)}</button>
             {msg && <div className="e-msg bad" role="status">{tr(msg)}</div>}
             {w.signedIn && hype === 0n && <Link href="/bridge/" className="e-hint">{tr("You need a little HYPE on Elysium for gas.")} <b>{tr("Add HYPE or USDC →")}</b></Link>}
