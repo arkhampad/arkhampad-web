@@ -342,6 +342,88 @@ function V2Settings() {
   );
 }
 
+type EsOrder = { id: number; plan: string; kind: string; token: string | null; pay_asset: string; usd: number; paid_at: string };
+const PLAN_NAMES: Record<string, string> = { profile: "Verified profile", boost12: "Boost 12h", boost24: "Boost 24h", boost72: "Boost 72h", banner1: "Banner 1 day", banner7: "Banner 7 days" };
+
+/** ElyScreener's income: 0.5% router fee on swaps made on elyscreener.com + paid Verified / Boost / Banner orders. */
+function ScreenerRevenue() {
+  const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
+  const data = usePoll(async () => {
+    const [rv, trades] = await Promise.all([
+      fetch("/api/revenue", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+      ROUTER ? logsFrom((fromBlock, toBlock) => ely().getLogs({ address: ROUTER as Address, event: TRADE, fromBlock, toBlock })) : Promise.resolve([]),
+    ]);
+    const swaps = new Set<string>(((rv?.swaps as string[]) ?? []).map((x) => x.toLowerCase()));
+    const mine = trades.filter((l) => swaps.has(String(l.transactionHash).toLowerCase()));
+    const recent = mine.slice(-8).reverse();
+    const times = new Map<bigint, number>();
+    await Promise.all([...new Set(recent.map((l) => l.blockNumber))].map(async (b) => { try { times.set(b as bigint, Number((await ely().getBlock({ blockNumber: b as bigint })).timestamp)); } catch {} }));
+    const fee = (ls: typeof trades) => ls.reduce((a, l) => a + Number(l.args.fee ?? 0n) / 1e18, 0);
+    const vol = (ls: typeof trades) => ls.reduce((a, l) => a + Number(l.args.hypeAmount ?? 0n) / 1e18, 0);
+    return {
+      orders: ((rv?.orders as EsOrder[]) ?? []), pending: Number(rv?.pending ?? 0), known: swaps.size,
+      es: { n: mine.length, fee: fee(mine), vol: vol(mine) },
+      all: { n: trades.length, fee: fee(trades) },
+      recent: recent.map((l) => ({ tx: l.transactionHash as string, who: l.args.user as string, buy: !!l.args.isBuy, hype: Number(l.args.hypeAmount ?? 0n) / 1e18, fee: Number(l.args.fee ?? 0n) / 1e18, at: times.get(l.blockNumber as bigint) })),
+    };
+  }, 120_000);
+  const orders = data?.orders ?? [];
+  const day = Date.now() - 86400_000;
+  const promoAll = orders.reduce((a, o) => a + o.usd, 0);
+  const promo24 = orders.filter((o) => Date.parse(o.paid_at) > day).reduce((a, o) => a + o.usd, 0);
+  const feeUsd = (data?.es.fee ?? 0) * usd;
+  const byPlan = new Map<string, { n: number; usd: number }>();
+  for (const o of orders) { const x = byPlan.get(o.plan) ?? { n: 0, usd: 0 }; x.n += 1; x.usd += o.usd; byPlan.set(o.plan, x); }
+  return (
+    <section className="e-panel"><div className="e-trade">
+      <h3 className="e-ph" style={{ margin: 0 }}>ElyScreener income <span className="dim" style={{ fontSize: 12.5, fontWeight: 600 }}>swap fee (0.5%) on swaps made on elyscreener.com + paid promotions</span></h3>
+      {!data ? <p className="dim">Loading…</p> : (
+        <>
+          <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", padding: 0, border: 0 }}>
+            <div><span>Total income</span><b>{usd ? money(feeUsd + promoAll) : `${promoAll.toFixed(0)} USD + fees`}</b><small className="dim">fees + promotions</small></div>
+            <div><span>Swap fees (0.5%)</span><b>{data.es.fee.toFixed(4)} HYPE</b><small className="dim">{usd ? money(feeUsd) : ""} · {data.es.n} swaps</small></div>
+            <div><span>Swap volume</span><b>{data.es.vol.toFixed(2)} HYPE</b><small className="dim">{usd ? money(data.es.vol * usd) : ""}</small></div>
+            <div><span>Promotions</span><b>{money(promoAll)}</b><small className="dim">{orders.length} paid · last 24h {money(promo24)}</small></div>
+            <div><span>Waiting for payment</span><b>{data.pending}</b><small className="dim">orders not yet confirmed</small></div>
+          </div>
+          <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Swap fees go to the ArkhamPad Treasury, promotions to the "elyscreener" wallet. Swaps are counted from the moment the site starts reporting them (run es_031_revenue.sql, then upload the ElyScreener update); the router handled {data.all.n} trades in total ({data.all.fee.toFixed(4)} HYPE in fees, both sites together).</p>
+          {byPlan.size > 0 && (
+            <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, fontWeight: 700 }} className="dim"><span>Promotion</span><span>Orders</span><span>Income</span></div>
+              {[...byPlan.entries()].map(([k, v]) => (
+                <div key={k} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, padding: "6px 0", borderTop: "1px solid var(--e-line)" }}><span>{PLAN_NAMES[k] ?? k}</span><span className="num">{v.n}</span><b className="num">{money(v.usd)}</b></div>
+              ))}
+            </div>
+          )}
+          {data.recent.length > 0 && (
+            <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
+              <div className="dim" style={{ fontWeight: 700 }}>Latest swaps on ElyScreener</div>
+              {data.recent.map((r) => (
+                <div key={r.tx} style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 8, padding: "6px 0", borderTop: "1px solid var(--e-line)" }}>
+                  <b className={r.buy ? "up" : "down"}>{r.buy ? "buy" : "sell"}</b>
+                  <span className="num dim" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{short(r.who)} · {r.hype.toFixed(3)} HYPE</span>
+                  <span className="num">{r.fee.toFixed(4)} HYPE{r.at ? ` · ${new Date(r.at * 1000).toLocaleString()}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {orders.length > 0 && (
+            <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
+              <div className="dim" style={{ fontWeight: 700 }}>Latest paid promotions</div>
+              {orders.slice(0, 8).map((o) => (
+                <div key={o.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, padding: "6px 0", borderTop: "1px solid var(--e-line)" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{PLAN_NAMES[o.plan] ?? o.plan}{o.token ? ` · ${short(o.token)}` : ""}</span>
+                  <span className="num"><b>{money(o.usd)}</b> <span className="dim">{o.pay_asset} · {new Date(o.paid_at).toLocaleDateString()}</span></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div></section>
+  );
+}
+
 export function OpsPage() {
   const w = useWallet();
   const [s, setS] = useState<S | null>(null);
@@ -398,6 +480,7 @@ export function OpsPage() {
     <main className="e-in e-page">
       <section className="e-hero"><div><span className="e-eyebrow">Ops</span><h1>ArkhamPad ops</h1></div></section>
       <Funnel />
+      <ScreenerRevenue />
       <Earnings />
       <Activity />
       <V2Settings />
