@@ -238,7 +238,7 @@ function PioneerDeploy({ isOwner }: { isOwner: boolean }) {
 
 const STEP_NAMES: Record<string, string> = {
   login: "Logged in", welcome: "Saw the welcome screen", deposit_page: "Opened Deposit", deposit_sent: "Sent a deposit",
-  funded: "Has HYPE on Elysium", trade: "Made a trade", create: "Created a coin",
+  funded: "Has HYPE on Elysium", funded_real: "Has $2+ in HYPE", trade: "Made a trade", create: "Created a coin",
 };
 /** Where new wallets stop: each step as a count and as a share of everyone who logged in. */
 function Funnel() {

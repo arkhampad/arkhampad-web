@@ -1,7 +1,7 @@
 "use client";
-// How far each new wallet gets: login → welcome → deposit page → deposit sent → funded → trade → create.
+// How far each new wallet gets: login → welcome → deposit page → deposit sent → funded → funded_real ($2+) → trade → create.
 // Each step is sent once per wallet (remembered on the device too, so it costs nothing to call often).
-export type FunnelStep = "login" | "welcome" | "deposit_page" | "deposit_sent" | "funded" | "trade" | "create";
+export type FunnelStep = "login" | "welcome" | "deposit_page" | "deposit_sent" | "funded" | "funded_real" | "trade" | "create";
 const sent = new Set<string>();
 export function funnel(addr: string | null | undefined, step: FunnelStep) {
   if (!addr || typeof window === "undefined") return;

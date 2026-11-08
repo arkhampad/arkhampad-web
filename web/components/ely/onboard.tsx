@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Address, Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
-import { usePoll } from "@/lib/ely";
+import { fetchHypeUsd, usePoll } from "@/lib/ely";
 import { balanceChanged, fromWei, hypeBalance } from "@/lib/elytrade";
 import { useHoldings } from "@/lib/holdings";
 import { funnel } from "@/lib/funnel";
@@ -42,6 +42,9 @@ export function Onboard() {
 
   useEffect(() => { if (me) funnel(me, "login"); }, [me]);
   useEffect(() => { if (me && hype != null && hype > 0n) funnel(me, "funded"); }, [me, hype]);
+  // real money: at least $2 worth of HYPE (dust doesn't count)
+  const hypeUsd = usePoll(fetchHypeUsd, 60_000, []);
+  useEffect(() => { if (me && hype != null && hypeUsd && fromWei(hype) * hypeUsd >= 2) funnel(me, "funded_real"); }, [me, hype, hypeUsd]);
 
   // empty wallet (no HYPE on Elysium and no coins): show the welcome screen once per visit
   const empty = !!me && hype === 0n && coins !== undefined && coins.length === 0;
