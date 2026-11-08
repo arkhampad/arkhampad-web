@@ -190,6 +190,7 @@ export function YouPage() {
           <b>{w.email || tr("Wallet login")}</b>
           <button type="button" className="e-copy" onClick={copy} title={tr("Copy address")}><span className="num">{copied ? tr("Address copied") : short(me)}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></svg></button>
         </div>
+        {w.exportKey && <button type="button" className="e-copy" onClick={() => w.exportKey?.()}>{tr("Export key")}</button>}
         <button type="button" className="e-copy" onClick={w.logout}>{tr("Log out")}</button>
       </section>
 

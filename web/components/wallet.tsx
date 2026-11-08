@@ -18,6 +18,8 @@ type WalletCtx = {
   email?: string | null;
   login: () => void;
   logout: () => void;
+  /** Shows the private key of the built-in (email / Google) wallet in a secure window; null when there is none. */
+  exportKey?: (() => void) | null;
   signer: Signer | null;
   usdc: Record<number, bigint>; // per network
   totalUsdc: number;
@@ -106,7 +108,7 @@ function LazyPrivy({ children }: { children: React.ReactNode }) {
     else setTimeout(() => setLoad(true), 300);
   }, []);
   // only update when something the page shows actually changed
-  const onState = useCallback((s: AuthState) => setAuth((cur) => (cur.ready === s.ready && cur.address === s.address && cur.signer === s.signer && cur.email === s.email ? cur : s)), []);
+  const onState = useCallback((s: AuthState) => setAuth((cur) => (cur.ready === s.ready && cur.address === s.address && cur.signer === s.signer && cur.email === s.email && !!cur.exportKey === !!s.exportKey ? cur : s)), []);
   // if sign-in never finishes loading, stop waiting after 6 s and show the logged-out view
   const [gaveUp, setGaveUp] = useState(false);
   useEffect(() => { const t = setTimeout(() => setGaveUp(true), 6000); return () => clearTimeout(t); }, []);
@@ -118,6 +120,7 @@ function LazyPrivy({ children }: { children: React.ReactNode }) {
     signer: auth.signer,
     login: () => { setLoad(true); if (auth.ready) auth.login(); else setWantLogin((n) => n + 1); },
     logout: auth.logout,
+    exportKey: auth.exportKey ?? null,
   }), [auth, gaveUp]);
   return (
     <>

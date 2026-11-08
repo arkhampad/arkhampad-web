@@ -194,6 +194,7 @@ function Account({ openFunds }: { openFunds: (t: "deposit" | "withdraw") => void
           <Link href="/invite/" className="tab" style={{ textAlign: "left" }} onClick={() => setOpen(false)}>Invite & earn</Link>
           <Link href="/help/" className="tab" style={{ textAlign: "left" }} onClick={() => setOpen(false)}>Help</Link>
           <button type="button" className="tab show-m" style={{ textAlign: "left" }} onClick={() => { setOpen(false); toggleTheme(); }}>Light / dark mode</button>
+          {w.exportKey && <button type="button" className="tab" style={{ textAlign: "left" }} onClick={() => { setOpen(false); w.exportKey?.(); }}>Export private key</button>}
           <button type="button" className="tab" style={{ textAlign: "left", color: "var(--down)" }} onClick={() => { setOpen(false); w.logout(); }}>Log out</button>
         </span>
       )}

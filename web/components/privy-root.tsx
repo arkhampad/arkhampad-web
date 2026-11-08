@@ -87,7 +87,7 @@ const arc = defineChain({
   rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_ARC_RPC || "https://arc.drpc.org"] } },
 });
 
-export type AuthState = { ready: boolean; address: Address | null; signer: Signer | null; login: () => void; logout: () => void; email?: string | null };
+export type AuthState = { ready: boolean; address: Address | null; signer: Signer | null; login: () => void; logout: () => void; email?: string | null; /** Opens Privy's secure window that shows the private key of the built-in (email / Google) wallet; null for other wallets. */ exportKey?: (() => void) | null };
 
 function domainFields(d: Record<string, unknown>) {
   const all: [string, string][] = [["name", "string"], ["version", "string"], ["chainId", "uint256"], ["verifyingContract", "address"]];
@@ -95,7 +95,7 @@ function domainFields(d: Record<string, unknown>) {
 }
 
 function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantLogin: number }) {
-  const { ready, authenticated, login, logout, user } = usePrivy();
+  const { ready, authenticated, login, logout, user, exportWallet } = usePrivy();
   const email = authenticated ? (user?.email?.address ?? user?.google?.email ?? null) : null;
   const { wallets } = useWallets();
   const { signTypedData } = useSignTypedData();
@@ -192,10 +192,14 @@ function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantL
   // report to the page only when something real changes (ready, address, signer).
   const loginRef = useRef(login);
   const logoutRef = useRef(logout);
+  const exportRef = useRef(exportWallet);
+  exportRef.current = exportWallet;
+  // only the built-in wallet made at sign-in (email / Google) can be exported; its key is shown in Privy's own secure window, never to us
+  const canExport = authenticated && wallet?.walletClientType === "privy";
   loginRef.current = login;
   logoutRef.current = logout;
-  const stable = useMemo(() => ({ login: () => loginRef.current(), logout: () => { logoutRef.current(); } }), []);
-  useEffect(() => { onState({ ready, address, signer, email, ...stable }); }, [ready, address, signer, email, stable, onState]);
+  const stable = useMemo(() => ({ login: () => loginRef.current(), logout: () => { logoutRef.current(); }, exportKey: () => { const a = walletRef.current?.address; if (a) void exportRef.current({ address: a }).catch(() => {}); } }), []);
+  useEffect(() => { onState({ ready, address, signer, email, login: stable.login, logout: stable.logout, exportKey: canExport ? stable.exportKey : null }); }, [ready, address, signer, email, stable, canExport, onState]);
   const asked = useRef(0);
   useEffect(() => {
     if (wantLogin && wantLogin !== asked.current && ready && !authenticated) { asked.current = wantLogin; loginRef.current(); }
