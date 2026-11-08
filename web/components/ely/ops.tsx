@@ -3,7 +3,7 @@
 // through the keeper wallet, which keeps a little HYPE for its own gas and forwards the rest to the
 // treasury every 30 minutes, so the keeper never needs a manual top-up.
 import { useCallback, useEffect, useState } from "react";
-import { encodeFunctionData, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
+import { encodeFunctionData, parseAbi, parseAbiItem, parseEventLogs, type Address, type Hex } from "viem";
 import { useWallet } from "@/components/wallet";
 import { funnelStats, type FunnelRow } from "@/lib/funnel";
 import { ELY_CHAIN, ELY_EXPLORER, ROUTER, ely, waitReceipt } from "@/lib/elytrade";
@@ -351,23 +351,31 @@ const PLAN_NAMES: Record<string, string> = { profile: "Verified profile", boost1
 function ScreenerRevenue() {
   const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
   const data = usePoll(async () => {
-    let chainOk = true;
-    const [rv, trades] = await Promise.all([
-      fetch("/api/revenue", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
-      logsFrom((fromBlock, toBlock) => ely().getLogs({ address: (ROUTER || SCREENER_ROUTER) as Address, event: TRADE, fromBlock, toBlock })).catch(() => { chainOk = false; return [] as never[]; }),
-    ]);
-    const swaps = new Set<string>(((rv?.swaps as string[]) ?? []).map((x) => x.toLowerCase()));
-    const mine = trades.filter((l) => swaps.has(String(l.transactionHash).toLowerCase()));
-    const recent = mine.slice(-8).reverse();
-    const times = new Map<bigint, number>();
-    await Promise.all([...new Set(recent.map((l) => l.blockNumber))].map(async (b) => { try { times.set(b as bigint, Number((await ely().getBlock({ blockNumber: b as bigint })).timestamp)); } catch {} }));
-    const fee = (ls: typeof trades) => ls.reduce((a, l) => a + Number(l.args.fee ?? 0n) / 1e18, 0);
-    const vol = (ls: typeof trades) => ls.reduce((a, l) => a + Number(l.args.hypeAmount ?? 0n) / 1e18, 0);
+    const rv = await fetch("/api/revenue", { cache: "no-store" }).then((r) => r.json()).catch(() => ({}));
+    const hashes = ((rv?.swaps as string[]) ?? []).slice(0, 300);
+    const router = (ROUTER || SCREENER_ROUTER).toLowerCase();
+    // only the swaps ElyScreener reported: read each transaction's own receipt (light, no chain-wide scan)
+    type Row = { tx: string; who: string; buy: boolean; hype: number; fee: number; at?: number };
+    const rows: Row[] = [];
+    let failed = 0;
+    for (let i = 0; i < hashes.length; i += 15) {
+      await Promise.all(hashes.slice(i, i + 15).map(async (h) => {
+        try {
+          const rc = await ely().getTransactionReceipt({ hash: h as Hex });
+          if (rc.status !== "success") return;
+          const ev = parseEventLogs({ abi: [TRADE], logs: rc.logs.filter((l) => l.address.toLowerCase() === router) })[0];
+          if (!ev) return;
+          rows.push({ tx: h, who: ev.args.user as string, buy: !!ev.args.isBuy, hype: Number(ev.args.hypeAmount ?? 0n) / 1e18, fee: Number(ev.args.fee ?? 0n) / 1e18, at: Number(rc.blockNumber) });
+        } catch { failed++; }
+      }));
+    }
+    rows.sort((x, y) => (y.at ?? 0) - (x.at ?? 0));
+    const recent = rows.slice(0, 8);
+    await Promise.all(recent.map(async (r) => { try { r.at = Number((await ely().getBlock({ blockNumber: BigInt(r.at ?? 0) })).timestamp); } catch { r.at = undefined; } }));
     return {
-      chainOk, sqlOk: Array.isArray(rv?.orders), orders: ((rv?.orders as EsOrder[]) ?? []), pending: Number(rv?.pending ?? 0), known: swaps.size,
-      es: { n: mine.length, fee: fee(mine), vol: vol(mine) },
-      all: { n: trades.length, fee: fee(trades) },
-      recent: recent.map((l) => ({ tx: l.transactionHash as string, who: l.args.user as string, buy: !!l.args.isBuy, hype: Number(l.args.hypeAmount ?? 0n) / 1e18, fee: Number(l.args.fee ?? 0n) / 1e18, at: times.get(l.blockNumber as bigint) })),
+      chainOk: failed === 0, sqlOk: Array.isArray(rv?.orders), orders: ((rv?.orders as EsOrder[]) ?? []), pending: Number(rv?.pending ?? 0), known: hashes.length,
+      es: { n: rows.length, fee: rows.reduce((x, r) => x + r.fee, 0), vol: rows.reduce((x, r) => x + r.hype, 0) },
+      recent,
     };
   }, 120_000);
   const orders = data?.orders ?? [];
@@ -383,7 +391,7 @@ function ScreenerRevenue() {
       {!data ? <p className="dim">Loading…</p> : (
         <>
           {!data.sqlOk && <div className="e-msg bad">Promotion numbers are not available yet: run es_031_revenue.sql in Supabase.</div>}
-          {!data.chainOk && <div className="e-msg bad">Could not read the router's swap fees from Elysium right now (the node did not answer). Promotions below are still correct; reload in a minute.</div>}
+          {!data.chainOk && <div className="e-msg bad">Some swaps could not be read from Elysium right now (the node did not answer). Promotions below are still correct; reload in a minute.</div>}
           <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", padding: 0, border: 0 }}>
             <div><span>Total income</span><b>{usd ? money(feeUsd + promoAll) : `${promoAll.toFixed(0)} USD + fees`}</b><small className="dim">fees + promotions</small></div>
             <div><span>Swap fees (0.5%)</span><b>{data.es.fee.toFixed(4)} HYPE</b><small className="dim">{usd ? money(feeUsd) : ""} · {data.es.n} swaps</small></div>
@@ -391,7 +399,7 @@ function ScreenerRevenue() {
             <div><span>Promotions</span><b>{money(promoAll)}</b><small className="dim">{orders.length} paid · last 24h {money(promo24)}</small></div>
             <div><span>Waiting for payment</span><b>{data.pending}</b><small className="dim">orders not yet confirmed</small></div>
           </div>
-          <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Swap fees go to the ArkhamPad Treasury, promotions to the "elyscreener" wallet. Swaps are counted from the moment the site starts reporting them (run es_031_revenue.sql, then upload the ElyScreener update); the router handled {data.all.n} trades in total ({data.all.fee.toFixed(4)} HYPE in fees, both sites together).</p>
+          <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Swap fees go to the ArkhamPad Treasury, promotions to the "elyscreener" wallet. Swaps are counted from the moment the site starts reporting them (run es_031_revenue.sql, then upload the ElyScreener update).</p>
           {byPlan.size > 0 && (
             <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, fontWeight: 700 }} className="dim"><span>Promotion</span><span>Orders</span><span>Income</span></div>
