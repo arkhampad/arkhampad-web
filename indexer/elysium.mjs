@@ -788,7 +788,8 @@ export function makeElysium(cfg, store) {
       await store.setState("ely_block", last);
     }
     while (last < tip) {
-      let to = Math.min(tip, last + span);
+      // near the tip: small steps, so each piece of new trades reaches the database as soon as it is read
+      let to = Math.min(tip, last + (tip - last <= 1500 ? Math.min(span, 300) : span));
       if (!recent(to)) {
         const [a, b] = await Promise.all([rpc("eth_getBlockByNumber", [hex(last + 1), false]), rpc("eth_getBlockByNumber", [hex(to), false])]);
         win = { from: last + 1, to, tFrom: Number(a.timestamp) * 1000, tTo: Number(b.timestamp) * 1000 };
