@@ -187,6 +187,8 @@ export function makeElysium(cfg, store) {
   const log = cfg.log || console.log;
   const step = cfg.step || 1000; // one public node refuses log reads over 1,000 blocks
   let progressLogAt = 0;
+  let speedLogAt = 0;
+  let spd = { pools: 0, trades: 0, transfers: 0, steps: 0, blocks: 0, nTrades: 0 };
   let span = step; // blocks per read right now: shrinks when the nodes are busy, grows back after
   const launcher = lc(cfg.launcher);
   // version 2 of the launcher ("25K" fee rules); its coins are ArkhamPad's too
@@ -804,9 +806,14 @@ export function makeElysium(cfg, store) {
         win = { from: last + 1, to, tFrom: Number(a.timestamp) * 1000, tTo: Number(b.timestamp) * 1000 };
       }
       try {
+        const m0 = Date.now();
         await scanPools(last + 1, to);
-        await scanTrades(last + 1, to);
+        const m1 = Date.now();
+        const nTr = await scanTrades(last + 1, to);
+        const m2 = Date.now();
         await scanTransfers(last + 1, to);
+        const m3 = Date.now();
+        spd.pools += m1 - m0; spd.trades += m2 - m1; spd.transfers += m3 - m2; spd.steps++; spd.blocks += to - last; spd.nTrades += nTr || 0;
       } catch (e) {
         // Oct 31: the chain got busy, every 2,000-block read was refused or timed out and the indexer
         // stood still for hours. Now a failed read is retried right away with half the blocks (down to
@@ -823,6 +830,8 @@ export function makeElysium(cfg, store) {
       last = to;
       await store.setState("ely_block", last);
       // while catching up, one line a minute so the logs show it moving
+      // once a minute: how fast the scan is and where the time goes (so a slow spell can be traced)
+      if (Date.now() - speedLogAt > 60_000) { speedLogAt = Date.now(); log(`elysium: speed: ${spd.blocks} blocks, ${spd.nTrades} trades in ${spd.steps} steps; pools ${spd.pools} ms, trades ${spd.trades} ms, transfers ${spd.transfers} ms; ${tip - last} behind`); spd = { pools: 0, trades: 0, transfers: 0, steps: 0, blocks: 0, nTrades: 0 }; }
       if (tip - last > 50 && Date.now() - progressLogAt > 60_000) { progressLogAt = Date.now(); log(`elysium: catching up, block ${last} of ${tip} (${tip - last} to go, ${span} per read)`); }
       if (cfg.progress) log(`elysium: block ${last}/${tip}, ${store.tokens().size} tokens`);
     }
