@@ -770,8 +770,9 @@ export function makeElysium(cfg, store) {
   /** One pass: from the saved block to the chain tip (in steps), then stats. Returns blocks done. */
   async function syncOnce() {
     for (const t of store.tokens().values()) poolIndex.set(t.venue === "v3" ? t.pool : `${t.manager}:${t.pool}`, t.address);
-    const tip = Number(await rpc("eth_blockNumber"));
+    let tip = Number(await rpc("eth_blockNumber"));
     tipNow = tip;
+    const liveSince = Date.now();
     let last = Number((await store.getState("ely_block")) ?? (cfg.startBlock ?? 0) - 1);
     const startAt = last;
     // Nov 9 (mainnet night): the chain made blocks faster than this scan could read them and the lag grew past
@@ -787,7 +788,15 @@ export function makeElysium(cfg, store) {
       last = jumpTo;
       await store.setState("ely_block", last);
     }
-    while (last < tip) {
+    for (;;) {
+      // caught up: look at the chain again instead of ending the pass (the rest of the loop, gap filling and
+      // stats, takes a minute or more, and the newest trades would wait for all of it); up to 90 s of live reading
+      if (last >= tip) {
+        if (Date.now() - liveSince > Number(process.env.ELY_LIVE_MS || 90_000)) break;
+        const t2 = Number(await rpc("eth_blockNumber"));
+        if (t2 - last < 20) break;
+        tip = t2; tipNow = t2;
+      }
       // near the tip: small steps, so each piece of new trades reaches the database as soon as it is read
       let to = Math.min(tip, last + (tip - last <= 1500 ? Math.min(span, 300) : span));
       if (!recent(to)) {
