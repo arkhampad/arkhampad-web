@@ -54,12 +54,6 @@ export const KNOWN_CONTRACTS = {
   "0x1cb9e9093c940d027c08c63bf7321e146ba0656c": "Elyxa",
   // Nov 7: Mesa v4 (Agora shows the MESA coin 0xd1fe…0197 with the "Mesa v4" badge); its hook is also its maker
   "0xe928f2336051cbd5b9d4531c25eadd13f9a82aec": "Mesa",
-  // Nov 9: Obol (tryobol.world), found by OBOL 0xdc34…5b51: its launcher contract made the v3 pool
-  "0x1de31f83169ddd068a9bc718393719f28ac51061": "Obol",
-  // Nov 9: aka.fun launches on Ascend's pool manager but through its own maker contract (AKA coin 0x6e67…f3a4)
-  "0xc31db33bfbb74035efe8fde6329f3844c4541d3d": "aka.fun",
-  // Nov 9: Quoted (betweenquotes.xyz), found by its own QUOTED coin 0x66f4…a499
-  "0x9dd317f12f4ccd11a1643d794b15ed9fd97435b7": "Quoted",
   "0x6b1216a40b65c83e9c9e18a562c446697b8cf8ec": "Montra", // Nov 7: second Montra contract (e.g. FULCRUM), Agora lists it as Montra
   // Nov 7: more makers, confirmed on Agora (BRIDGOOR → "Eleos v4", ETF → "ElysPump v4")
   "0x9c73d179b2911e89a4edc47cfd78765990bc6761": "Eleos",
@@ -201,6 +195,8 @@ export function makeElysium(cfg, store) {
   const launchpadOf = new Map(Object.entries(KNOWN_CONTRACTS)); // contract -> name
   if (launcher) launchpadOf.set(launcher, "ArkhamPad");
   if (launcher2) launchpadOf.set(launcher2, "ArkhamPad");
+  // ElyScreener's own launcher: its coins are labelled "ElyScreener" and are not counted as ArkhamPad's
+  for (const a of String(process.env.ELY_LAUNCHER_ES || "0x11969d62B732d7d2082Cb439Eb2723E8E68e40Fe").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)) launchpadOf.set(a, "ElyScreener");
   // Ascend (Elysium's partner launchpad) contracts, so its coins are labelled "Ascend": pool managers and
   // launchpads, comma-separated (testnet addresses until Nov 9, then mainnet's)
   for (const a of String(process.env.ASCEND_CONTRACTS || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)) launchpadOf.set(a, "Ascend");
