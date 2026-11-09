@@ -117,7 +117,7 @@ export function makeRpc(urls, log = console.log) {
     if (pick !== main) log(`rpc: now using ${list[pick]} (heads ${list.map((u, i) => `${new URL(u).host}=${heads[i]}`).join(", ")})`);
     main = pick; at = pick; since = Date.now();
   };
-  const rpc = async function rpc(method, params = []) {
+  const rpcOne = async function rpc(method, params = []) {
     let last;
     if (Date.now() - checked > 60_000) await pickMain().catch(() => {});
     // after a fail-over, go back to the main node every 2 minutes
@@ -147,9 +147,9 @@ export function makeRpc(urls, log = console.log) {
     }
     throw last;
   };
-  // Many calls in one HTTP request (public nodes count requests, not calls). Results come back in order,
-  // null where a call failed. Throws when no node takes a batch: the caller then asks one call at a time.
-  rpc.batch = async (calls) => {
+  // Many calls in one HTTP request (public nodes count requests, not calls). Returns the raw answers in
+  // order (null where one is missing). Throws when no node takes a batch.
+  const rawBatch = async (calls) => {
     let last;
     for (let i = 0; i < list.length; i++) {
       const url = list[(at + i) % list.length];
@@ -159,12 +159,40 @@ export function makeRpc(urls, log = console.log) {
         const j = await r.json();
         if (!Array.isArray(j)) throw new Error(j?.error?.message || "batch refused");
         const out = new Array(calls.length).fill(null);
-        for (const x of j) if (x && x.result != null && x.id >= 0 && x.id < calls.length) out[x.id] = x.result;
+        for (const x of j) if (x && x.id >= 0 && x.id < calls.length) out[x.id] = x;
         return out;
       } catch (e) { last = e; }
     }
     throw last;
   };
+  // Single calls made at the same moment (a dozen pools being read in parallel, each asking a handful of
+  // questions) are sent together, up to 50 in one request; an answer that is an error, or a batch the node
+  // refuses, goes through the normal one-call path (with its fail-over), so nothing gets less reliable.
+  // Log reads are never batched.
+  const BATCHABLE = new Set(["eth_call", "eth_getTransactionByHash", "eth_getBlockByNumber", "eth_getTransactionReceipt"]);
+  let queue = [];
+  let timer = null;
+  let batchOff = 0; // no node took a batch: ask one call at a time for a minute
+  const flush = () => {
+    timer = null;
+    const items = queue; queue = [];
+    for (let i = 0; i < items.length; i += 50) {
+      const part = items.slice(i, i + 50);
+      const single = (x) => rpcOne(x.method, x.params).then(x.resolve, x.reject);
+      if (part.length === 1) { single(part[0]); continue; }
+      rawBatch(part.map((x) => ({ method: x.method, params: x.params })))
+        .then((res) => part.forEach((x, k) => { const r = res[k]; if (r && !r.error && "result" in r) x.resolve(r.result); else single(x); }))
+        .catch(() => { batchOff = Date.now() + 60_000; part.forEach(single); });
+    }
+  };
+  const rpc = (method, params = []) => {
+    if (!BATCHABLE.has(method) || Date.now() < batchOff) return rpcOne(method, params);
+    return new Promise((resolve, reject) => {
+      queue.push({ method, params, resolve, reject });
+      if (queue.length >= 50) { if (timer) clearTimeout(timer); flush(); } else if (!timer) timer = setTimeout(flush, 4);
+    });
+  };
+  rpc.batch = async (calls) => (await rawBatch(calls)).map((x) => (x && !x.error && x.result != null ? x.result : null));
   return rpc;
 }
 
@@ -631,7 +659,7 @@ export function makeElysium(cfg, store) {
       await addPool({ token, hype: h0 ? c0 : c1, venue: "cl", pool: l.topics[1].toLowerCase(), manager: lc(l.address), fee: Number(uintAt(l.data, 1)), tickSpacing: spacing, hooks: addrWord(l.data, 0), sqrt: uintAt(l.data, 3), tokenIs0: !h0, block: Number(l.blockNumber), tx: l.transactionHash });
     });
     // WHYPE symbols first (shared by many pools), then the pools in parallel
-    await pool(jobs, 12);
+    await pool(jobs, Number(process.env.ELY_POOL_CONC || 40));
   }
 
   // only: { pools } = just these v3 pools (ArkhamPad's, the fast lane), else every pool on the chain
