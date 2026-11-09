@@ -17,7 +17,14 @@ function handleOf(x?: string) {
 }
 
 /** X / Telegram / website the creator entered at launch (coins launched on ArkhamPad). */
+// The official $ARKHAM coin was launched without its links, and a coin's on-chain metadata can't be changed: show them here.
+const LINK_OVERRIDES: Record<string, CoinLinks> = {
+  "0x17f46686ffc4b6e01d1ec530d07f3705b76bcf1e": { x: "https://x.com/arkhampad", xHandle: "@arkhampad", website: "https://arkhampad.com" },
+};
+
 export async function coinLinks(t: EToken): Promise<CoinLinks> {
+  const fixed = LINK_OVERRIDES[t.address.toLowerCase()];
+  if (fixed) return fixed;
   // any launchpad's coin, not only ours: the links live in the coin's own on-chain metadata
   const hit = cache.get(t.address);
   if (hit) return hit;
