@@ -3,7 +3,7 @@
 // next one after a short timeout. Swapping or adding nodes is one Cloudflare variable (ELY_UPSTREAMS,
 // comma-separated), with no site change, and upstream nodes only ever see Cloudflare, not our users.
 // (rpc.ronspad.fun dropped Oct 31: thousands of blocks behind, it answered with old balances)
-const DEFAULT = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
+const DEFAULT = ["https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
 const SEND_ALSO = ["https://rpc.ronspad.fun"];
 const ALLOWED = /^(eth_(chainId|blockNumber|getBalance|call|estimateGas|gasPrice|maxPriorityFeePerGas|feeHistory|getCode|getLogs|getBlockByNumber|getBlockByHash|getTransactionByHash|getTransactionReceipt|getTransactionCount|sendRawTransaction|getStorageAt)|net_version|web3_clientVersion)$/;
 const TIMEOUT = 4000;

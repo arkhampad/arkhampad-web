@@ -39,7 +39,7 @@ export async function onRequestGet({ request, env, waitUntil }) {
   return res;
 }
 
-const NODES = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
+const NODES = ["https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
 async function chainImage(a) {
   const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: a, data: "0x3c130d90" }, "latest"] }); // tokenURI()
   const hex = await Promise.any(NODES.map(async (u) => {

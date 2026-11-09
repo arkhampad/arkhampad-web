@@ -13,7 +13,7 @@ export const ELY_CHAIN = 99901;
  * has its own list of nodes. Change the list with NEXT_PUBLIC_ELY_RPCS (comma-separated).
  */
 // ElysPump's node first (Oct 31: the others stopped seeing new blocks), then whatever the variable lists.
-const MAIN_RPCS = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
+const MAIN_RPCS = ["https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
 export const ELY_RPCS = [...new Set([MAIN_RPCS[0], ...(process.env.NEXT_PUBLIC_ELY_RPCS || process.env.NEXT_PUBLIC_ELY_RPC || "").split(",").map((u) => u.trim()).filter(Boolean), ...MAIN_RPCS.slice(1)])];
 const OWN_RPC = "https://arkhampad.com/api/ely-rpc";
 // our doorway second: it asks every node and answers with the newest head, so a stuck node can't hide new blocks
