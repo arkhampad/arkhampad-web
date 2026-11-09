@@ -58,6 +58,8 @@ export const KNOWN_CONTRACTS = {
   "0x1de31f83169ddd068a9bc718393719f28ac51061": "Obol",
   // Nov 9: aka.fun launches on Ascend's pool manager but through its own maker contract (AKA coin 0x6e67…f3a4)
   "0xc31db33bfbb74035efe8fde6329f3844c4541d3d": "aka.fun",
+  // Nov 9: Quoted (betweenquotes.xyz), found by its own QUOTED coin 0x66f4…a499
+  "0x9dd317f12f4ccd11a1643d794b15ed9fd97435b7": "Quoted",
   "0x6b1216a40b65c83e9c9e18a562c446697b8cf8ec": "Montra", // Nov 7: second Montra contract (e.g. FULCRUM), Agora lists it as Montra
   // Nov 7: more makers, confirmed on Agora (BRIDGOOR → "Eleos v4", ETF → "ElysPump v4")
   "0x9c73d179b2911e89a4edc47cfd78765990bc6761": "Eleos",
