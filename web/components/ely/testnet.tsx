@@ -213,7 +213,6 @@ export function TestnetPage() {
         <div>
           <span className="e-eyebrow">{tr("Elysium testnet")}</span>
           <h1>{tr("Practice on Elysium for free.")}</h1>
-          <p><b>{tr("Every testnet launch and trade counts toward the ArkhamPad airdrop.")}</b></p>
           <p>{tr("Get free test HYPE, launch a coin, buy it and sell it. Same contracts as the real site.")}</p>
           <a href="https://arkhampad.com/" className="e-btn e-tn-real">{tr("Ready for the real thing?")} → arkhampad.com</a>
         </div>

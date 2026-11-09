@@ -8,7 +8,6 @@ import { RingAvatar, TokenAvatar } from "./shell";
 import { useT } from "@/lib/i18n";
 import { ago, compact, fetchHypeUsd, fetchLiveTrades, fetchStats, fetchTokens, fetchTrades, money, pct, short, tinyPrice, usePoll, type EToken, type ETrade , useTokens } from "@/lib/ely";
 import { pendingTokens } from "@/lib/elytrade";
-import { AirdropBanner } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
 import { ScoutBadge } from "./scout";
 import { DevFlag } from "./shield";
@@ -312,7 +311,6 @@ export function Discover() {
 
       <div className="e-promos">
         <PioneerBanner />
-        <AirdropBanner />
       </div>
       <Board tokens={tokens ?? []} usd={usd} />
 

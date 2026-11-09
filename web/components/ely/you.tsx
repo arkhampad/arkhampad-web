@@ -7,7 +7,6 @@ import { useWallet } from "@/components/wallet";
 import { useT } from "@/lib/i18n";
 import { waitingBalances } from "./bridge";
 import { InviteCard } from "./invite";
-import { AirdropCard } from "./airdrop";
 import { PioneerBanner } from "./pioneer";
 import { TokenAvatar } from "./shell";
 import { ago, fetchCreated, fetchHypeUsd, fetchMyTrades, money, pct, short, usePoll, type EToken } from "@/lib/ely";
@@ -257,8 +256,6 @@ export function YouPage() {
       )}
 
       <PioneerBanner />
-
-      <AirdropCard me={me} />
 
       <InviteCard me={me} />
 

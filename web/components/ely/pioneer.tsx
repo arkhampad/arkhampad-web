@@ -146,7 +146,7 @@ export function PioneerPage() {
           )}
           {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
           {note && <span className="dim" style={{ fontSize: 13 }}>{note}</span>}
-          <p className="e-note">{mine ? tr("It's in your wallet. You can keep it or sell it on any NFT market on Elysium.") : tr("You only pay the network fee, a fraction of a cent. Counts toward the ArkhamPad airdrop.")}</p>
+          <p className="e-note">{mine ? tr("It's in your wallet. You can keep it or sell it on any NFT market on Elysium.") : tr("You only pay the network fee, a fraction of a cent.")}</p>
         </div>
         <div className="e-pio-art">
           <img src={art} alt={shownId ? `ArkhamPad Genesis #${pad(shownId)}` : "ArkhamPad Genesis"} width={560} height={560} />
@@ -179,7 +179,6 @@ export function PioneerPage() {
           <li><b>{tr("Free.")}</b> {tr("No price. You only pay Elysium's network fee.")}</li>
           <li><b>{tr("One per wallet.")}</b> {tr("10,000 in total, then minting closes for good.")}</li>
           <li><b>{tr("Fully on-chain.")}</b> {tr("The picture is drawn by the contract itself. No server, nothing can be changed or taken down.")}</li>
-          <li><b>{tr("Counts for the airdrop.")}</b> {tr("Holding a Genesis badge counts toward the ArkhamPad airdrop, alongside the coins you launch and trade.")}</li>
           <li><b>{tr("Yours.")}</b> {tr("A standard NFT: hold it, show it, or trade it on any NFT market on Elysium.")}</li>
         </ul>
       </section>
