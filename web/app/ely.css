@@ -1103,3 +1103,30 @@ html { overscroll-behavior-y: none; }
 @keyframes eRowUp { 0% { background: var(--e-upbg); } 100% { background: transparent; } }
 @keyframes eRowDown { 0% { background: var(--e-downbg); } 100% { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .ely .hold.fl-up, .ely .hold.fl-down, .ely .e-row.fl-up, .ely .e-row.fl-down { animation: none; } }
+
+/* ---- visual polish (Nov 9): motion only, no layout or logic change. Off for reduced-motion. ---- */
+.ely .e-spot::before { content: ""; position: absolute; width: 240px; height: 240px; right: -80px; top: -120px; background: radial-gradient(circle, rgba(63, 227, 212, .26), transparent 65%); animation: ePGlow 8s ease-in-out infinite; pointer-events: none; }
+.ely .e-spot > * { position: relative; }
+.ely .e-spot-rank { position: absolute; }
+.ely .e-spot svg polyline { stroke-dasharray: 520; animation: ePDraw 1.4s ease-out both; }
+.ely .e-spot-btns a { position: relative; overflow: hidden; }
+.ely .e-spot-btns a.g::after, .ely .e-go:not(:disabled)::after { content: ""; position: absolute; top: 0; bottom: 0; left: -70px; width: 44px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .5), transparent); transform: skewX(-20deg); animation: ePSheen 4.2s ease-in-out infinite; pointer-events: none; }
+.ely .e-go { position: relative; overflow: hidden; }
+.ely .e-spot-dots i.on { position: relative; overflow: hidden; background: #34444f; }
+.ely .e-spot-dots i.on::after { content: ""; position: absolute; inset: 0; background: var(--e-tealfill); transform-origin: left; animation: ePTimer 60s linear both; }
+.ely .e-bc { animation: ePRise .6s cubic-bezier(.2, .8, .2, 1) both; }
+.ely .e-bc:nth-child(2) { animation-delay: .08s; } .ely .e-bc:nth-child(3) { animation-delay: .16s; } .ely .e-bc:nth-child(4) { animation-delay: .24s; }
+.ely .e-new { animation: ePPop 2.4s ease-in-out infinite; }
+.ely .e-press-bar i { transform-origin: left; animation: ePBar 1.1s cubic-bezier(.2, .8, .2, 1) both; }
+.ely .e-board-dot { animation: ePRing 2s ease-out infinite; }
+.ely .e-mini-r, .ely .e-tr:not(.h) { animation: eIn .4s cubic-bezier(.2, .8, .2, 1); }
+.ely .e-pill.up, .ely .e-pill.down { transition: background .3s; }
+@keyframes ePGlow { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-44px, 34px); } }
+@keyframes ePDraw { from { stroke-dashoffset: 520; } to { stroke-dashoffset: 0; } }
+@keyframes ePSheen { 0% { left: -70px; } 55%, 100% { left: 130%; } }
+@keyframes ePTimer { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes ePRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes ePPop { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@keyframes ePBar { from { transform: scaleX(.15); } to { transform: scaleX(1); } }
+@keyframes ePRing { 0% { box-shadow: 0 0 0 0 rgba(10, 154, 141, .4); } 100% { box-shadow: 0 0 0 9px rgba(10, 154, 141, 0); } }
+@media (prefers-reduced-motion: reduce) { .ely .e-spot::before, .ely .e-spot svg polyline, .ely .e-spot-btns a.g::after, .ely .e-go::after, .ely .e-spot-dots i.on::after, .ely .e-bc, .ely .e-new, .ely .e-press-bar i, .ely .e-board-dot { animation: none; } }

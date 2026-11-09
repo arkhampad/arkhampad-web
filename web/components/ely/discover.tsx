@@ -56,6 +56,11 @@ function sortTokens(list: EToken[], sort: Sort, w: Win) {
   if (sort === "losers") return l.filter((t) => (t.vol24_hype || 0) >= 5 && (t.change24 ?? 0) < 0).sort((a, b) => (a.change24 ?? 1e9) - (b.change24 ?? 1e9));
   return l.filter((t) => (t.vol24_hype || 0) > 0).sort((a, b) => trendScore(b) - trendScore(a));
 }
+/** Broken numbers (a fake pool or a bad price feed) never get a place on the board: absurd market caps stay out of the lists. Search still finds them. */
+const sane = (t: EToken) => {
+  const mc = t.mcap_hype ?? 0, v = t.vol24_hype ?? 0;
+  return Number.isFinite(mc) && Number.isFinite(v) && mc < 5e7 && v < Math.max(mc * 30, 5000);
+};
 const upDown = (v: number | null | undefined) => ((v ?? 0) >= 0 ? "up" : "down");
 
 function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
@@ -292,6 +297,7 @@ export function Discover() {
 
   const list = useMemo(() => {
     let l = tokens ?? [];
+    if (!q) l = l.filter(sane);
     if (q) l = l.filter((t) => t.name.toLowerCase().includes(q) || t.symbol.toLowerCase().includes(q) || t.address === q);
     return sortTokens(l, sort, win);
   }, [tokens, sort, q, win]);
@@ -302,7 +308,7 @@ export function Discover() {
 
   return (
     <main className="e-in e-page">
-      <Spotlight tokens={tokens ?? []} usd={usd} />
+      <Spotlight tokens={(tokens ?? []).filter(sane)} usd={usd} />
 
       <div className="e-promos">
         <PioneerBanner />
