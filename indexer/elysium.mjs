@@ -54,6 +54,8 @@ export const KNOWN_CONTRACTS = {
   "0x1cb9e9093c940d027c08c63bf7321e146ba0656c": "Elyxa",
   // Nov 7: Mesa v4 (Agora shows the MESA coin 0xd1fe…0197 with the "Mesa v4" badge); its hook is also its maker
   "0xe928f2336051cbd5b9d4531c25eadd13f9a82aec": "Mesa",
+  // Nov 9: Obol (tryobol.world), found by OBOL 0xdc34…5b51: its launcher contract made the v3 pool
+  "0x1de31f83169ddd068a9bc718393719f28ac51061": "Obol",
   "0x6b1216a40b65c83e9c9e18a562c446697b8cf8ec": "Montra", // Nov 7: second Montra contract (e.g. FULCRUM), Agora lists it as Montra
   // Nov 7: more makers, confirmed on Agora (BRIDGOOR → "Eleos v4", ETF → "ElysPump v4")
   "0x9c73d179b2911e89a4edc47cfd78765990bc6761": "Eleos",
