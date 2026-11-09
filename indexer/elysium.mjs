@@ -117,7 +117,7 @@ export function makeRpc(urls, log = console.log) {
     if (pick !== main) log(`rpc: now using ${list[pick]} (heads ${list.map((u, i) => `${new URL(u).host}=${heads[i]}`).join(", ")})`);
     main = pick; at = pick; since = Date.now();
   };
-  return async function rpc(method, params = []) {
+  const rpc = async function rpc(method, params = []) {
     let last;
     if (Date.now() - checked > 60_000) await pickMain().catch(() => {});
     // after a fail-over, go back to the main node every 2 minutes
@@ -147,6 +147,25 @@ export function makeRpc(urls, log = console.log) {
     }
     throw last;
   };
+  // Many calls in one HTTP request (public nodes count requests, not calls). Results come back in order,
+  // null where a call failed. Throws when no node takes a batch: the caller then asks one call at a time.
+  rpc.batch = async (calls) => {
+    let last;
+    for (let i = 0; i < list.length; i++) {
+      const url = list[(at + i) % list.length];
+      try {
+        const body = calls.map((c, k) => ({ jsonrpc: "2.0", id: k, method: c.method, params: c.params || [] }));
+        const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+        const j = await r.json();
+        if (!Array.isArray(j)) throw new Error(j?.error?.message || "batch refused");
+        const out = new Array(calls.length).fill(null);
+        for (const x of j) if (x && x.result != null && x.id >= 0 && x.id < calls.length) out[x.id] = x.result;
+        return out;
+      } catch (e) { last = e; }
+    }
+    throw last;
+  };
+  return rpc;
 }
 
 /** Price of `token` in HYPE from a pool's sqrtPriceX96 (raw units: token1 per token0). */
@@ -247,6 +266,35 @@ export function makeElysium(cfg, store) {
     const t2 = l.topics[2] ? addrTopic(l.topics[2]) : null;
     if (recent(Number(l.blockNumber)) || ROUTERS.has(t1) || ROUTERS.has(t2)) return (await txField(txFrom, l.transactionHash, "from")) ?? t2;
     return t2;
+  }
+  // Near the tip every trade needs its sender and every block its time: ask for them in batches of 50
+  // (a few requests instead of hundreds), keep them in the same caches the single calls use.
+  async function prefetchLive(logs) {
+    if (!rpc.batch || !logs.length) return;
+    const txs = new Set(), blks = new Set();
+    for (const l of logs) {
+      const b = Number(l.blockNumber);
+      const t1 = l.topics[1] ? addrTopic(l.topics[1]) : null;
+      const t2 = l.topics[2] ? addrTopic(l.topics[2]) : null;
+      if ((recent(b) || ROUTERS.has(t1) || ROUTERS.has(t2)) && !txFrom.has(l.transactionHash)) txs.add(l.transactionHash);
+      const interp = !recent(b) && win && b >= win.from && b <= win.to && win.to > win.from;
+      if (!interp && !blockTime.has(b)) blks.add(b);
+    }
+    const chunk = (arr) => { const o = []; for (let i = 0; i < arr.length; i += 50) o.push(arr.slice(i, i + 50)); return o; };
+    const jobs = [];
+    for (const ch of chunk([...txs])) jobs.push(async () => {
+      try {
+        const res = await rpc.batch(ch.map((h) => ({ method: "eth_getTransactionByHash", params: [h] })));
+        ch.forEach((h, i) => { const t = res[i]; if (t && t.from) { txTo.set(h, lc(t.to)); txFrom.set(h, lc(t.from)); } });
+      } catch {}
+    });
+    for (const ch of chunk([...blks])) jobs.push(async () => {
+      try {
+        const res = await rpc.batch(ch.map((b) => ({ method: "eth_getBlockByNumber", params: [hex(b), false] })));
+        ch.forEach((b, i) => { const k = res[i]; if (k && k.timestamp) blockTime.set(b, Number(k.timestamp) * 1000); });
+      } catch {}
+    });
+    await pool(jobs, 4);
   }
   async function timeOf(b) {
     if (!recent(b) && win && b >= win.from && b <= win.to && win.to > win.from) {
@@ -592,6 +640,7 @@ export function makeElysium(cfg, store) {
       ? [await rpc("eth_getLogs", [{ ...q, address: only.pools, topics: [T.v3Swap] }]), [], []]
       : await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clSwap] }]).catch(() => [])]);
     const tokens = store.tokens();
+    await prefetchLive([...v3.filter((l) => poolIndex.has(lc(l.address))), ...v4.concat(cl).filter((l) => l.topics[1] && poolIndex.has(`${lc(l.address)}:${l.topics[1].toLowerCase()}`))]);
     const out = [];
     const add = async (l, token, tokenDelta, hypeDelta, sqrt, userSideNegativeIsPaid) => {
       const t = tokens.get(token);
