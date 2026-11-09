@@ -11,6 +11,7 @@ import { pendingTokens } from "@/lib/elytrade";
 import { PioneerBanner } from "./pioneer";
 import { ScoutBadge } from "./scout";
 import { DevFlag } from "./shield";
+import { BlueTick, isPinned } from "./pin";
 import { useFlash, useHolderTrend } from "@/lib/holdtrend";
 import { devRepsFromTokens, type DevRep } from "@/lib/shield";
 
@@ -41,6 +42,12 @@ function trendScore(t: EToken) {
   return Math.log10(1 + vol) * 2 + Math.log10(1 + tx) + buyShare + fresh;
 }
 function sortTokens(list: EToken[], sort: Sort, w: Win) {
+  const r = sortBase(list, sort, w);
+  if (sort !== "trending") return r;
+  const p = list.find((t) => isPinned(t.address));
+  return p ? [p, ...r.filter((t) => t !== p)] : r;
+}
+function sortBase(list: EToken[], sort: Sort, w: Win) {
   const l = list.slice();
   if (w !== "24h" && sort !== "new" && sort !== "top" && sort !== "ours") {
     if (sort === "gainers") return l.filter((t) => volOf(t, w) >= MIN_VOL[w] && (chg(t, w) ?? 0) > 0).sort((a, b) => (chg(b, w) ?? -1e9) - (chg(a, w) ?? -1e9));
@@ -81,7 +88,7 @@ function Hot({ tokens, usd }: { tokens: EToken[]; usd: number }) {
                   <div className="e-hc-top">
                     <TokenAvatar t={t} size={40} />
                     <div>
-                      <b>{t.name}</b>
+                      <b>{t.name}<BlueTick address={t.address} /></b>
                       <small>{t.symbol} · {tr("{age} old", { age: ago(t.created_at) })}</small>
                     </div>
                     <span className="e-hc-rank">#{i + 1}</span>
@@ -134,7 +141,8 @@ function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
   }, []);
   const known = new Set(tokens.map((t) => t.address.toLowerCase()));
   const devReps = useMemo(() => devRepsFromTokens(tokens, usd), [tokens, usd]);
-  const ours = [...tokens, ...pendingTokens().filter((t) => !known.has(t.address.toLowerCase()))].filter((t) => (t.ours || TEAM.has((t.creator || "").toLowerCase())) && !HIDE.has(t.address.toLowerCase())).sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0")).slice(0, 12);
+  const ours0 = [...tokens, ...pendingTokens().filter((t) => !known.has(t.address.toLowerCase()))].filter((t) => (t.ours || TEAM.has((t.creator || "").toLowerCase())) && !HIDE.has(t.address.toLowerCase())).sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0")).slice(0, 12);
+  const ours = [...ours0.filter((t) => isPinned(t.address)), ...ours0.filter((t) => !isPinned(t.address))];
   return (
     <section className="e-board">
       <div className="e-sec-h">
@@ -152,7 +160,7 @@ function Board({ tokens, usd }: { tokens: EToken[]; usd: number }) {
               <div className="e-hc-top">
                 <TokenAvatar t={t} size={40} />
                 <div>
-                  <b>{t.name} <DevFlag rep={devReps.get((t.creator || "").toLowerCase())} /></b>
+                  <b>{t.name}<BlueTick address={t.address} /> <DevFlag rep={devReps.get((t.creator || "").toLowerCase())} /></b>
                   <small>{t.symbol} · {tr("{age} old", { age: ago(t.created_at) })}</small>
                 </div>
                 <span className="e-bc-badges">{fresh && <span className="e-new">{tr("NEW")}</span>}<ScoutBadge address={t.address} /></span>
@@ -207,7 +215,7 @@ function Spotlight({ tokens, usd }: { tokens: EToken[]; usd: number }) {
       <span className="e-spot-rank">#{idx + 1} {tr("by volume")}</span>
       <Link href={`/t/?a=${t.address}`} className="e-spot-h">
         <TokenAvatar t={t} size={42} />
-        <span className="nm"><b>{t.name}</b><small>#{idx + 1} {tr("by volume")} · {compact(t.holders || 0)} {tr("holders")}</small></span>
+        <span className="nm"><b>{t.name}<BlueTick address={t.address} /></b><small>#{idx + 1} {tr("by volume")} · {compact(t.holders || 0)} {tr("holders")}</small></span>
         <span className="mc"><b>{money(mc)}</b><small style={{ color: up ? "#3fe3d4" : "#ff6b6b" }}>{pct(t.change24)} 24h</small></span>
       </Link>
       <svg viewBox="0 0 300 74" preserveAspectRatio="none" aria-hidden="true">{path && <polyline fill="none" stroke={up ? "#3fe3d4" : "#ff6b6b"} strokeWidth="2.4" strokeLinejoin="round" points={path} />}</svg>
@@ -263,7 +271,7 @@ function Row({ t, i, usd, w, rep }: { t: EToken; i: number; usd: number; w: Win;
       <span className="e-tok">
         <RingAvatar t={t} size={34} />
         <span>
-          <span className="l1"><b>{t.name}</b><span className="sym">{t.symbol}</span><DevFlag rep={rep} />{t.ours && <span className="e-lock">LP locked</span>}<ScoutBadge address={t.address} /></span>
+          <span className="l1"><b>{t.name}<BlueTick address={t.address} /></b><span className="sym">{t.symbol}</span><DevFlag rep={rep} />{t.ours && <span className="e-lock">LP locked</span>}<ScoutBadge address={t.address} /></span>
           <small>
             <span className="e-hide-m">{tr("by {who}", { who: short(t.creator) })} · {tr("{age} old", { age: ago(t.created_at) })}</span>
             <span className="e-only-m-inline">{tr("{age} old", { age: ago(t.created_at) })} · <span className={hCls}>{hArrow}{tr("{n} holders", { n: compact(t.holders || 0) })}</span></span>

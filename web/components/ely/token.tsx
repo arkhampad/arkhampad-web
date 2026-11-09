@@ -8,6 +8,7 @@ import type { Address } from "viem";
 import { useWallet } from "@/components/wallet";
 import { funnel } from "@/lib/funnel";
 import { RingAvatar, TokenAvatar } from "./shell";
+import { BlueTick } from "./pin";
 import { useT } from "@/lib/i18n";
 import { EChart, type ChartMark } from "./chart";
 import { positionFrom } from "@/lib/position";
@@ -511,7 +512,7 @@ export function TokenPage() {
           <section className="e-thead">
             <RingAvatar t={t} size={50} />
             <div className="e-tname">
-              <h1>{t.name} <span>{t.symbol}</span></h1>
+              <h1>{t.name}<BlueTick address={t.address} /> <span>{t.symbol}</span></h1>
               <div className="e-tmeta">
                 <span className="e-chipnet">Elysium</span>
                 {t.ours && <span className="e-lock">{tr("LP locked")}</span>}
