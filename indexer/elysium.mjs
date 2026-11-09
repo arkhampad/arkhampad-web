@@ -652,6 +652,8 @@ export function makeElysium(cfg, store) {
   // Balances are added up, so each transfer must be counted exactly once: once the fast lane runs, it
   // alone counts ArkhamPad coins' transfers and the full scan skips them.
   let fastOn = false;
+  // coins the fast lane follows: ArkhamPad's own and ElyScreener-launched ones (not "ours" for stats)
+  const inFast = (t) => !!t && (t.ours || t.launchpad === "ElyScreener");
   async function scanTransfers(from, to, only) {
     if (only && !only.tokens.length) return 0;
     const logs = await rpc("eth_getLogs", [{ fromBlock: hex(from), toBlock: hex(to), ...(only ? { address: only.tokens } : {}), topics: [T.transfer] }]);
@@ -660,7 +662,7 @@ export function makeElysium(cfg, store) {
     for (const l of logs) {
       const token = lc(l.address);
       if (!tokens.has(token) || l.topics.length < 3) continue;
-      if (!only && fastOn && tokens.get(token).ours) continue;
+      if (!only && fastOn && inFast(tokens.get(token))) continue;
       list.push({ token, from: addrTopic(l.topics[1]), to: addrTopic(l.topics[2]), value: BigInt(l.data === "0x" ? 0 : l.data).toString() });
     }
     if (list.length) await store.applyTransfers(list);
@@ -762,6 +764,9 @@ export function makeElysium(cfg, store) {
   // launched here shows up with its trades and holders within seconds, however far the full scan lags.
   const factoryOf = () => cfg.factory || [...store.tokens().values()].find((t) => t.ours && t.venue === "v3" && t.manager)?.manager || null;
   let fastSpan = 1000;
+  let esChecked = false;
+  let esStart = 0;
+  const esFlagged = new Set();
   let fastLogAt = 0;
   async function fastOnce() {
     const tip = Number(await rpc("eth_blockNumber"));
@@ -769,11 +774,32 @@ export function makeElysium(cfg, store) {
     let last = Number((await store.getState("ely_fast_block")) ?? (await store.getState("ely_block")) ?? -1);
     if (last < 0) return;
     fastOn = true;
+    // ElyScreener coins joined the fast lane later: read each one's history once (flag per coin), so its
+    // first buy and holders are counted exactly once even though the full scan now skips them.
+    const esToks = () => [...store.tokens().values()].filter((t) => t.launchpad === "ElyScreener" && t.venue === "v3" && t.pool);
+    if (!esChecked) {
+      esChecked = true;
+      esStart = last;
+      for (const t of esToks()) {
+        const key = `es_bf_${t.address}`;
+        if (await store.getState(key)) { esFlagged.add(t.address); continue; }
+        let from = Number(t.created_block || last + 1);
+        while (from <= last) {
+          const to = Math.min(last, from + 199);
+          await scanTrades(from, to, { pools: [t.pool] });
+          await scanTransfers(from, to, { tokens: [t.address] });
+          from = to + 1;
+        }
+        await store.setState(key, 1);
+        esFlagged.add(t.address);
+        log(`elysium: backfilled ElyScreener coin ${t.symbol || t.address}`);
+      }
+    }
     while (last < tip) {
       const to = Math.min(tip, last + fastSpan);
       try {
         await scanPools(last + 1, to, { factory: factoryOf() });
-        const ours = [...store.tokens().values()].filter((t) => t.ours && t.venue === "v3" && t.pool);
+        const ours = [...store.tokens().values()].filter((t) => inFast(t) && t.venue === "v3" && t.pool);
         await scanTrades(last + 1, to, { pools: ours.map((t) => t.pool) });
         await scanTransfers(last + 1, to, { tokens: ours.map((t) => t.address) });
         // pictures and descriptions of new coins (normally filled after a full scan, which may be lagging)
@@ -785,6 +811,7 @@ export function makeElysium(cfg, store) {
       if (fastSpan < 1000) fastSpan = Math.min(1000, Math.ceil(fastSpan * 1.5));
       last = to;
       await store.setState("ely_fast_block", last);
+      for (const t of esToks()) if (!esFlagged.has(t.address) && Number(t.created_block || 0) > esStart) { esFlagged.add(t.address); await store.setState(`es_bf_${t.address}`, 1); }
       if (tip - last > 30 && Date.now() - fastLogAt > 60_000) { fastLogAt = Date.now(); log(`elysium: fast lane at block ${last} of ${tip}`); }
     }
     if (Date.now() - fastLogAt > 10 * 60_000) { fastLogAt = Date.now(); log(`elysium: fast lane up to date (block ${last})`); }
