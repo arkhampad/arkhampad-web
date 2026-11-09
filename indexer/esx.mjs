@@ -125,7 +125,7 @@ function slotsFor(dayTR) {
 const trDay = (ms) => new Date(ms + TR).toISOString().slice(0, 10);
 /** The day's slots, thinned evenly when a daily cap is set (keeps the morning/evening shape). */
 function plan(day) {
-  const all = slotsFor(day), cap = Number(env("ES_X_DAILY_MAX")) || 0;
+  const all = slotsFor(day), cap = Number(env("ES_X_DAILY_MAX")) || 12; // Nov 9: calmer feed, about 12 posts a day (ES_X_DAILY_MAX to change)
   if (!cap || cap >= all.length) return all;
   return Array.from({ length: cap }, (_, i) => all[Math.floor(((i + 0.5) * all.length) / cap)]);
 }
@@ -135,9 +135,9 @@ function threadTimes(day) {
   const [y, m, d] = day.split("-").map(Number);
   const at = (h, min) => Date.UTC(y, m - 1, d, h, min) - TR;
   const r = rng(y * 10000 + m * 100 + d + 7);
-  if (day > THREAD_BUSY_UNTIL) return [at(20, 40)];
-  // 10 a day, roughly every 2 h from 05:00; a little tighter in the evening (US awake); minutes differ each day
-  return [[5, 0], [7, 15], [9, 30], [11, 30], [13, 30], [15, 30], [17, 30], [19, 0], [20, 40], [22, 30]].map(([h, mi]) => at(h, mi + Math.floor(r() * 25)));
+  if (env("ES_X_THREADS") === "0") return []; // threads off
+  // Nov 9: three threads a day, all between 16:00 and 22:00 TR (US evening); minutes differ each day
+  return [[16, 20], [18, 50], [21, 10]].map(([h, mi]) => at(h, mi + Math.floor(r() * 25)));
 }
 /** Which theme a thread time gets: each day every theme once, the order shifts from day to day. */
 function themeFor(at) {
@@ -255,6 +255,11 @@ const W = {
     (d) => nl(`fresh one on ${d.padX || d.pad} getting real attention`, `$${d.sym} · ${d.holders} holders in ${d.age} ${d.x || ""}`.trim()),
     (d) => nl(`${d.age} old and already ${d.holders} holders. $${d.sym} is off to a fast start`, d.x),
   ],
+  launched: [
+    (d) => nl(`$${d.sym} was just launched on ElyScreener ${d.age} ago`, `${d.holders} holders already, mc ${d.mc}`, "", `launch yours in one tap → elyscreener.com ${d.x || ""}`.trim()),
+    (d) => nl(`new coin on Elysium, launched right on ElyScreener: $${d.sym}`, `${d.age} old, ${d.holders} holders`, "", `anyone can do this, takes a minute 👀`),
+    (d) => nl(`$${d.sym} just went live from ElyScreener's launch page`, `${d.holders} holders, mc ${d.mc}. creators earn up to 60% of the trade fees`, d.x),
+  ],
   pads: [
     (d) => nl(`last 24h on Elysium, by launchpad:`, "", ...d.top3, "", d.tags ? `${d.tags} who takes #1 tomorrow?` : `who takes #1 tomorrow?`),
     (d) => nl(`launchpad volume, last 24h 👇`, "", ...d.top3, "", `${d.lead} still on top.${d.tags ? ` ${d.tags}` : ""}`),
@@ -262,6 +267,8 @@ const W = {
   ],
 };
 const FEATURES = [
+  { card: { lines: ["Launch your coin.", "On Elysium. In one tap.", "Creators earn up to 60%."], chip: "Launch on ElyScreener", tag: "LAUNCH" },
+    text: [() => nl(`you can launch a coin on Elysium straight from ElyScreener now`, "", `name, picture (or let AI make it), one tap. creators earn up to 60% of the trade fees`), () => nl(`new on ElyScreener: launch your own Elysium coin`, `promote it in the same flow if you want. elyscreener.com`)] },
   { card: { lines: ["Is this coin safe?", "Just ask.", "Every Elysium coin, one tap."], chip: "Ask AI on ElyScreener", tag: "ASK AI" },
     text: [() => nl(`you can literally ask ElyScreener "is this coin safe?" and it tells you`, "", `holders, bot clusters, dev selling, all of it. any coin on Elysium`), () => nl(`new thing: Ask AI`, `type a coin, ask anything. it reads the chain for you`)] },
   { card: { lines: ["Safe. Caution. Risky.", "Every coin, scored.", "Updated every 15 min."], chip: "Safety labels", tag: "SAFETY" },
@@ -325,6 +332,21 @@ async function fresh(r) {
     const d = { sym: t.symbol, pad: padName(t.launchpad), padX: PAD_X[String(t.launchpad || "").toLowerCase()], age: ago(t.created_at), holders: count(t.holders), buys: count(t.buys24), bots, x };
     const card = freshCard({ symbol: t.symbol, name: t.name, pad: padName(t.launchpad), age: d.age, holders: d.holders, buys: d.buys, bots, botsBad: (s.bots ?? 0) >= 30, series: await series(t.address, 2, 30), image: await logo(t.image) });
     return { kind: "fresh", token: t.address, tpl: Math.floor(r() * W.fresh.length), d, card };
+  }
+  return null;
+}
+async function launched(r) {
+  // coins made on ElyScreener's own launch page (the newest one that has not been posted yet)
+  const skip = await recentTokens(48);
+  const rows = await q(`select address, name, symbol, image, uri, launchpad, created_at, holders, buys24, mcap_hype from ely_tokens
+    where launchpad = 'ElyScreener' and address <> '0xafc9e0d3e5493885d8d75e09ef751ed3a235de8a' and created_at > now() - interval '4 hours' and not (address = any($1)) order by created_at desc limit 5`, [skip]);
+  for (const t of rows) {
+    const s = await safetyOf(t.address);
+    if (s.label === "Risky") continue;
+    const x = await xHandle(t);
+    const d = { sym: t.symbol, age: ago(t.created_at), holders: count(t.holders || 0), mc: money(usd(t.mcap_hype)), x };
+    const card = freshCard({ symbol: t.symbol, name: t.name, pad: "ElyScreener", age: d.age, holders: d.holders, buys: count(t.buys24 || 0), bots: null, botsBad: false, series: await series(t.address, 2, 30), image: await logo(t.image) });
+    return { kind: "launched", token: t.address, tpl: Math.floor(r() * W.launched.length), d, card };
   }
   return null;
 }
@@ -408,8 +430,9 @@ async function compose(slotIdx, r) {
   const hourTR = new Date(Date.now() + TR).getUTCHours();
   const order = [];
   // (the launchpad board now goes out inside the daily threads)
-  if (slotIdx % 5 === 3) order.push(feature);
-  order.push(...pick(r, [[gainer, smart, fresh], [smart, gainer, fresh], [fresh, gainer, smart], [gainer, fresh, smart]]));
+  if (slotIdx % 4 === 3) order.push(feature);
+  order.push(launched); // a coin made on ElyScreener goes first, whenever there is a new one
+  order.push(...pick(r, [[gainer, smart], [smart, gainer]]));
   order.push(feature);
   for (const f of order) {
     try { const p = await f(r); if (p) return p; } catch (e) { log(`${f.name}:`, e.message); }
