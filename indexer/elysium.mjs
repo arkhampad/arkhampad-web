@@ -537,6 +537,7 @@ export function makeElysium(cfg, store) {
     };
     poolIndex.set(p.venue === "v3" ? p.pool : `${p.manager}:${p.pool}`, p.token);
     await store.upsertToken(t);
+    if (newSink) newSink.push({ token: p.token, block: p.block });
   }
 
   // only: { factory } = just ArkhamPad's own pool factory (the fast lane), else every launchpad
@@ -652,9 +653,10 @@ export function makeElysium(cfg, store) {
   // Balances are added up, so each transfer must be counted exactly once: once the fast lane runs, it
   // alone counts ArkhamPad coins' transfers and the full scan skips them.
   let fastOn = false;
+  let newSink = null; // while a skipped stretch is filled in: the coins found there (they were unknown to the live scan)
   // coins the fast lane follows: ArkhamPad's own and ElyScreener-launched ones (not "ours" for stats)
   const inFast = (t) => !!t && (t.ours || t.launchpad === "ElyScreener");
-  async function scanTransfers(from, to, only) {
+  async function scanTransfers(from, to, only, pick) {
     if (only && !only.tokens.length) return 0;
     const logs = await rpc("eth_getLogs", [{ fromBlock: hex(from), toBlock: hex(to), ...(only ? { address: only.tokens } : {}), topics: [T.transfer] }]);
     const tokens = store.tokens();
@@ -662,6 +664,7 @@ export function makeElysium(cfg, store) {
     for (const l of logs) {
       const token = lc(l.address);
       if (!tokens.has(token) || l.topics.length < 3) continue;
+      if (pick && !pick(token)) continue;
       if (!only && fastOn && inFast(tokens.get(token))) continue;
       list.push({ token, from: addrTopic(l.topics[1]), to: addrTopic(l.topics[2]), value: BigInt(l.data === "0x" ? 0 : l.data).toString() });
     }
@@ -722,6 +725,19 @@ export function makeElysium(cfg, store) {
     tipNow = tip;
     let last = Number((await store.getState("ely_block")) ?? (cfg.startBlock ?? 0) - 1);
     const startAt = last;
+    // Nov 9 (mainnet night): the chain made blocks faster than this scan could read them and the lag grew past
+    // an hour, so other launchpads' coins showed stale trades. Far behind: jump to just behind the tip, keep the
+    // skipped stretch as a "gap" and fill it in the background (gapPass); the live end is current right away.
+    if (tip - last > LAG_MAX) {
+      const jumpTo = tip - LIVE_KEEP;
+      const gaps = await readGaps();
+      const same = gaps.find((g) => g.from === last + 1 && g.cur === g.from);
+      if (same) same.to = jumpTo; else gaps.push({ from: last + 1, to: jumpTo, cur: last + 1 });
+      await saveGaps(gaps);
+      log(`elysium: ${tip - last} blocks behind, skipping ahead to block ${jumpTo}; ${jumpTo - last} blocks are filled in later`);
+      last = jumpTo;
+      await store.setState("ely_block", last);
+    }
     while (last < tip) {
       let to = Math.min(tip, last + span);
       if (!recent(to)) {
@@ -753,6 +769,68 @@ export function makeElysium(cfg, store) {
     }
     return last - startAt;
   }
+
+  // ---------------------------------------------------------------- skipped stretches ("gaps")
+  const LAG_MAX = Number(process.env.ELY_LAG_MAX || 6000); // blocks behind the tip before the scan skips ahead
+  const LIVE_KEEP = Number(process.env.ELY_LIVE_KEEP || 1500); // blocks left to the normal scan after a skip
+  const readGaps = async () => { try { return JSON.parse((await store.getState("ely_gaps")) || "[]"); } catch { return []; } };
+  const saveGaps = (g) => store.setState("ely_gaps", JSON.stringify(g));
+  let gapSpan = 500;
+  async function setWin(from, to) {
+    if (recent(to) || to <= from) { win = null; return; }
+    const [a, b] = await Promise.all([rpc("eth_getBlockByNumber", [hex(from), false]), rpc("eth_getBlockByNumber", [hex(to), false])]);
+    win = { from, to, tFrom: Number(a.timestamp) * 1000, tTo: Number(b.timestamp) * 1000 };
+  }
+  /**
+   * Fills the skipped stretches, oldest first, for at most `budgetMs` per call (the live scan goes first).
+   * Pools, trades and transfers of each piece are read once. Coins created inside the gap were unknown while
+   * the live part was scanned, so when a gap is done its live part is read again for them: trades again
+   * (rows are written once, repeats are ignored) and transfers only for those coins (balances are added up).
+   */
+  async function gapPass(budgetMs) {
+    const t0 = Date.now();
+    let gaps = await readGaps();
+    while (gaps.length && Date.now() - t0 < budgetMs) {
+      const g = gaps[0];
+      const newToks = new Set(JSON.parse((await store.getState("ely_gap_new")) || "[]"));
+      if (g.cur <= g.to) {
+        const from = g.cur, to = Math.min(g.to, from + gapSpan - 1);
+        newSink = [];
+        try {
+          await setWin(from, to);
+          await scanPools(from, to);
+          await scanTrades(from, to);
+          await scanTransfers(from, to);
+        } catch (e) {
+          newSink = null;
+          if (gapSpan > 20) { gapSpan = Math.max(20, Math.floor(gapSpan / 2)); log(`elysium: gap reading ${gapSpan} blocks (${e.message})`); continue; }
+          throw e;
+        }
+        for (const x of newSink) if (x.block >= from && x.block <= to) newToks.add(x.token);
+        newSink = null;
+        if (gapSpan < 500) gapSpan = Math.min(500, Math.ceil(gapSpan * 1.5));
+        g.cur = to + 1;
+        await store.setState("ely_gap_new", JSON.stringify([...newToks]));
+        await saveGaps(gaps);
+      } else {
+        const liveFrom = g.to + 1;
+        const liveEnd = gaps[1] ? gaps[1].from - 1 : Number((await store.getState("ely_block")) ?? g.to);
+        for (let a = liveFrom; a <= liveEnd; a += 500) {
+          const b = Math.min(liveEnd, a + 499);
+          await setWin(a, b);
+          await scanTrades(a, b);
+          if (newToks.size) await scanTransfers(a, b, undefined, (t) => newToks.has(t));
+        }
+        gaps.shift();
+        await saveGaps(gaps);
+        await store.setState("ely_gap_new", "[]");
+        log(`elysium: skipped stretch ${g.from}-${g.to} filled in (${newToks.size} coins found there); ${gaps.length} left`);
+      }
+      if (!gaps.length) break;
+    }
+    if (gaps.length && Date.now() - gapLogAt > 5 * 60_000) { gapLogAt = Date.now(); log(`elysium: filling skipped blocks: ${gaps.reduce((n, g) => n + Math.max(0, g.to - g.cur + 1), 0)} left in ${gaps.length} stretch(es)`); }
+  }
+  let gapLogAt = 0;
 
   let statsAt = 0;
   let pageStatsAt = 0;
@@ -855,6 +933,7 @@ export function makeElysium(cfg, store) {
     for (;;) {
       try {
         const n = await syncOnce();
+        await gapPass(Number(process.env.ELY_GAP_BUDGET_MS || 30_000)).catch((e) => log(`elysium: gap ${e.message}`));
         backfillMeta().catch(() => {});
         backfillImages().catch(() => {});
         repairTokens().catch((e) => log(`elysium: repair ${e.message}`));
