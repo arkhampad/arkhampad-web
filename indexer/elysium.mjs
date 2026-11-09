@@ -216,7 +216,7 @@ export function makeElysium(cfg, store) {
   const step = cfg.step || 1000; // one public node refuses log reads over 1,000 blocks
   let progressLogAt = 0;
   let speedLogAt = 0;
-  let spd = { pools: 0, trades: 0, transfers: 0, steps: 0, blocks: 0, nTrades: 0 };
+  let spd = { pools: 0, trades: 0, transfers: 0, steps: 0, blocks: 0, nTrades: 0, poolLogs: 0, poolJobs: 0, nPools: 0 };
   let span = step; // blocks per read right now: shrinks when the nodes are busy, grows back after
   const launcher = lc(cfg.launcher);
   // version 2 of the launcher ("25K" fee rules); its coins are ArkhamPad's too
@@ -621,9 +621,12 @@ export function makeElysium(cfg, store) {
   // only: { factory } = just ArkhamPad's own pool factory (the fast lane), else every launchpad
   async function scanPools(from, to, only) {
     const q = { fromBlock: hex(from), toBlock: hex(to) };
+    const pt0 = Date.now();
     const [v3, v4, cl] = only
       ? [only.factory ? await rpc("eth_getLogs", [{ ...q, address: only.factory, topics: [T.v3PoolCreated] }]) : [], [], []]
       : await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3PoolCreated] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Initialize] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clInitialize] }]).catch(() => [])]);
+    const pt1 = Date.now();
+    if (!only) { spd.poolLogs += pt1 - pt0; spd.nPools += v3.length + v4.length + cl.length; }
     const jobs = [];
     for (const l of v3) jobs.push(async () => {
       const t0 = addrTopic(l.topics[1]);
@@ -660,6 +663,7 @@ export function makeElysium(cfg, store) {
     });
     // WHYPE symbols first (shared by many pools), then the pools in parallel
     await pool(jobs, Number(process.env.ELY_POOL_CONC || 40));
+    if (!only) spd.poolJobs += Date.now() - pt1;
   }
 
   // only: { pools } = just these v3 pools (ArkhamPad's, the fast lane), else every pool on the chain
@@ -859,7 +863,7 @@ export function makeElysium(cfg, store) {
       await store.setState("ely_block", last);
       // while catching up, one line a minute so the logs show it moving
       // once a minute: how fast the scan is and where the time goes (so a slow spell can be traced)
-      if (Date.now() - speedLogAt > 60_000) { speedLogAt = Date.now(); log(`elysium: speed: ${spd.blocks} blocks, ${spd.nTrades} trades in ${spd.steps} steps; pools ${spd.pools} ms, trades ${spd.trades} ms, transfers ${spd.transfers} ms; ${tip - last} behind`); spd = { pools: 0, trades: 0, transfers: 0, steps: 0, blocks: 0, nTrades: 0 }; }
+      if (Date.now() - speedLogAt > 60_000) { speedLogAt = Date.now(); log(`elysium: speed: ${spd.blocks} blocks, ${spd.nTrades} trades in ${spd.steps} steps; pools ${spd.pools} ms (${spd.nPools} new, log reads ${spd.poolLogs} ms, per-pool work ${spd.poolJobs} ms), trades ${spd.trades} ms, transfers ${spd.transfers} ms; ${tip - last} behind`); spd = { pools: 0, trades: 0, transfers: 0, steps: 0, blocks: 0, nTrades: 0, poolLogs: 0, poolJobs: 0, nPools: 0 }; }
       if (tip - last > 50 && Date.now() - progressLogAt > 60_000) { progressLogAt = Date.now(); log(`elysium: catching up, block ${last} of ${tip} (${tip - last} to go, ${span} per read)`); }
       if (cfg.progress) log(`elysium: block ${last}/${tip}, ${store.tokens().size} tokens`);
     }
