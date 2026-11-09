@@ -1130,3 +1130,6 @@ html { overscroll-behavior-y: none; }
 @keyframes ePBar { from { transform: scaleX(.15); } to { transform: scaleX(1); } }
 @keyframes ePRing { 0% { box-shadow: 0 0 0 0 rgba(10, 154, 141, .4); } 100% { box-shadow: 0 0 0 9px rgba(10, 154, 141, 0); } }
 @media (prefers-reduced-motion: reduce) { .ely .e-spot::before, .ely .e-spot svg polyline, .ely .e-spot-btns a.g::after, .ely .e-go::after, .ely .e-spot-dots i.on::after, .ely .e-bc, .ely .e-new, .ely .e-press-bar i, .ely .e-board-dot { animation: none; } }
+
+/* tab strip: the grey bar now runs the full width of the scrolling row (it used to stop where the screen ends) */
+.ely .e-bar .e-scrollx > .e-tabs { width: max-content; min-width: 100%; max-width: none; flex: none; }
