@@ -76,4 +76,17 @@ export function startLinks(pool, { log = console.log } = {}) {
     } catch (e) { log(`links: ${e.message}`); } finally { busy = false; }
   };
   setInterval(tick, 15_000); setTimeout(tick, 5_000);
+  // diagnostic only (nothing is saved, no link changes): ELY_LINKS_DEBUG=<address,address> prints what those coins' own metadata holds
+  const dbg = String(process.env.ELY_LINKS_DEBUG || "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => /^0x[0-9a-f]{40}$/.test(x));
+  if (dbg.length) setTimeout(async () => {
+    for (const a of dbg) {
+      try {
+        const { rows } = await pool.query("select uri from ely_tokens where address = $1", [a]);
+        const uri = rows[0]?.uri;
+        if (!uri) { log(`links debug ${a}: no uri on this coin`); continue; }
+        const j = await readMeta(uri);
+        log(`links debug ${a}: uri=${String(uri).slice(0, 120)} found=${JSON.stringify(findLinks(j))} raw=${JSON.stringify(j).slice(0, 1500)}`);
+      } catch (e) { log(`links debug ${a}: ${e.message}`); }
+    }
+  }, 20_000);
 }
