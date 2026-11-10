@@ -22,6 +22,7 @@ import { telegramText, useCoinLinks, type CoinLinks } from "@/lib/sharecard";
 import { chainActivity, isFresh, mergeTrades } from "@/lib/elyfresh";
 import { pendingTrade } from "@/lib/holdings";
 import { ago, compact, fetchClusters, fetchHolders, fetchHypeUsd, fetchMyCoinTrades, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
+import { hookGated } from "@/lib/hookguard";
 import { ascendBuy, ascendQuote, ascendSell, isAscend, quoteToken, type QuoteToken } from "@/lib/ascend";
 import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, Reverted, chainToken, pendingToken, SlowTx, taxedTokens, sellable, USER_NO } from "@/lib/elytrade";
 
@@ -69,6 +70,8 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
   const addr = w.address as Address | null;
   // what this coin is bought with: HYPE for most pools; USDC on Ascend's pools
   const asc = isAscend(t);
+  const [gated, setGated] = useState(false);
+  useEffect(() => { let on = true; hookGated(t.hooks).then((g) => on && setGated(g)); return () => { on = false; }; }, [t.hooks]);
   const HYPE_Q: QuoteToken = { address: "0x0000000000000000000000000000000000000000", symbol: "HYPE", decimals: 18, native: true, usd: false };
   const qt = usePoll(async () => (asc ? quoteToken(t) : HYPE_Q), 600_000, [t.address, asc]) ?? HYPE_Q;
   const qDec = qt.decimals;
@@ -135,6 +138,7 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
   async function go() {
     if (!w.signedIn || !w.signer) return w.login();
     if (going.current || waitingLast) return;
+    if (gated) { setMsg({ ok: false, text: tr("Trading is turned off for this coin: its contract can keep a seller's payout (whitelist hook).") }); return; }
     going.current = true;
     (document.activeElement as HTMLElement | null)?.blur?.(); // close the phone keyboard
     setMsg(null);
@@ -236,6 +240,7 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
           : <div className="e-seg">{[1, 3, 5, 10].map((s) => <button key={s} type="button" className={slip === s ? "on" : ""} onMouseDown={(e) => e.preventDefault()} onClick={() => setSlip(s)}>{s}%</button>)}</div>}
       </div>
       <button type="button" className={`e-go ${side}`} disabled={disabled && w.signedIn} onMouseDown={(e) => e.preventDefault()} onClick={go}>{label}</button>
+      {gated && <div className="e-msg bad" role="alert">{tr("Warning: this coin's contract can block sellers. Trading is turned off here.")}</div>}
       {msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</div>}
       {youngCoin && <div className="e-hint" style={{ marginTop: 8 }}>{tr("New coin: prices move fast in the first hour, so slippage starts at 10%.")}</div>}
       <TxRecovery me={addr} token={t.address} />

@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { fetchTokens, fetchTrades, money, usePoll, type EToken, type ETrade } from "./ely";
 import { sellable, taxedTokens } from "./elytrade";
+import { hookGated } from "./hookguard";
 
 export type ShieldLevel = "green" | "amber" | "red";
 export type ShieldCheck = { ok: "ok" | "warn" | "bad" | "unknown"; label: string; value: string };
@@ -15,7 +16,7 @@ const lc = (a: string | null | undefined) => (a ? a.toLowerCase() : "");
 const pct = (n: number) => `${n >= 10 ? n.toFixed(0) : n.toFixed(1)}%`;
 
 /** Build the per-coin safety verdict. `sell` is the async honeypot check result (null = couldn't check). */
-export function assessShield(t: EToken, trades: ETrade[] | null | undefined, usd: number, sell: boolean | null | undefined): Shield {
+export function assessShield(t: EToken, trades: ETrade[] | null | undefined, usd: number, sell: boolean | null | undefined, gated = false): Shield {
   const checks: ShieldCheck[] = [];
   const flags: string[] = [];
   let score = 0;
@@ -35,6 +36,8 @@ export function assessShield(t: EToken, trades: ETrade[] | null | undefined, usd
   else if (sell === false) { checks.push({ ok: "bad", label: "Sellable", value: "Blocked (honeypot risk)" }); red = true; flags.push("May not be sellable"); }
   else checks.push({ ok: "unknown", label: "Sellable", value: sell === undefined ? "Checking…" : "Couldn't check" });
   if (taxed) { score += 1; flags.push("Trade tax"); }
+  // hook that can keep a seller's payout (whitelist): never "clean"
+  if (gated) { checks.push({ ok: "bad", label: "Sell restriction", value: "Hook can block sellers" }); red = true; flags.push("Hook can block sellers"); }
 
   // top-10 holder concentration
   if (t.top10_pct != null) {
@@ -73,10 +76,12 @@ export function assessShield(t: EToken, trades: ETrade[] | null | undefined, usd
 export function useShield(token: EToken | null | undefined, trades: ETrade[] | null | undefined, usd: number): Shield | null {
   const sell = usePoll(async () => (token && !token.ours ? sellable(token).catch(() => null) : null), 600_000, [token?.address, token?.ours]);
   const [s, setS] = useState<Shield | null>(null);
+  const [gated, setGated] = useState(false);
+  useEffect(() => { let on = true; setGated(false); if (token) hookGated(token.hooks).then((g) => on && setGated(g)); return () => { on = false; }; }, [token?.hooks]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!token) { setS(null); return; }
-    setS(assessShield(token, trades, usd, sell));
-  }, [token, trades, usd, sell]);
+    setS(assessShield(token, trades, usd, sell, gated));
+  }, [token, trades, usd, sell, gated]);
   return s;
 }
 

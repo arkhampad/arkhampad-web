@@ -2,6 +2,7 @@
 // Elysium data for the site: every HYPE-paired token on Elysium (all launchpads), its trades and
 // holders, written by the indexer (indexer/elysium.mjs → db/025_elysium.sql). Read-only.
 import { useEffect, useRef, useState } from "react";
+import { isDeniedHook } from "./hookguard";
 
 // Reads go through /api/ely-rest (cached at Cloudflare's edge and shared by every visitor), so the
 // database sends each answer once every few seconds instead of once per visitor. Falls back to the
@@ -107,7 +108,7 @@ export async function fetchTokens(): Promise<EToken[]> {
   let list: EToken[], ours: EToken[];
   try { [list, ours] = await Promise.all([pick(`${LIST_COLS},${WINDOW_COLS}`), oursQ(`${LIST_COLS},${WINDOW_COLS}`)]); } catch { [list, ours] = await Promise.all([pick(LIST_COLS), oursQ(LIST_COLS)]); }
   const seen = new Set(list.map((t) => t.address.toLowerCase()));
-  const all = [...list, ...ours.filter((t) => !seen.has(t.address.toLowerCase()))].map(withImg);
+  const all = [...list, ...ours.filter((t) => !seen.has(t.address.toLowerCase()))].filter((t) => !isDeniedHook(t.hooks)).map(withImg);
   tokMem = all;
   try { localStorage.setItem("ap_tokens_v1", JSON.stringify(all)); } catch {}
   return all;
