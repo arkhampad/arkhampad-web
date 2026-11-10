@@ -449,9 +449,12 @@ async function elysiumLoop() {
   // ElyScreener Auto Trade keeper (rules in the ElyAutoVault): off until ES_AUTO_VAULT and ES_AUTO_KEY are set.
   const autoVault = (process.env.ES_AUTO_VAULT || "").trim();
   const autoKey = (process.env.ES_AUTO_KEY || "").trim();
-  if (autoVault && autoKey) {
-    let router = "";
-    try { router = JSON.parse(fs.readFileSync(new URL("../contracts-elysium/deployments/99901.json", import.meta.url), "utf8")).arkhamRouter || ""; } catch {}
+  if (!autoVault || !autoKey) log(`auto trade: off (${autoVault ? "" : "ES_AUTO_VAULT "}${autoKey ? "" : "ES_AUTO_KEY "}not set)`);
+  else {
+    // the deployments file is not inside the indexer folder on Railway, so the router also has a built-in default
+    let router = (process.env.ES_AUTO_ROUTER || "").trim();
+    if (!router) { try { router = JSON.parse(fs.readFileSync(new URL("../contracts-elysium/deployments/99901.json", import.meta.url), "utf8")).arkhamRouter || ""; } catch {} }
+    if (!router) router = "0xB1EEcB952D4853EAFCD219c0060218EAc6F2150a";
     if (router) import("./esauto.mjs").then(({ autoLoop }) => autoLoop({ rpc, vault: autoVault, router, key: autoKey, pool, log })).catch((e) => log(`auto trade: ${e.message}`));
   }
   // Smart Money Radar poster (Telegram). No-ops unless TG_SCOUT_TOKEN / TG_SCOUT_CHANNEL are set.
