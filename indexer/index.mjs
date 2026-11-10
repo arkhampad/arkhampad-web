@@ -450,6 +450,8 @@ async function elysiumLoop() {
   import("./scout.mjs").then(({ startScout }) => startScout(pool, { log })).catch((e) => log(`scout: ${e.message}`));
   // ElyScreener paid promotions (profile / boost / banner): verifies payments on-chain. Needs ES_PAY_TO.
   import("./promo.mjs").then(({ startPromo }) => startPromo(pool, { log })).catch((e) => log(`promo: ${e.message}`));
+  // coin links (website / X / Telegram) read into the database, so ElyScreener shows them instantly
+  import("./links.mjs").then(({ startLinks }) => startLinks(pool, { log })).catch((e) => log(`links: ${e.message}`));
   for (;;) {
     try {
       const store = await makePgStore(pool);
