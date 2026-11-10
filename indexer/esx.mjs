@@ -282,10 +282,12 @@ const FEATURES = [
 ];
 
 // ------------------------------------------------------------------ the posts
+/* keep fake-looking movers out of every post: no stablecoin/major look-alikes, no absurd % from a dust price, real volume */
+const SANE = `and upper(symbol) not in ('USDC','USDT','USDE','DAI','ETH','WETH','BTC','WBTC','HYPE','WHYPE','SOL','BNB') and coalesce(change24, 0) < 5000 and coalesce(change1h, 0) < 5000`;
 async function gainer(r) {
   const skip = await recentTokens(6);
   const rows = await q(`select address, name, symbol, image, uri, launchpad, mcap_hype, vol24_hype, change1h, change24, holders from ely_tokens
-    where last_trade_at > now() - interval '3 hours' and holders >= 25 and coalesce(mcap_hype, 0) * $1 >= 3000 and not (address = any($2))
+    where last_trade_at > now() - interval '3 hours' and holders >= 25 and coalesce(mcap_hype, 0) * $1 >= 3000 and coalesce(vol24_hype, 0) * $1 >= 500 ${SANE} and not (address = any($2))
     order by greatest(coalesce(change1h, 0) * 1.6, coalesce(change24, 0)) desc limit 12`, [hype || 1, skip]);
   for (const t of rows) {
     const h1 = Number(t.change1h) || 0, d1 = Number(t.change24) || 0;
@@ -395,7 +397,7 @@ async function pickCoin(kind) {
   if (kind === "smart") {
     rows = (await q(`select token address, count(distinct trader)::int n from es_smart_buys(24) group by token order by 2 desc limit 8`).catch(() => []));
   } else {
-    const where = kind === "fresh" ? `created_at > now() - interval '6 hours' and holders >= 20` : `last_trade_at > now() - interval '6 hours' and holders >= 25 and coalesce(vol24_hype, 0) * $1 >= 1000${kind === "gainer" ? " and change24 is not null" : ""}`;
+    const where = kind === "fresh" ? `created_at > now() - interval '6 hours' and holders >= 20` : `last_trade_at > now() - interval '6 hours' and holders >= 25 and coalesce(vol24_hype, 0) * $1 >= 1000 ${SANE}${kind === "gainer" ? " and change24 is not null" : ""}`;
     const order = kind === "gainer" ? "change24 desc nulls last" : kind === "volume" ? "vol24_hype desc" : "holders desc";
     rows = await q(`select address from ely_tokens where ${where} order by ${order} limit 8`, kind === "fresh" ? [] : [hype || 1]).catch(() => []);
   }
@@ -539,7 +541,7 @@ async function answerFor(c) {
     return { facts: a.text, fallback: a.text, card: a.card, token: t.address };
   }
   if (["top_gainers", "top_volume", "new_coins"].includes(c.intent)) {
-    const where = c.intent === "new_coins" ? `created_at > now() - interval '6 hours' and holders >= 20` : `last_trade_at > now() - interval '6 hours' and holders >= 25 and coalesce(vol24_hype, 0) * $1 >= 1000`;
+    const where = c.intent === "new_coins" ? `created_at > now() - interval '6 hours' and holders >= 20` : `last_trade_at > now() - interval '6 hours' and holders >= 25 and coalesce(vol24_hype, 0) * $1 >= 1000 ${SANE}`;
     const order = c.intent === "top_gainers" ? "change24 desc nulls last" : c.intent === "top_volume" ? "vol24_hype desc" : "holders desc";
     const rows = await q(`select address, name, symbol, image, launchpad, change24, vol24_hype, holders, mcap_hype, created_at from ely_tokens where ${where} ${c.intent === "top_gainers" ? "and change24 is not null" : ""} order by ${order} limit 12`, c.intent === "new_coins" ? [] : [hype || 1]);
     const sc = await scores(rows.map((r) => r.address));
