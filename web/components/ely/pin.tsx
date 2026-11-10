@@ -1,7 +1,8 @@
 "use client";
-// The official $ARKHAM coin: pinned first (Fresh board, Trending) and marked with a blue tick.
+// Pinning of the $ARKHAM coin (first place in Trending / Fresh board + blue tick) is switched OFF: set PIN_ON to true to bring it back.
+const PIN_ON = false;
 export const PIN_ADDR = "0x17f46686ffc4b6e01d1ec530d07f3705b76bcf1e";
-export const isPinned = (a?: string | null) => (a || "").toLowerCase() === PIN_ADDR;
+export const isPinned = (a?: string | null) => PIN_ON && (a || "").toLowerCase() === PIN_ADDR;
 
 export function BlueTick({ address }: { address?: string | null }) {
   if (!isPinned(address)) return null;
