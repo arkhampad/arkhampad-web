@@ -905,26 +905,42 @@ export function makeElysium(cfg, store) {
    * (rows are written once, repeats are ignored) and transfers only for those coins (balances are added up).
    */
   // Pools created before a token quote was configured (Montra's KNTQ pairs) are found once, by asking for just the pool
-  // logs that have the quote on one side (cheap: a handful of pools, not 7 a second). Runs again only when the list changes.
+  // logs that have the quote on one side (cheap: a handful of pools, not 7 a second). The nodes allow ~1000 blocks per
+  // log read, so it walks back in 1000-block pieces, a few at a time, and remembers how far it got (a restart carries on).
+  // It is only marked done when every piece was read.
+  let bfBusy = false;
   async function quoteBackfill() {
-    if (!tokenQuotes.size) return;
+    if (!tokenQuotes.size || bfBusy) return;
+    bfBusy = true; try { await quoteBackfill1(); } finally { bfBusy = false; }
+  }
+  async function quoteBackfill1() {
     const key = [...tokenQuotes].sort().join(",");
     if ((await store.getState("ely_quote_bf")) === key) return;
-    log(`elysium: quote backfill starts for ${key}`);
-    const tip = Number(await rpc("eth_blockNumber")); const back = Number(process.env.ELY_QUOTE_BACK || 2_000_000);
+    const tip = Number(await rpc("eth_blockNumber"));
+    const back = Number(process.env.ELY_QUOTE_BACK || 1_200_000), span = Number(process.env.ELY_QUOTE_SPAN || 1000);
+    const saved = JSON.parse((await store.getState("ely_quote_bf_cur")) || "null");
+    let next = saved && saved.key === key ? saved.next : Math.max(0, tip - back);
+    log(`elysium: quote backfill starts for ${key} at block ${next} (tip ${tip})`);
     const pad = (a) => "0x" + "0".repeat(24) + a.slice(2);
-    const span = 100_000; let found = 0;
-    for (let from = Math.max(0, tip - back); from <= tip; from += span) {
+    let found = 0, failed = 0;
+    const piece = async (from) => {
       const to = Math.min(tip, from + span - 1), q = { fromBlock: hex(from), toBlock: hex(to) };
       const logs = { v3: [], v4: [], cl: [] };
       for (const a of tokenQuotes) {
         const p = pad(a);
-        const get = (topics) => rpc("eth_getLogs", [{ ...q, topics }]).catch((e) => { log(`elysium: quote backfill ${from}: ${e.message}`); return []; });
-        const r = await Promise.all([get([T.v3PoolCreated, p]), get([T.v3PoolCreated, null, p]), get([T.v4Initialize, null, p]), get([T.v4Initialize, null, null, p]), get([T.clInitialize, null, p]).catch(() => []), get([T.clInitialize, null, null, p]).catch(() => [])]);
-        logs.v3.push(...r[0], ...r[1]); logs.v4.push(...r[2], ...r[3]); logs.cl.push(...r[4], ...r[5]);
+        const get = async (topics) => { try { return await rpc("eth_getLogs", [{ ...q, topics }]); } catch (e) { failed++; if (failed <= 3) log(`elysium: quote backfill ${from}: ${e.message}`); return []; } };
+        // v3 PoolCreated(token0, token1, fee), v4/CL Initialize(id, currency0, currency1): the quote on either side
+        const r = await Promise.all([get([T.v3PoolCreated, p]), get([[T.v3PoolCreated, T.v4Initialize, T.clInitialize], null, p]), get([[T.v4Initialize, T.clInitialize], null, null, p])]);
+        for (const l of [...r[0], ...r[1], ...r[2]]) { const t0 = l.topics[0]; (t0 === T.v3PoolCreated ? logs.v3 : t0 === T.v4Initialize ? logs.v4 : logs.cl).push(l); }
       }
-      found += logs.v3.length + logs.v4.length + logs.cl.length;
-      if (logs.v3.length + logs.v4.length + logs.cl.length) { await setWin(from, to); try { await scanPools(from, to, { logs }); } finally { win = null; } }
+      const n = logs.v3.length + logs.v4.length + logs.cl.length; found += n;
+      if (n) { await setWin(from, to); try { await scanPools(from, to, { logs }); } finally { win = null; } }
+    };
+    for (let from = next; from <= tip;) {
+      const batch = []; for (let k = 0; k < 4 && from <= tip; k++, from += span) batch.push(from);
+      const f0 = failed; await Promise.all(batch.map(piece));
+      if (failed > f0) { log(`elysium: quote backfill paused (${failed} reads failed), will retry`); return; }
+      await store.setState("ely_quote_bf_cur", JSON.stringify({ key, next: from }));
     }
     await store.setState("ely_quote_bf", key);
     log(`elysium: quote backfill done, ${found} pools paired with ${[...tokenQuotes].join(",")}`);
@@ -1072,7 +1088,7 @@ export function makeElysium(cfg, store) {
     log(`elysium: indexing every HYPE pair (launcher ${launcher || "not set"})`);
     startWatch();
     if (launcher) fastLoop();
-    quoteBackfill().catch((e) => log(`elysium: quote backfill: ${e.message}`));
+    if (tokenQuotes.size) { const bf = () => quoteBackfill().catch((e) => log(`elysium: quote backfill: ${e.message}`)); bf(); setInterval(bf, 300_000); }
     for (;;) {
       try {
         const n = await syncOnce();
