@@ -446,6 +446,14 @@ async function elysiumLoop() {
     // version 2: moves coins between fee levels (and collects) every few minutes
     if (launcher2) import("./elykeeper.mjs").then(({ levelLoop }) => levelLoop({ rpc, launcher: launcher2, key, pool, log })).catch((e) => log(`keeper v2: ${e.message}`));
   }
+  // ElyScreener Auto Trade keeper (rules in the ElyAutoVault): off until ES_AUTO_VAULT and ES_AUTO_KEY are set.
+  const autoVault = (process.env.ES_AUTO_VAULT || "").trim();
+  const autoKey = (process.env.ES_AUTO_KEY || "").trim();
+  if (autoVault && autoKey) {
+    let router = "";
+    try { router = JSON.parse(fs.readFileSync(new URL("../contracts-elysium/deployments/99901.json", import.meta.url), "utf8")).arkhamRouter || ""; } catch {}
+    if (router) import("./esauto.mjs").then(({ autoLoop }) => autoLoop({ rpc, vault: autoVault, router, key: autoKey, pool, log })).catch((e) => log(`auto trade: ${e.message}`));
+  }
   // Smart Money Radar poster (Telegram). No-ops unless TG_SCOUT_TOKEN / TG_SCOUT_CHANNEL are set.
   import("./scout.mjs").then(({ startScout }) => startScout(pool, { log })).catch((e) => log(`scout: ${e.message}`));
   // ElyScreener paid promotions (profile / boost / banner): verifies payments on-chain. Needs ES_PAY_TO.
