@@ -228,6 +228,20 @@ export function makeElysium(cfg, store) {
   // Such a pool's prices and trade sizes are turned into HYPE with the current HYPE price, so every list,
   // chart and stat stays in HYPE.
   const usdQuotes = new Set(String(process.env.ELY_USD_QUOTES || "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => /^0x[0-9a-f]{40}$/.test(x)));
+  // Coins some launchpads pair with another token instead of HYPE (Montra: KNTQ). Env ELY_TOKEN_QUOTES (comma list).
+  // A pool with such a token on one side is a coin pool; its prices and trade sizes are turned into HYPE with that
+  // token's own HYPE price (taken from its HYPE pool, which is indexed like any other coin).
+  const tokenQuotes = new Set(String(process.env.ELY_TOKEN_QUOTES || "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => /^0x[0-9a-f]{40}$/.test(x)));
+  // which side of a pool is the quote: a WHYPE (or a USD quote, for the pool types that allow it) wins, then one of the token quotes
+  async function quoteSide(c0, c1, allowUsd) {
+    const a = (allowUsd && usdQuotes.has(c0)) || (await hypeWrap(c0)), b = (allowUsd && usdQuotes.has(c1)) || (await hypeWrap(c1));
+    if (a && b) return null;
+    if (a) return 0;
+    if (b) return 1;
+    const x = tokenQuotes.has(c0), y = tokenQuotes.has(c1);
+    if (x === y) return null; // neither, or both
+    return x ? 0 : 1;
+  }
   const quoteDec = new Map();
   let usdPerHype = 0;
   async function decOf(a) {
@@ -235,6 +249,7 @@ export function makeElysium(cfg, store) {
     return quoteDec.get(a);
   }
   async function hypePerQuote(q) {
+    if (tokenQuotes.has(q)) { const p = Number(store.tokens().get(q)?.price_hype); return p > 0 ? p : 0; }
     if (!usdQuotes.has(q)) return 1;
     if (!(usdPerHype > 0)) await hypeUsd();
     return usdPerHype > 0 ? 1 / usdPerHype : 0;
@@ -579,7 +594,7 @@ export function makeElysium(cfg, store) {
   }
 
   async function addPool(p) {
-    if (p.hype !== ZERO && !quoteDec.has(p.hype) && !usdQuotes.has(p.hype)) quoteDec.set(p.hype, 18); // WHYPE
+    if (p.hype !== ZERO && !quoteDec.has(p.hype) && !usdQuotes.has(p.hype) && !tokenQuotes.has(p.hype)) quoteDec.set(p.hype, 18); // WHYPE
     // p: { token, hype, venue: 'v3'|'v4', pool, manager, fee, tickSpacing, hooks, tokenIs0, block, tx, sqrt }
     const tokens = store.tokens();
     const known = tokens.get(p.token);
@@ -622,7 +637,9 @@ export function makeElysium(cfg, store) {
   async function scanPools(from, to, only) {
     const q = { fromBlock: hex(from), toBlock: hex(to) };
     const pt0 = Date.now();
-    const [v3, v4, cl] = only
+    const [v3, v4, cl] = only?.logs
+      ? [only.logs.v3, only.logs.v4, only.logs.cl]
+      : only
       ? [only.factory ? await rpc("eth_getLogs", [{ ...q, address: only.factory, topics: [T.v3PoolCreated] }]) : [], [], []]
       : await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3PoolCreated] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Initialize] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clInitialize] }]).catch(() => [])]);
     const pt1 = Date.now();
@@ -631,9 +648,9 @@ export function makeElysium(cfg, store) {
     for (const l of v3) jobs.push(async () => {
       const t0 = addrTopic(l.topics[1]);
       const t1 = addrTopic(l.topics[2]);
-      const h0 = await hypeWrap(t0);
-      const h1 = await hypeWrap(t1);
-      if (h0 === h1) return; // not a token/HYPE pool
+      const qs = await quoteSide(t0, t1, false);
+      if (qs === null) return; // not a token/HYPE pool
+      const h0 = qs === 0, h1 = qs === 1;
       const token = h0 ? t1 : t0;
       const pool = addrWord(l.data, 1);
       const slot0 = await call(pool, SEL.slot0);
@@ -643,9 +660,9 @@ export function makeElysium(cfg, store) {
     for (const l of v4) jobs.push(async () => {
       const c0 = addrTopic(l.topics[2]);
       const c1 = addrTopic(l.topics[3]);
-      const h0 = await hypeWrap(c0);
-      const h1 = await hypeWrap(c1);
-      if (h0 === h1) return;
+      const qs = await quoteSide(c0, c1, false);
+      if (qs === null) return;
+      const h0 = qs === 0, h1 = qs === 1;
       const token = h0 ? c1 : c0;
       await addPool({ token, hype: h0 ? c0 : c1, venue: "v4", pool: l.topics[1].toLowerCase(), manager: lc(l.address), fee: Number(uintAt(l.data, 0)), tickSpacing: Number(intAt(l.data, 1)), hooks: addrWord(l.data, 2), sqrt: uintAt(l.data, 3), tokenIs0: !h0, block: Number(l.blockNumber), tx: l.transactionHash });
     });
@@ -653,9 +670,9 @@ export function makeElysium(cfg, store) {
     for (const l of cl) jobs.push(async () => {
       const c0 = addrTopic(l.topics[2]);
       const c1 = addrTopic(l.topics[3]);
-      const h0 = usdQuotes.has(c0) || (await hypeWrap(c0));
-      const h1 = usdQuotes.has(c1) || (await hypeWrap(c1));
-      if (h0 === h1) return;
+      const qs = await quoteSide(c0, c1, true);
+      if (qs === null) return;
+      const h0 = qs === 0, h1 = qs === 1;
       const token = h0 ? c1 : c0;
       const params = uintAt(l.data, 2);
       const spacing = Number(BigInt.asIntN(24, (params >> 16n) & 0xffffffn));
@@ -887,6 +904,31 @@ export function makeElysium(cfg, store) {
    * the live part was scanned, so when a gap is done its live part is read again for them: trades again
    * (rows are written once, repeats are ignored) and transfers only for those coins (balances are added up).
    */
+  // Pools created before a token quote was configured (Montra's KNTQ pairs) are found once, by asking for just the pool
+  // logs that have the quote on one side (cheap: a handful of pools, not 7 a second). Runs again only when the list changes.
+  async function quoteBackfill() {
+    if (!tokenQuotes.size) return;
+    const key = [...tokenQuotes].sort().join(",");
+    if ((await store.getState("ely_quote_bf")) === key) return;
+    log(`elysium: quote backfill starts for ${key}`);
+    const tip = Number(await rpc("eth_blockNumber")); const back = Number(process.env.ELY_QUOTE_BACK || 2_000_000);
+    const pad = (a) => "0x" + "0".repeat(24) + a.slice(2);
+    const span = 100_000; let found = 0;
+    for (let from = Math.max(0, tip - back); from <= tip; from += span) {
+      const to = Math.min(tip, from + span - 1), q = { fromBlock: hex(from), toBlock: hex(to) };
+      const logs = { v3: [], v4: [], cl: [] };
+      for (const a of tokenQuotes) {
+        const p = pad(a);
+        const get = (topics) => rpc("eth_getLogs", [{ ...q, topics }]).catch((e) => { log(`elysium: quote backfill ${from}: ${e.message}`); return []; });
+        const r = await Promise.all([get([T.v3PoolCreated, p]), get([T.v3PoolCreated, null, p]), get([T.v4Initialize, null, p]), get([T.v4Initialize, null, null, p]), get([T.clInitialize, null, p]).catch(() => []), get([T.clInitialize, null, null, p]).catch(() => [])]);
+        logs.v3.push(...r[0], ...r[1]); logs.v4.push(...r[2], ...r[3]); logs.cl.push(...r[4], ...r[5]);
+      }
+      found += logs.v3.length + logs.v4.length + logs.cl.length;
+      if (logs.v3.length + logs.v4.length + logs.cl.length) { await setWin(from, to); try { await scanPools(from, to, { logs }); } finally { win = null; } }
+    }
+    await store.setState("ely_quote_bf", key);
+    log(`elysium: quote backfill done, ${found} pools paired with ${[...tokenQuotes].join(",")}`);
+  }
   async function gapPass(budgetMs) {
     const t0 = Date.now();
     let gaps = await readGaps();
@@ -1030,6 +1072,7 @@ export function makeElysium(cfg, store) {
     log(`elysium: indexing every HYPE pair (launcher ${launcher || "not set"})`);
     startWatch();
     if (launcher) fastLoop();
+    quoteBackfill().catch((e) => log(`elysium: quote backfill: ${e.message}`));
     for (;;) {
       try {
         const n = await syncOnce();
