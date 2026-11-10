@@ -139,7 +139,7 @@ function Account() {
 function Ticker() {
   const tokens = useTokens(60_000);
   const usd = usePoll(fetchHypeUsd, 30_000) ?? 0;
-  const top = (tokens ?? []).slice(0, 16);
+  const top = (tokens ?? []).filter((t) => (t.holders || 0) >= 10 || (t.mcap_hype || 0) * (usd || 1) < 100000).slice(0, 16); // no made-up market caps in the strip
   if (!top.length) return <div className="e-ticker"><div className="e-ticker-run" style={{ height: 34 }} /></div>;
   const items = [...top, ...top];
   return (
