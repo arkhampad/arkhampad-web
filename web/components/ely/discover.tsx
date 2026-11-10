@@ -65,6 +65,8 @@ function sortBase(list: EToken[], sort: Sort, w: Win) {
 /** Broken numbers (a fake pool or a bad price feed) never get a place on the board: absurd market caps stay out of the lists. Search still finds them. */
 const sane = (t: EToken) => {
   const mc = t.mcap_hype ?? 0, v = t.vol24_hype ?? 0;
+  if (isPinned(t.address)) return true;
+  if ((t.holders || 0) < 10 && (t.top10_pct ?? 100) >= 90 && mc > 1000) return false; // a few wallets holding everything: the market cap is just a made-up price
   return Number.isFinite(mc) && Number.isFinite(v) && mc < 5e7 && v < Math.max(mc * 30, 5000);
 };
 const upDown = (v: number | null | undefined) => ((v ?? 0) >= 0 ? "up" : "down");
