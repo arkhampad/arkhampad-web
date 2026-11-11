@@ -125,7 +125,7 @@ function slotsFor(dayTR) {
 const trDay = (ms) => new Date(ms + TR).toISOString().slice(0, 10);
 /** The day's slots, thinned evenly when a daily cap is set (keeps the morning/evening shape). */
 function plan(day) {
-  const all = slotsFor(day), cap = Number(env("ES_X_DAILY_MAX")) || 12; // Nov 9: calmer feed, about 12 posts a day (ES_X_DAILY_MAX to change)
+  const all = slotsFor(day), cap = Number(env("ES_X_DAILY_MAX")) || 14; // Nov 11: 14 single posts a day (10 market posts + 4 Auto Trade / trading posts) plus 10 threads = 24
   if (!cap || cap >= all.length) return all;
   return Array.from({ length: cap }, (_, i) => all[Math.floor(((i + 0.5) * all.length) / cap)]);
 }
@@ -136,8 +136,8 @@ function threadTimes(day) {
   const at = (h, min) => Date.UTC(y, m - 1, d, h, min) - TR;
   const r = rng(y * 10000 + m * 100 + d + 7);
   if (env("ES_X_THREADS") === "0") return []; // threads off
-  // Nov 9: three threads a day, all between 16:00 and 22:00 TR (US evening); minutes differ each day
-  return [[16, 20], [18, 50], [21, 10]].map(([h, mi]) => at(h, mi + Math.floor(r() * 25)));
+  // Nov 11: ten threads a day, spread from late morning to late evening TR, between the single posts; minutes differ each day
+  return [[9, 40], [11, 10], [12, 50], [14, 20], [15, 50], [17, 20], [18, 50], [20, 20], [21, 40], [23, 0]].map(([h, mi]) => at(h, mi + Math.floor(r() * 20)));
 }
 /** Which theme a thread time gets: each day every theme once, the order shifts from day to day. */
 function themeFor(at) {
@@ -231,8 +231,23 @@ async function xHandle(t) {
 }
 
 // ------------------------------------------------------------------ words (lowercase, short, human)
-const TAGS = ["#Elysium", "#HYPE", "#Hyperliquid", "#Kinetiq", "#memecoin", "#altcoins", "#crypto", "#onchain", "#DeFi", "#SmartMoney"];
-function tags(r, n = 2, must) { const a = must ? [must] : []; while (a.length < n) { const t = pick(r, TAGS); if (!a.includes(t)) a.push(t); } return a.join(" "); }
+const TAGS = ["#Elysium", "#HYPE", "#Hyperliquid", "#Kinetiq", "#memecoin", "#altcoins", "#crypto", "#onchain", "#DeFi", "#SmartMoney", "#Trading", "#DEX", "#Whales", "#CryptoTrading", "#Layer2", "#CryptoNews", "#GemHunter", "#Altseason", "#Web3", "#MemeSeason", "#CopyTrading", "#AutoTrade"];
+/** n hashtags, none twice; `avoid` is a Set of tags a thread already used (each post of a thread gets its own). */
+function tags(r, n = 2, must, avoid) { const a = must && !(avoid && avoid.has(must)) ? [must] : []; let guard = 0; while (a.length < n && guard++ < 200) { const t = pick(r, TAGS); if (!a.includes(t) && !(avoid && avoid.has(t))) a.push(t); } if (avoid) a.forEach((t) => avoid.add(t)); return a.join(" "); }
+// Nov 11: every third post (and every third thread opener) also tags the four ecosystem accounts
+const ECO = "@Enter_Elysium @HyperliquidX @Kinetiq_xyz @0xOmnia";
+let tagTurn = 0;
+const ecoNow = () => tagTurn++ % 3 === 0;
+/** Adds the account line and 4 hashtags to a post: as many as fit in 280 characters, the accounts dropped first, then hashtags one by one. */
+function attach(text, eco, tagSet) {
+  const hs = tagSet.split(" ").filter(Boolean);
+  for (const withEco of eco ? [true, false] : [false]) for (let k = hs.length; k >= 0; k--) {
+    const extra = [withEco ? ECO : "", hs.slice(0, k).join(" ")].filter(Boolean).join("\n\n");
+    const t = extra ? `${text}\n\n${extra}` : text;
+    if (xLength(t) <= 280) return t;
+  }
+  return text;
+}
 const nl = (...l) => l.filter((x) => x != null && x !== false).join("\n");
 const W = {
   gainer: [
@@ -375,6 +390,35 @@ async function feature(r) {
   return { kind: "feature", token: null, tpl: i, text, card: featureCard(f.card) };
 }
 
+// Nov 11: four posts a day about Auto Trade and trading right on ElyScreener (only what the site really does)
+const PROMOS = [
+  { card: { lines: ["Set a limit buy.", "Go touch grass.", "Auto Trade on ElyScreener."], chip: "Auto Trade", tag: "AUTO TRADE" },
+    text: [() => nl(`you can set a limit buy on any Elysium coin on ElyScreener and just walk away`, "", `price hits your level, it buys. your HYPE sits in a vault only you can withdraw from`, "", `where would you put your limit on your favorite coin rn?`)] },
+  { card: { lines: ["Take profit.", "Stop loss.", "Set once, done."], chip: "Auto Trade", tag: "AUTO TRADE" },
+    text: [() => nl(`take profit and stop loss on an Elysium coin, set once, runs by itself`, "", `honest question: which one do you forget more, the TP or the SL? 👀`)] },
+  { card: { lines: ["Copy a whale.", "Pick the wallet.", "Set a budget."], chip: "Auto Trade", tag: "COPY WHALE" },
+    text: [() => nl(`ElyScreener Auto Trade can copy a whale on Elysium`, "", `pick the wallet, set a budget and a max per trade, it mirrors their buys`, "", `which whale would you follow first?`)] },
+  { card: { lines: ["Buy. Sell.", "Right on the coin page.", "Connect, type, done."], chip: "Trade on ElyScreener", tag: "TRADE" },
+    text: [() => nl(`you don't need to leave ElyScreener to trade an Elysium coin`, "", `open the coin, connect your wallet, type an amount, buy. that's the whole thing`)] },
+  { card: { lines: ["Limit buy", "or market buy?", "Your call."], chip: "Auto Trade", tag: "AUTO TRADE" },
+    text: [() => nl(`ok real question, limit buy 10% lower or just market buy?`, "", `ElyScreener Auto Trade does the limit one for you on Elysium coins. you can sleep`)] },
+  { card: { lines: ["Nobody watches", "the chart at 3am.", "Auto Trade does."], chip: "Auto Trade", tag: "AUTO TRADE" },
+    text: [() => nl(`nobody watches the chart at 3am. a rule does`, "", `limit buy, take profit, stop loss, copy a whale. all on Elysium, all on ElyScreener`)] },
+  { card: { lines: ["Your HYPE.", "Your vault.", "Only you withdraw."], chip: "Auto Trade", tag: "NON-CUSTODIAL" },
+    text: [() => nl(`how Auto Trade holds your money on ElyScreener: a vault contract, and only your wallet can withdraw`, "", `you can pull it out any time. would you trust a bot with that or nah?`)] },
+  { card: { lines: ["Any coin.", "Any launchpad.", "Trade it here."], chip: "Trade on ElyScreener", tag: "TRADE" },
+    text: [() => nl(`every Elysium coin from every launchpad, and you can trade all of them from one screen`, "", `which pad do you ape on most?`)] },
+];
+async function promo(r) {
+  const [c] = await q(`select count(*)::int n, extract(epoch from now() - max(at))::float8 age from es_x_posts where kind = 'promo' and at > now() - interval '24 hours'`);
+  if (c && c.n >= 4) return null;
+  if (c && c.age != null && c.age < 3 * 3600) return null;
+  const last = (await q(`select tpl from es_x_posts where kind = 'promo' order by at desc limit 4`)).map((x) => x.tpl);
+  const idx = [...PROMOS.keys()].filter((i) => !last.includes(i));
+  const i = idx.length ? pick(r, idx) : Math.floor(r() * PROMOS.length);
+  const f = PROMOS[i];
+  return { kind: "promo", token: null, tpl: i, text: pick(r, f.text)(), card: featureCard(f.card) };
+}
 // which kind goes in a slot: launchpad board once a day in the evening, a feature every few posts,
 // otherwise live coins (gainers most, then smart money and fresh launches)
 // threads: each theme is a different mix of boards and single-coin checks (a spec is an answerFor intent,
@@ -425,13 +469,21 @@ async function thread(themeIdx = 0) {
     }
     if (a?.card && !/^(No |Nothing)/.test(a.facts)) parts.push({ intent: typeof spec === "string" ? spec : "coin", ...a });
   }
-  if (parts.length < 2) return null;
+  // at least four posts: fill up with other boards the thread has not used yet
+  for (const extra of ["top_gainers", "smart_money", "new_coins", "top_volume", "launchpads"]) {
+    if (parts.length >= 4) break;
+    if (parts.some((x) => x.intent === extra)) continue;
+    const a = await answerFor({ intent: extra, lang: "en", text: "", quiet: true }).catch(() => null);
+    if (a?.card && !/^(No |Nothing)/.test(a.facts)) parts.push({ intent: extra, ...a });
+  }
+  if (parts.length < 4) return null;
   return { kind: "thread", token: null, parts, theme };
 }
 async function compose(slotIdx, r) {
   const hourTR = new Date(Date.now() + TR).getUTCHours();
   const order = [];
   // (the launchpad board now goes out inside the daily threads)
+  order.push(promo); // four Auto Trade / trading posts a day, at least 3 h apart
   if (slotIdx % 4 === 3) order.push(feature);
   order.push(launched); // a coin made on ElyScreener goes first, whenever there is a new one
   order.push(...pick(r, [[gainer, smart], [smart, gainer]]));
@@ -455,7 +507,7 @@ async function postOne(slotIdx, asThread = false, themeIdx = 0) {
   // the key number must be in the post too (a gainer without its % is just noise)
   const must = [p.d?.sym && `$${p.d.sym}`, p.d?.x, p.d?.pct, p.kind === "smart" && p.d?.n != null && String(p.d.n), p.kind === "fresh" && p.d?.holders].filter(Boolean);
   let text = await writePost({ facts: `${facts}\n${base}`, fallback: base, must, recent });
-  text = `${text}\n\n${tags(r, 2, r() < 0.7 ? "#Elysium" : null)}`.replace(/\n{3,}/g, "\n\n").trim();
+  text = attach(text.replace(/\n{3,}/g, "\n\n").trim(), ecoNow(), tags(r, 4, r() < 0.7 ? "#Elysium" : null));
   const link = p.token ? `chart → ${SITE}/coin/${p.token}` : `live → ${SITE}`;
   if (DRY || !KEYS.apiKey) {
     mkdirSync("/tmp/esx", { recursive: true });
@@ -479,16 +531,21 @@ async function postThread(p, r, recent) {
     const fallback = `${i === 0 ? `${p.theme.lead}\n\n` : ""}${part.fallback.length > 230 ? part.fallback.split("\n").slice(0, 4).join("\n") : part.fallback}`.slice(0, 260);
     // the opening post gets a hook brief; the AI is told not to open like recent posts and never to talk dates
     const facts = i === 0 ? `This is the FIRST post of a thread. Make people want to open it. Angle: ${p.theme.hook}. Never mention mainnet, launch dates or "tomorrow".\n${part.facts}` : part.facts;
-    const t = await writePost({ facts, fallback, recent: i === 0 ? recent : [], max: 270 });
+    const t = await writePost({ facts, fallback: fallback.slice(0, 175), recent: i === 0 ? recent : [], max: 175 });
     texts.push(i === 0 && !/🧵|thread/i.test(t) ? `${t} 🧵` : t);
   }
+  const usedTags = new Set();
+  const ecoFirst = ecoNow();
   // the first post is the one people see: it gets the launchpads' @handles (ES_PAD_X) and the hashtags
   const pads = p.parts.find((x) => x.intent === "launchpads");
   const handles = pads ? Object.entries(PAD_X).filter(([k]) => pads.facts.toLowerCase().includes(k)).map(([, v]) => v).slice(0, 4).join(" ") : "";
-  const head = `${handles ? `\n\n${handles}` : ""}\n\n${tags(r, 2, "#Elysium")}`;
-  texts[0] += xLength(texts[0] + head) <= 280 ? head : `\n\n${tags(r, 1, "#Elysium")}`;
   const end = `\n\n${pick(r, CLOSERS)}`;
-  if (xLength(texts[texts.length - 1] + end) <= 280) texts[texts.length - 1] += end;
+  const last = texts.length - 1;
+  if (xLength(texts[last] + end + "\n\n#Elysium #Trading #AutoTrade #HYPE") <= 280) texts[last] += end;
+  for (let i = 0; i < texts.length; i++) {
+    const lead = i === 0 && handles && xLength(texts[0] + `\n\n${handles}\n\n#a #b #c #d`) <= 280 ? `${texts[0]}\n\n${handles}` : texts[i];
+    texts[i] = attach(lead, i === 0 && ecoFirst, tags(r, 4, i === 0 ? "#Elysium" : null, usedTags));
+  }
   for (let i = 0; i < texts.length; i++) while (xLength(texts[i]) > 280 && texts[i].includes("\n")) texts[i] = texts[i].split("\n").slice(0, -1).join("\n");
   if (DRY || !KEYS.apiKey) {
     mkdirSync("/tmp/esx", { recursive: true });
