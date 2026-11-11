@@ -48,8 +48,10 @@ export async function autoLoop({ rpc, vault, router, key, pool, log }) {
   log(`auto trade: keeper ${account.address} on vault ${V}${dry ? " (DRY RUN)" : ""}`);
 
   const quote = async (p, isBuy, amount) => {
-    try { return (await pub.simulateContract({ address: R, abi: ROUTER_ABI, functionName: "quote", args: [p, isBuy, amount], account: account.address })).result; } catch { return null; }
+    try { return (await pub.simulateContract({ address: R, abi: ROUTER_ABI, functionName: "quote", args: [p, isBuy, amount], account: account.address })).result; }
+    catch (e) { const k = `q${p.target}${p.token}`; if (Date.now() - (lastLog.get(k) || 0) > 120_000) { lastLog.set(k, Date.now()); log(`auto trade: quote failed for ${p.token} (${String(e.shortMessage || e.message).split("\n")[0].slice(0, 140)})`); } return null; }
   };
+  const lastLog = new Map(); // rule id / key -> last time a status line was written (keeps the log short)
   // a coin whose hook can keep a seller's payout is never bought for anyone
   const hookBad = async (h) => {
     const a = String(h || ZERO).toLowerCase();
@@ -103,6 +105,7 @@ export async function autoLoop({ rpc, vault, router, key, pool, log }) {
   async function price(id, r) {
     const q = await quote(r.pool, r.kind === 0, r.amount);
     if (q == null) return;
+    if (Date.now() - (lastLog.get(id) || 0) > 120_000) { lastLog.set(id, Date.now()); log(`auto trade: rule ${id} (${["limit buy", "take-profit", "stop-loss"][r.kind]}) quote ${q} vs trigger ${r.trigger}${r.kind === 2 ? ` (floor ${r.floor})` : ""}`); }
     const go = r.kind === 0 ? q >= r.trigger : r.kind === 1 ? q >= r.trigger : q <= r.trigger && q >= r.floor;
     if (!go) return;
     if (await send(`rule ${id} (${["limit buy", "take-profit", "stop-loss"][r.kind]})`, { functionName: "execute", args: [id] })) rules.delete(id);
