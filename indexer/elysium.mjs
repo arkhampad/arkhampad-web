@@ -135,7 +135,7 @@ export function makeRpc(urls, log = console.log) {
       try {
         const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }), signal: AbortSignal.timeout(method === "eth_getLogs" ? 12_000 : 8_000) });
         const j = await r.json();
-        if (j.error) throw new Error(`${method}: ${j.error.message}`);
+        if (j.error) throw new Error(`${method}: ${j.error.message}` + (method === "eth_getLogs" && params[0] ? ` [${params[0].fromBlock}>${params[0].toBlock} ${String((params[0].topics || [])[0] || "").slice(0, 10)} ${String(params[0].address || "").slice(0, 10)}]` : ""));
         if (at !== (at + i) % list.length) since = Date.now();
         at = (at + i) % list.length;
         return j.result;
@@ -1042,7 +1042,11 @@ export function makeElysium(cfg, store) {
         } catch (e) {
           newSink = null;
           if (gapSpan > 20) { gapSpan = Math.max(20, Math.floor(gapSpan / 2)); log(`elysium: gap reading ${gapSpan} blocks (${e.message})`); continue; }
-          throw e;
+          // a piece that still fails at the smallest size: try it a few times, then step over it so the backfill never stands still
+          gapFails[from] = (gapFails[from] || 0) + 1;
+          if (gapFails[from] < 4) throw e;
+          log(`elysium: gap piece ${from}-${to} skipped after 4 tries (${e.message})`);
+          g.cur = to + 1; await saveGaps(gaps); continue;
         }
         for (const x of newSink) if (x.block >= from && x.block <= to) newToks.add(x.token);
         newSink = null;
@@ -1069,6 +1073,7 @@ export function makeElysium(cfg, store) {
     if (gaps.length && Date.now() - gapLogAt > 5 * 60_000) { gapLogAt = Date.now(); log(`elysium: filling skipped blocks: ${gaps.reduce((n, g) => n + Math.max(0, g.to - g.cur + 1), 0)} left in ${gaps.length} stretch(es)`); }
   }
   let gapLogAt = 0;
+  const gapFails = {};
 
   let statsAt = 0;
   let pageStatsAt = 0;
