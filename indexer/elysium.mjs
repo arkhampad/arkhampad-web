@@ -557,6 +557,19 @@ export function makeElysium(cfg, store) {
       // the launchpad's own picture wins over an older guess (e.g. a dead IPFS link from metadata)
       if (t && !t.ours && t.image !== image) { t.image = image; found++; await store.upsertToken({ ...t, image }).catch(() => {}); }
     }
+    // Robinhood: many coins keep their picture in tokenURI (ipfs:// or https:// JSON). Read them in bulk, 6 at a time,
+    // biggest volume first (the one-by-one list below only does 8 a minute).
+    if (cfg.noTokenUri) {
+      const need = [...store.tokens().values()]
+        .filter((t) => !t.ours && !t.image && now - (imgTried.get("uri" + t.address) || 0) > 6 * 3600_000)
+        .sort((x, y) => (y.vol24_hype || 0) - (x.vol24_hype || 0))
+        .slice(0, 60);
+      await pool(need.map((t) => async () => {
+        imgTried.set("uri" + t.address, now);
+        const own = await call(t.address, SEL.tokenURI).then((r) => readMeta(decodeString(r))).catch(() => ({}));
+        if (own.image) { t.image = own.image; found++; await store.upsertToken({ ...t, image: own.image }).catch(() => {}); }
+      }), 6);
+    }
     // chains without a launchpad picture source (Robinhood): DexScreener has the picture for coins that have a profile there
     if (cfg.noTokenUri) {
       const need = [...store.tokens().values()]
