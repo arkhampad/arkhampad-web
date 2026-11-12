@@ -4,6 +4,7 @@
 // treasury every 30 minutes, so the keeper never needs a manual top-up.
 import { useCallback, useEffect, useState } from "react";
 import { encodeFunctionData, parseAbi, parseAbiItem, parseEventLogs, type Address, type Hex } from "viem";
+import { createPublicClient, http } from "viem";
 import { useWallet } from "@/components/wallet";
 import { funnelStats, type FunnelRow } from "@/lib/funnel";
 import { ELY_CHAIN, ELY_EXPLORER, ROUTER, ely, waitReceipt } from "@/lib/elytrade";
@@ -342,6 +343,76 @@ function V2Settings() {
   );
 }
 
+/** ElyScreener income on Robinhood Chain: 0.5% on every ETH swap through our two routers, paid straight to the treasury in ETH. */
+const RH_RPC = "https://rpc.mainnet.chain.robinhood.com";
+const RH_TREASURY = "0x3523f40db9428e593e10d002d4935e33f3c4e0ab" as Address;
+const RH_ROUTERS = ["0xf567815133c4b478c5c3b1ef04eac6114656f822", "0x43c9234bb8be8e4f5aa03d14ee3d12213ef92562"] as Address[];
+const RH_TRADE_A = parseAbiItem("event Trade(address indexed user, address indexed token, bool isBuy, uint256 hypeAmount, uint256 tokenAmount, uint256 fee)");
+const RH_TRADE_B = parseAbiItem("event Trade(address indexed user, address indexed token, address indexed curve, bool isBuy, uint256 ethAmount, uint256 tokenAmount, uint256 fee)");
+let rhClient: ReturnType<typeof createPublicClient> | null = null;
+const rh = () => (rhClient ??= createPublicClient({ transport: http(RH_RPC) }));
+type RhRow = { tx: string; who: string; token: string; buy: boolean; eth: number; fee: number; block: number; at?: number };
+
+function RobinhoodRevenue() {
+  const ethUsd = usePoll(async () => {
+    try { const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd").then((x) => x.json()); return Number(r?.ethereum?.usd ?? 0); } catch { return 0; }
+  }, 300_000) ?? 0;
+  const data = usePoll(async () => {
+    const c = rh();
+    const [bal, tip] = await Promise.all([c.getBalance({ address: RH_TREASURY }), c.getBlockNumber()]);
+    const from0 = tip > 6_000_000n ? tip - 6_000_000n : 0n; // about 7 days at 100 ms blocks
+    const STEP = 400_000n;
+    const rows: RhRow[] = [];
+    let failed = 0;
+    const pull = async (router: Address, curve: boolean, a: bigint, b: bigint): Promise<void> => {
+      try {
+        const logs = await c.getLogs({ address: router, event: (curve ? RH_TRADE_B : RH_TRADE_A) as never, fromBlock: a, toBlock: b });
+        for (const l of logs as any[]) {
+          const g = l.args ?? {};
+          rows.push({ tx: l.transactionHash, who: g.user, token: g.token, buy: !!g.isBuy, eth: Number(curve ? g.ethAmount : g.hypeAmount) / 1e18, fee: Number(g.fee ?? 0n) / 1e18, block: Number(l.blockNumber) });
+        }
+      } catch { if (b - a < 20_000n) { failed++; return; } const m = a + (b - a) / 2n; await pull(router, curve, a, m); await pull(router, curve, m + 1n, b); }
+    };
+    for (let a = from0; a <= tip; a += STEP) {
+      const b = a + STEP - 1n > tip ? tip : a + STEP - 1n;
+      await Promise.all(RH_ROUTERS.map((r, i) => pull(r, i === 1, a, b)));
+    }
+    rows.sort((x, y) => y.block - x.block);
+    const recent = rows.slice(0, 8);
+    await Promise.all(recent.map(async (r) => { try { r.at = Number((await c.getBlock({ blockNumber: BigInt(r.block) })).timestamp); } catch {} }));
+    return { bal: Number(bal) / 1e18, n: rows.length, fee: rows.reduce((x, r) => x + r.fee, 0), vol: rows.reduce((x, r) => x + r.eth, 0), recent, ok: failed === 0 };
+  }, 120_000);
+  const u = (n: number) => (ethUsd ? money(n * ethUsd) : "");
+  return (
+    <section className="e-panel"><div className="e-trade">
+      <h3 className="e-ph" style={{ margin: 0 }}>Robinhood Chain income <span className="dim" style={{ fontSize: 12.5, fontWeight: 600 }}>0.5% on ETH swaps made on elyscreener.com, paid to the treasury in ETH</span></h3>
+      {!data ? <p className="dim">Loading…</p> : (
+        <>
+          {!data.ok && <div className="e-msg bad">Some of the history could not be read right now (the node did not answer). Reload in a minute.</div>}
+          <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", padding: 0, border: 0 }}>
+            <div><span>Treasury wallet</span><b>{data.bal.toFixed(5)} ETH</b><small className="dim">{u(data.bal)} · {short(RH_TREASURY)}</small></div>
+            <div><span>Swap fees (0.5%)</span><b>{data.fee.toFixed(5)} ETH</b><small className="dim">{u(data.fee)} · {data.n} swaps · last 7 days</small></div>
+            <div><span>Swap volume</span><b>{data.vol.toFixed(4)} ETH</b><small className="dim">{u(data.vol)}</small></div>
+          </div>
+          <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Coins that use the sasa hook trade with USDC through the sasa router, their fee goes to sasa and is not counted here.</p>
+          {data.recent.length > 0 && (
+            <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
+              <div className="dim" style={{ fontWeight: 700 }}>Latest swaps</div>
+              {data.recent.map((r) => (
+                <div key={r.tx + r.block} style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 8, padding: "6px 0", borderTop: "1px solid var(--e-line)" }}>
+                  <b className={r.buy ? "up" : "down"}>{r.buy ? "buy" : "sell"}</b>
+                  <span className="num dim" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{short(r.who)} · {r.eth.toFixed(5)} ETH</span>
+                  <span className="num">{r.fee.toFixed(6)} ETH{r.at ? ` · ${new Date(r.at * 1000).toLocaleString()}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div></section>
+  );
+}
+
 /** The shared swap router ElyScreener trades through (used when the site env var is not set). */
 const SCREENER_ROUTER = "0xB1EEcB952D4853EAFCD219c0060218EAc6F2150a";
 type EsOrder = { id: number; plan: string; kind: string; token: string | null; pay_asset: string; usd: number; paid_at: string };
@@ -494,6 +565,7 @@ export function OpsPage() {
       <section className="e-hero"><div><span className="e-eyebrow">Ops</span><h1>ArkhamPad ops</h1></div></section>
       <Funnel />
       <ScreenerRevenue />
+      <RobinhoodRevenue />
       <Earnings />
       <Activity />
       <V2Settings />
