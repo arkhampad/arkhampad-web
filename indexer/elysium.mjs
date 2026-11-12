@@ -132,6 +132,7 @@ export function makeRpc(urls, log = console.log) {
     // a log read gets one round over the nodes (the caller retries with a smaller range right away);
     // other calls get three rounds
     const rounds = method === "eth_getLogs" ? 1 : 3;
+    let lagTries = 0;
     for (let i = 0; i < list.length * rounds; i++) {
       const url = list[(at + i) % list.length];
       try {
@@ -143,6 +144,13 @@ export function makeRpc(urls, log = console.log) {
         return j.result;
       } catch (e) {
         last = e;
+        // Nov 12 (Robinhood): a node behind the tip answers "invalid block range params" for a range that starts at its
+        // head. That is not about the size, so shrinking the range only made the scan crawl (15 blocks per read, 1,200
+        // behind). Ask the same node again in a moment (another backend answers), then the next node.
+        if (method === "eth_getLogs" && /invalid block range/i.test(e.message)) {
+          if (lagTries++ < 3) { await new Promise((r) => setTimeout(r, 400)); i--; }
+          continue;
+        }
         // a node that is a few blocks behind says "beyond current head": just ask the next node
         if (/beyond current head|header not found|unknown block/i.test(e.message)) continue;
         // a node that is busy / rate limiting us: the next node (it's not about the range)
