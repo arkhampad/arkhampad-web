@@ -518,5 +518,38 @@ async function rhLoop() {
     }
   }
 }
-await Promise.all([...CHAINS.map(loop), elysiumLoop(), rhLoop()]);
+// BNB Chain (chain 56): only ElyScreener's own launcher coins (every WBNB pair on BNB Chain is far too many to read).
+// Own tables (db/041_bnb_chain.sql). Starts by itself once those tables exist.
+async function bnbLoop() {
+  const log = (m) => console.log(String(m).replace(/^elysium:/, "bnb:"));
+  const rpcs = [...String(process.env.BNB_RPC || "").split(","), "https://bsc-dataseed.bnbchain.org", "https://bsc-dataseed1.defibit.io", "https://bsc-dataseed1.ninicoin.io", "https://bsc-rpc.publicnode.com"].map((x) => x.trim()).filter(Boolean);
+  const price = async () => {
+    for (const [url, pick] of [["https://api.coinbase.com/v2/prices/BNB-USD/spot", (j) => j?.data?.amount], ["https://api.kraken.com/0/public/Ticker?pair=BNBUSD", (j) => Object.values(j?.result || {})[0]?.c?.[0]], ["https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT", (j) => j?.price]]) {
+      try { const v = Number(pick(await (await fetch(url, { signal: AbortSignal.timeout(8000) })).json())); if (v > 0) return v; } catch {}
+    }
+    return null;
+  };
+  for (;;) {
+    try {
+      const ok = (await pool.query("select to_regclass('public.bnb_tokens') as t")).rows[0]?.t;
+      if (!ok) { await sleep(300_000); continue; } // db/041 not run yet: check again in 5 minutes
+      const store = await makePgStore(pool, "bnb_");
+      store.saveStats = null;
+      if ((await store.getState("ely_block")) == null) {
+        const tip = Number(await (await fetch(rpcs[0], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }) })).json().then((j) => BigInt(j.result)));
+        await store.setState("ely_block", tip - Number(process.env.BNB_BACK || 300_000)); // BNB Chain blocks are well under a second: about a day
+      }
+      await makeElysium({
+        rpc: rpcs, step: 1000, startBlock: 0, wrapRe: /^W?BNB$/i, priceFn: price, noGenesis: true, noTokenUri: true, launcherOnly: true, dexChain: "bsc",
+        esLauncher: (process.env.BNB_LAUNCHER || "0x179Cd8A5FA18A75499e5e8a327f0c7E61DF55e25").trim(),
+        factory: (process.env.BNB_V3_FACTORY || "0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7").trim(),
+        log,
+      }, store).loop();
+    } catch (e) {
+      log(`bnb: ${e.message}; restarting in 30 s`);
+      await sleep(30_000);
+    }
+  }
+}
+await Promise.all([...CHAINS.map(loop), elysiumLoop(), rhLoop(), bnbLoop()]);
 if (process.env.ONCE) await pool.end();

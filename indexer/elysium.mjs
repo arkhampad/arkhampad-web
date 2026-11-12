@@ -9,6 +9,7 @@
 import { createHash } from "node:crypto";
 
 const T = {
+  esLaunched: "0xa7370c651848779d3b2e536c6b4909083cecb62d2aed16dcd4277b8e6dba6014", // EsLauncher Launched(...)
   v3PoolCreated: "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118",
   v4Initialize: "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438",
   v3Swap: "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67",
@@ -65,6 +66,8 @@ export const KNOWN_CONTRACTS = {
   "0xbacf71bf02b8cfe171853c5ec4a060ba2ac1e0cc": "ElysPump",
   // Nov 12: ElyScreener's own ETH launcher on Robinhood Chain (coins launched from elyscreener.com)
   "0xbfdf97855cae452339811a74789bd167238c7a4a": "ElyScreener",
+  // Nov 12: ElyScreener's BNB launcher on BNB Chain
+  "0x179cd8a5fa18a75499e5e8a327f0c7e61df55e25": "ElyScreener",
 };
 
 /** Runs async jobs, `n` at a time. */
@@ -580,7 +583,7 @@ export function makeElysium(cfg, store) {
         const part = need.slice(i, i + 30);
         part.forEach((t) => imgTried.set("dex" + t.address, now));
         try {
-          const r = await fetch(`https://api.dexscreener.com/tokens/v1/robinhood/${part.map((t) => t.address).join(",")}`, { headers: UA, signal: AbortSignal.timeout(8000) });
+          const r = await fetch(`https://api.dexscreener.com/tokens/v1/${cfg.dexChain || "robinhood"}/${part.map((t) => t.address).join(",")}`, { headers: UA, signal: AbortSignal.timeout(8000) });
           if (!r.ok) continue;
           const arr = await r.json();
           const got = new Map();
@@ -1178,7 +1181,18 @@ export function makeElysium(cfg, store) {
     while (last < tip) {
       const to = Math.min(tip, last + fastSpan);
       try {
-        await scanPools(last + 1, to, { factory: factoryOf() });
+        if (cfg.launcherOnly) {
+          // BNB Chain: far too many pools to read them all. Only the pools ElyScreener's launcher made: its Launched
+          // events (address-filtered, tiny), then the factory's PoolCreated log of that very block, kept for that pool.
+          const ll = await rpc("eth_getLogs", [{ fromBlock: hex(last + 1), toBlock: hex(to), address: lc(cfg.esLauncher), topics: [T.esLaunched] }]);
+          const v3 = [];
+          for (const b of [...new Set(ll.map((l) => l.blockNumber))]) {
+            const pools = new Set(ll.filter((l) => l.blockNumber === b).map((l) => addrWord(l.data, 0)));
+            const pc = await rpc("eth_getLogs", [{ fromBlock: b, toBlock: b, address: cfg.factory, topics: [T.v3PoolCreated] }]);
+            for (const l of pc) if (pools.has(addrWord(l.data, 1))) v3.push(l);
+          }
+          if (v3.length) await scanPools(last + 1, to, { logs: { v3, v4: [], cl: [] } });
+        } else await scanPools(last + 1, to, { factory: factoryOf() });
         const ours = [...store.tokens().values()].filter((t) => inFast(t) && t.venue === "v3" && t.pool);
         await scanTrades(last + 1, to, { pools: ours.map((t) => t.pool) });
         await scanTransfers(last + 1, to, { tokens: ours.map((t) => t.address) });
@@ -1229,9 +1243,16 @@ export function makeElysium(cfg, store) {
     }
   }, 60_000); };
   async function loop() {
-    log(`elysium: indexing every HYPE pair (launcher ${launcher || "not set"})`);
+    log(cfg.launcherOnly ? `elysium: indexing only ${cfg.esLauncher} coins` : `elysium: indexing every HYPE pair (launcher ${launcher || "not set"})`);
     startWatch();
-    if (launcher) fastLoop();
+    if (launcher || cfg.launcherOnly) fastLoop();
+    if (cfg.launcherOnly) {
+      // no full scan: the side jobs (pictures, labels, details) run on a timer instead
+      for (;;) {
+        try { backfillMeta().catch(() => {}); backfillImages().catch(() => {}); relabelOnce().catch(() => {}); } catch {}
+        await new Promise((r) => setTimeout(r, 60_000));
+      }
+    }
     if (tokenQuotes.size) { const bf = () => quoteBackfill().catch((e) => log(`elysium: quote backfill: ${e.message}`)); bf(); setInterval(bf, 300_000); }
     for (;;) {
       try {
