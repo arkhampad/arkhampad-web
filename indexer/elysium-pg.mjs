@@ -5,7 +5,9 @@ const COLS = ["address", "name", "symbol", "decimals", "supply", "uri", "image",
 
 let windowsAt = 0;
 let fullAt = 0; // last full stats run (db/034)
-export async function makePgStore(pool) {
+export async function makePgStore(pool0, prefix = "ely_") {
+  // another chain (Robinhood Chain: "rh_") has its own copy of every table and function: the same SQL with the prefix swapped
+  const pool = prefix === "ely_" ? pool0 : { query: (q, v) => pool0.query(String(q).replace(/\bely_/g, prefix), v) };
   const tokens = new Map();
   const { rows } = await pool.query(`select ${COLS.join(",")} from ely_tokens`);
   for (const r of rows) tokens.set(r.address, { ...r, supply: String(r.supply), decimals: Number(r.decimals) });

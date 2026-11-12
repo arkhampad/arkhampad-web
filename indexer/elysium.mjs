@@ -277,7 +277,7 @@ export function makeElysium(cfg, store) {
   }
   async function hypeWrap(a) {
     if (a === ZERO) return true; // v4 native HYPE
-    if (!isHypeWrap.has(a)) isHypeWrap.set(a, /^W?HYPE$/i.test(await symbol(a)));
+    if (!isHypeWrap.has(a)) isHypeWrap.set(a, (cfg.wrapRe || /^W?HYPE$/i).test(await symbol(a)));
     return isHypeWrap.get(a);
   }
   async function txField(map, hash, field) {
@@ -380,11 +380,11 @@ export function makeElysium(cfg, store) {
   }
 
   async function tokenInfo(a) {
-    let [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), call(a, SEL.tokenURI)]);
+    let [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), cfg.noTokenUri ? Promise.resolve("0x") : call(a, SEL.tokenURI)]);
     // brand-new token on a node that's a few blocks behind: wait and read again
     for (let i = 1; i <= 3 && !sym && !decodeString(name); i++) {
       await new Promise((r) => setTimeout(r, 2000 * i));
-      [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), call(a, SEL.tokenURI)]);
+      [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), cfg.noTokenUri ? Promise.resolve("0x") : call(a, SEL.tokenURI)]);
     }
     return {
       name: decodeString(name) || sym || "Unknown",
@@ -778,7 +778,7 @@ export function makeElysium(cfg, store) {
   const ZERO = "0x0000000000000000000000000000000000000000";
   let genesisAt = 0;
   async function scanGenesis(tip) {
-    if (!/^0x[0-9a-f]{40}$/.test(GENESIS) || !store.addGenesis) return;
+    if (cfg.noGenesis || !/^0x[0-9a-f]{40}$/.test(GENESIS) || !store.addGenesis) return;
     if (Date.now() - genesisAt < 30_000) return;
     genesisAt = Date.now();
     let last = Number((await store.getState("ely_genesis_block")) ?? (cfg.startBlock ?? 0) - 1);
@@ -807,6 +807,10 @@ export function makeElysium(cfg, store) {
   }
 
   async function hypeUsd() {
+    // another chain (Robinhood Chain) brings its own price source for its quote coin (cfg.priceFn)
+    if (typeof cfg.priceFn === "function") {
+      try { const v = Number(await cfg.priceFn()); if (v > 0) { usdPerHype = v; await store.setMeta("hype_usd", v); } return v || null; } catch { return null; }
+    }
     try {
       const r = await fetch("https://api.hyperliquid.xyz/info", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }), signal: AbortSignal.timeout(10_000) });
       const j = await r.json();

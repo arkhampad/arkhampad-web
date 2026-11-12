@@ -473,5 +473,33 @@ async function elysiumLoop() {
     }
   }
 }
-await Promise.all([...CHAINS.map(loop), elysiumLoop()]);
+// Robinhood Chain (chain 4663): same indexer, its own tables (db/040_rh_chain.sql). Starts by itself once those tables exist.
+async function rhLoop() {
+  const log = (m) => console.log(String(m).replace(/^elysium:/, "robinhood:"));
+  const rpcs = [...String(process.env.RH_RPC || "").split(","), "https://rpc.mainnet.chain.robinhood.com"].map((x) => x.trim()).filter(Boolean);
+  const price = async () => {
+    for (const [url, pick] of [["https://api.coinbase.com/v2/prices/ETH-USD/spot", (j) => j?.data?.amount], ["https://api.kraken.com/0/public/Ticker?pair=ETHUSD", (j) => j?.result?.XETHZUSD?.c?.[0]]]) {
+      try { const v = Number(pick(await (await fetch(url, { signal: AbortSignal.timeout(8000) })).json())); if (v > 0) return v; } catch {}
+    }
+    return null;
+  };
+  for (;;) {
+    try {
+      const ok = (await pool.query("select to_regclass('public.rh_tokens') as t")).rows[0]?.t;
+      if (!ok) { await sleep(300_000); continue; } // db/040 not run yet: check again in 5 minutes
+      const store = await makePgStore(pool, "rh_");
+      store.saveStats = null; // the Elysium network-stats page has no Robinhood twin
+      let startBlock = 0;
+      if ((await store.getState("ely_block")) == null) {
+        const tip = Number(await (await fetch(rpcs[0], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }) })).json().then((j) => BigInt(j.result)));
+        startBlock = tip - Number(process.env.RH_BACK || 400_000); // 100 ms blocks: 400,000 blocks is about 11 hours of history
+      }
+      await makeElysium({ rpc: rpcs, startBlock, step: 1000, wrapRe: /^W?ETH$/i, priceFn: price, noGenesis: true, noTokenUri: true, log }, store).loop();
+    } catch (e) {
+      log(`robinhood: ${e.message}; restarting in 30 s`);
+      await sleep(30_000);
+    }
+  }
+}
+await Promise.all([...CHAINS.map(loop), elysiumLoop(), rhLoop()]);
 if (process.env.ONCE) await pool.end();
