@@ -63,6 +63,8 @@ export const KNOWN_CONTRACTS = {
   // Nov 7: more makers, confirmed on Agora (BRIDGOOR → "Eleos v4", ETF → "ElysPump v4")
   "0x9c73d179b2911e89a4edc47cfd78765990bc6761": "Eleos",
   "0xbacf71bf02b8cfe171853c5ec4a060ba2ac1e0cc": "ElysPump",
+  // Nov 12: ElyScreener's own ETH launcher on Robinhood Chain (coins launched from elyscreener.com)
+  "0xbfdf97855cae452339811a74789bd167238c7a4a": "ElyScreener",
 };
 
 /** Runs async jobs, `n` at a time. */
