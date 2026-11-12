@@ -549,6 +549,32 @@ export function makeElysium(cfg, store) {
       // the launchpad's own picture wins over an older guess (e.g. a dead IPFS link from metadata)
       if (t && !t.ours && t.image !== image) { t.image = image; found++; await store.upsertToken({ ...t, image }).catch(() => {}); }
     }
+    // chains without a launchpad picture source (Robinhood): DexScreener has the picture for coins that have a profile there
+    if (cfg.noTokenUri) {
+      const need = [...store.tokens().values()]
+        .filter((t) => !t.ours && !t.image && now - (imgTried.get("dex" + t.address) || 0) > 3 * 3600_000)
+        .sort((x, y) => (y.vol24_hype || 0) - (x.vol24_hype || 0))
+        .slice(0, 90);
+      for (let i = 0; i < need.length; i += 30) {
+        const part = need.slice(i, i + 30);
+        part.forEach((t) => imgTried.set("dex" + t.address, now));
+        try {
+          const r = await fetch(`https://api.dexscreener.com/tokens/v1/robinhood/${part.map((t) => t.address).join(",")}`, { headers: UA, signal: AbortSignal.timeout(8000) });
+          if (!r.ok) continue;
+          const arr = await r.json();
+          const got = new Map();
+          for (const pr of Array.isArray(arr) ? arr : []) {
+            const img = pr?.info?.imageUrl;
+            const ad = lc(pr?.baseToken?.address);
+            if (ad && typeof img === "string" && /^https:\/\//.test(img) && !got.has(ad)) got.set(ad, img);
+          }
+          for (const t of part) {
+            const img = got.get(lc(t.address));
+            if (img) { t.image = img; found++; await store.upsertToken({ ...t, image: img }).catch(() => {}); }
+          }
+        } catch {}
+      }
+    }
     for (const t of todo) {
       if (t.image) continue;
       imgTried.set(t.address, now);
