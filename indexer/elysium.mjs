@@ -587,6 +587,11 @@ export function makeElysium(cfg, store) {
     if (Date.now() - relabelAt < 10 * 60_000) return;
     relabelAt = Date.now();
     const all = [...store.tokens().values()];
+    // coins made by a launcher we know by address (e.g. ElyScreener's) that were saved before it was known
+    for (const t of all) {
+      const pad = t.maker && launchpadOf.get(String(t.maker).toLowerCase());
+      if (pad && t.launchpad !== pad) { t.launchpad = pad; await store.upsertToken({ ...t, launchpad: pad }).catch(() => {}); }
+    }
     // learn: every labelled coin's maker contract teaches its fingerprint
     const learn = all.filter((t) => t.launchpad && t.launchpad !== "Other" && t.maker && t.maker !== t.manager);
     await pool(learn.map((t) => async () => { const fp = await fingerprint(t.maker); if (fp && !fpPad.has(fp)) fpPad.set(fp, t.launchpad); }), 4);
