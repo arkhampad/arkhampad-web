@@ -387,12 +387,14 @@ export function makeElysium(cfg, store) {
   }
 
   async function tokenInfo(a) {
-    let [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), cfg.noTokenUri ? Promise.resolve("0x") : call(a, SEL.tokenURI)]);
+    let [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), call(a, SEL.tokenURI)]);
     // brand-new token on a node that's a few blocks behind: wait and read again
     for (let i = 1; i <= 3 && !sym && !decodeString(name); i++) {
       await new Promise((r) => setTimeout(r, 2000 * i));
-      [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), cfg.noTokenUri ? Promise.resolve("0x") : call(a, SEL.tokenURI)]);
+      [name, sym, dec, sup, uri] = await Promise.all([call(a, SEL.name), symbol(a), call(a, SEL.decimals), call(a, SEL.totalSupply), call(a, SEL.tokenURI)]);
     }
+    // chains with noTokenUri (Robinhood) only trust a metadata JSON stored inside the coin itself (ElyScreener launcher coins)
+    if (cfg.noTokenUri && !decodeString(uri).startsWith("data:application/json")) uri = "0x";
     return {
       name: decodeString(name) || sym || "Unknown",
       symbol: sym || "?",
@@ -550,6 +552,9 @@ export function makeElysium(cfg, store) {
     for (const t of todo) {
       if (t.image) continue;
       imgTried.set(t.address, now);
+      // coins that keep their own picture inside tokenURI (ElyScreener launcher)
+      const own = await call(t.address, SEL.tokenURI).then((r) => readMeta(decodeString(r))).catch(() => ({}));
+      if (own.image) { t.image = own.image; found++; await store.upsertToken({ ...t, image: own.image }).catch(() => {}); continue; }
       const image = await lookupImage(t.address);
       if (image) { t.image = image; found++; await store.upsertToken({ ...t, image }).catch(() => {}); }
     }
