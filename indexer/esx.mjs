@@ -47,6 +47,9 @@ const KEYS = { apiKey: env("ES_X_API_KEY"), apiSecret: env("ES_X_API_SECRET"), a
 const RPCS = env("ELYSIUM_RPC").split(",").map((s) => s.trim()).filter(Boolean);
 const PAD_X = Object.fromEntries(env("ES_PAD_X").split(",").map((p) => p.split("=").map((s) => s.trim())).filter((p) => p[0] && /^@\w{1,15}$/.test(p[1] || "")).map(([k, v]) => [k.toLowerCase(), v]));
 const MAINNET = Date.UTC(2026, 10, 9, 0, 0); // Nov 9, 2026
+// Nov 12: general mode (default). The account posts about ElyScreener as a whole (every chain, buying, selling,
+// launching, the tools), not about Elysium alone. ES_X_GENERAL=0 brings the old Elysium data posts back.
+const GENERAL = env("ES_X_GENERAL") !== "0";
 
 // ------------------------------------------------------------------ X API (OAuth 1.0a, user context)
 const enc = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -233,7 +236,7 @@ async function xHandle(t) {
 // ------------------------------------------------------------------ words (lowercase, short, human)
 const TAGS = ["#Elysium", "#HYPE", "#Hyperliquid", "#Kinetiq", "#memecoin", "#altcoins", "#crypto", "#onchain", "#DeFi", "#SmartMoney", "#Trading", "#DEX", "#Whales", "#CryptoTrading", "#Layer2", "#CryptoNews", "#GemHunter", "#Altseason", "#Web3", "#MemeSeason", "#CopyTrading", "#AutoTrade"];
 /** n hashtags, none twice; `avoid` is a Set of tags a thread already used (each post of a thread gets its own). */
-function tags(r, n = 2, must, avoid) { const a = must && !(avoid && avoid.has(must)) ? [must] : []; let guard = 0; while (a.length < n && guard++ < 200) { const t = pick(r, TAGS); if (!a.includes(t) && !(avoid && avoid.has(t))) a.push(t); } if (avoid) a.forEach((t) => avoid.add(t)); return a.join(" "); }
+function tags(r, n = 2, must, avoid, pool) { const a = must && !(avoid && avoid.has(must)) ? [must] : []; let guard = 0; while (a.length < n && guard++ < 200) { const t = pick(r, pool || TAGS); if (!a.includes(t) && !(avoid && avoid.has(t))) a.push(t); } if (avoid) a.forEach((t) => avoid.add(t)); return a.join(" "); }
 // Nov 11: every third post (and every third thread opener) also tags the four ecosystem accounts
 const ECO = "@Enter_Elysium @HyperliquidX @Kinetiq_xyz @0xOmnia";
 let tagTurn = 0;
@@ -390,6 +393,44 @@ async function feature(r) {
   return { kind: "feature", token: null, tpl: i, text, card: featureCard(f.card) };
 }
 
+
+// ------------------------------------------------------------------ general posts (Nov 12): ElyScreener on every chain
+// Only things the site really does today. Chains: Elysium and Robinhood Chain are live; the others are said to be coming.
+const GENERAL_TAGS = ["#memecoin", "#crypto", "#altcoins", "#onchain", "#DeFi", "#Web3", "#CryptoTrading", "#Trading", "#DEX", "#GemHunter", "#Altseason", "#MemeSeason", "#CryptoNews", "#Whales", "#SmartMoney", "#Layer2", "#RobinhoodChain"];
+const GENERAL_POSTS = [
+  { card: { lines: ["Every chain.", "One screen.", "Buy. Sell. Launch."], chip: "elyscreener.com", tag: "ELYSCREENER" },
+    text: [() => nl(`pick a chain, see every coin on it, buy and sell, or launch your own. same screen for all of them`, "", `Elysium and Robinhood Chain are live, more chains coming`), () => nl(`ElyScreener is one screen for every chain`, `browse the coins, trade them, launch yours. no switching between five sites`)] },
+  { card: { lines: ["Your wallet.", "Your amount.", "One tap."], chip: "Trade on ElyScreener", tag: "TRADE" },
+    text: [() => nl(`open a coin on ElyScreener, connect your wallet, type an amount, buy`, "", `that's the whole flow. selling is the same`), () => nl(`no swaps in the background, no network settings to fix`, `you pay in the chain's own coin and the trade goes through. ElyScreener`)] },
+  { card: { lines: ["Launch a coin", "on the chain you pick.", "One tap."], chip: "Launch on ElyScreener", tag: "LAUNCH" },
+    text: [() => nl(`launch a meme coin straight from ElyScreener`, "", `pick the chain, add a name and a picture (or let AI make them), one tap. the coin and its pool go live together`), () => nl(`you can launch your own coin on ElyScreener now`, `choose the chain first, the rest is one tap`)] },
+  { card: { lines: ["The AI knows", "which chain you picked.", "Names, tickers, logos."], chip: "Create with AI", tag: "CREATE WITH AI" },
+    text: [() => nl(`the AI coin maker on ElyScreener now builds around the chain you picked`, "", `launching on Robinhood Chain gets a Robinhood style name, ticker and logo. other chain, other theme`), () => nl(`stuck on a name? ElyScreener's AI makes the name, ticker, description and logo`, `and it matches the chain you're launching on`)] },
+  { card: { lines: ["Is this coin safe?", "Just ask.", "Any coin, one tap."], chip: "Ask AI on ElyScreener", tag: "ASK AI" },
+    text: [() => nl(`you can ask ElyScreener "is this coin safe?" and it answers`, "", `holders, bot clusters, dev selling. before you ape, not after`), () => nl(`every coin on ElyScreener gets a safety label`, `safe / caution / risky, from holders, bots, dev selling`)] },
+  { card: { lines: ["Stock tokens", "on Robinhood Chain.", "Real ones only."], chip: "elyscreener.com", tag: "STOCKS" },
+    text: [() => nl(`Robinhood Chain stock tokens are on ElyScreener now`, "", `Tesla, Nvidia and the rest, with an Official badge so you can tell the real ones from the copies`)] },
+  { card: { lines: ["Limit buy.", "Take profit.", "Stop loss."], chip: "ElyScreener Auto Trade", tag: "AUTO TRADE" },
+    text: [() => nl(`set a limit buy, a take profit or a stop loss once and walk away`, "", `ElyScreener Auto Trade runs the rule for you. your funds sit in a vault only you can withdraw from`), () => nl(`nobody watches the chart at 3am. a rule does`, `limit buy, take profit, stop loss on ElyScreener`)] },
+  { card: { lines: ["Follow a whale.", "Copy the buys.", "You set the budget."], chip: "ElyScreener Auto Trade", tag: "COPY A WHALE" },
+    text: [() => nl(`ElyScreener Auto Trade can copy a whale`, "", `pick the wallet, set a budget and a max per trade, it mirrors their buys. which whale would you follow first?`)] },
+  { card: { lines: ["Put a bell", "on any coin.", "No sign up."], chip: "elyscreener.com", tag: "ALERTS" },
+    text: [() => nl(`put a bell on any coin on ElyScreener`, `pump, dump, dev selling, big buy. you get pinged. no sign up`)] },
+  { card: { lines: ["Every launchpad.", "Every coin.", "Live."], chip: "elyscreener.com", tag: "LIVE" },
+    text: [() => nl(`every coin from every launchpad, live on one screen`, "", `ElyScreener tracks them so you don't have to open ten tabs`)] },
+  { card: { lines: ["Smart money.", "Whales.", "Fresh coins."], chip: "elyscreener.com", tag: "BOARDS" },
+    text: [() => nl(`ElyScreener has boards for smart money, whales, top gainers and brand new coins`, "", `pick a chain and see what's moving on it right now`)] },
+  { card: { lines: ["No wallet settings.", "No network fixes.", "Just trade."], chip: "elyscreener.com", tag: "SIMPLE" },
+    text: [() => nl(`the point of ElyScreener: you shouldn't have to touch wallet or network settings to trade a coin`, "", `connect, enter an amount, buy or sell`)] },
+];
+async function general(r) {
+  const last = (await q(`select tpl from es_x_posts where kind = 'general' order by at desc limit 8`)).map((x) => x.tpl);
+  const idx = [...GENERAL_POSTS.keys()].filter((i) => !last.includes(i));
+  const i = idx.length ? pick(r, idx) : Math.floor(r() * GENERAL_POSTS.length);
+  const f = GENERAL_POSTS[i];
+  return { kind: "general", token: null, tpl: i, text: pick(r, f.text)(), card: featureCard(f.card) };
+}
+
 // Nov 11: four posts a day about Auto Trade and trading right on ElyScreener (only what the site really does)
 const PROMOS = [
   { card: { lines: ["Set a limit buy.", "Go touch grass.", "Auto Trade on ElyScreener."], chip: "Auto Trade", tag: "AUTO TRADE" },
@@ -482,12 +523,15 @@ async function thread(themeIdx = 0) {
 async function compose(slotIdx, r) {
   const hourTR = new Date(Date.now() + TR).getUTCHours();
   const order = [];
+  if (GENERAL) order.push(general);
+  else {
   // (the launchpad board now goes out inside the daily threads)
   order.push(promo); // four Auto Trade / trading posts a day, at least 3 h apart
   if (slotIdx % 4 === 3) order.push(feature);
   order.push(launched); // a coin made on ElyScreener goes first, whenever there is a new one
   order.push(...pick(r, [[gainer, smart], [smart, gainer]]));
   order.push(feature);
+  }
   for (const f of order) {
     try { const p = await f(r); if (p) return p; } catch (e) { log(`${f.name}:`, e.message); }
   }
@@ -497,7 +541,7 @@ async function compose(slotIdx, r) {
 async function postOne(slotIdx, asThread = false, themeIdx = 0) {
   await loadHype();
   const r = rng(Date.now() & 0xffffffff);
-  const p = (asThread && (await thread(themeIdx).catch((e) => { log("thread:", e.message); return null; }))) || (await compose(slotIdx, r));
+  const p = (asThread && !GENERAL && (await thread(themeIdx).catch((e) => { log("thread:", e.message); return null; }))) || (await compose(slotIdx, r));
   if (!p) { log("nothing worth posting, slot skipped"); return; }
   const recent = (await q(`select text from es_x_posts order by at desc limit 6`).catch(() => [])).map((x) => x.text);
   if (p.kind === "thread") return postThread(p, r, recent);
@@ -506,8 +550,8 @@ async function postOne(slotIdx, asThread = false, themeIdx = 0) {
   const facts = p.d ? Object.entries(p.d).filter(([, v]) => v != null && v !== "").map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" / ") : v}`).join("\n") : base;
   // the key number must be in the post too (a gainer without its % is just noise)
   const must = [p.d?.sym && `$${p.d.sym}`, p.d?.x, p.d?.pct, p.kind === "smart" && p.d?.n != null && String(p.d.n), p.kind === "fresh" && p.d?.holders].filter(Boolean);
-  let text = await writePost({ facts: `${facts}\n${base}`, fallback: base, must, recent });
-  text = attach(text.replace(/\n{3,}/g, "\n\n").trim(), ecoNow(), tags(r, 4, r() < 0.7 ? "#Elysium" : null));
+  let text = await writePost({ facts: `${facts}\n${base}`, fallback: base, must, recent, ...(GENERAL ? { brand: "ElyScreener, a multi-chain coin screener where people browse, buy, sell and launch coins on every chain" } : {}) });
+  text = attach(text.replace(/\n{3,}/g, "\n\n").trim(), GENERAL ? false : ecoNow(), GENERAL ? tags(r, 2, null, null, GENERAL_TAGS) : tags(r, 4, r() < 0.7 ? "#Elysium" : null));
   const link = p.token ? `chart → ${SITE}/coin/${p.token}` : `live → ${SITE}`;
   if (DRY || !KEYS.apiKey) {
     mkdirSync("/tmp/esx", { recursive: true });
