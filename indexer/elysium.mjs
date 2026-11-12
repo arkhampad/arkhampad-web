@@ -17,6 +17,11 @@ const T = {
   clInitialize: "0x426cc62fe6a33a40ba2788c2c87a9c34ee4582b95bc9fa5a7bb7ae70b750b99c",
   clSwap: "0x04206ad2b7c0f463bff3dd4f33c5735b0f2957a351e4f79763a4fa9e775dd237",
   transfer: "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+  // Pons V2 (Robinhood Chain): one bonding curve per coin. TokenLaunched(token, curve, deployer indexed; pairToken, launchConfigId, graduationThreshold)
+  curveLaunched: "0x8d4aad4953d0ca700d468f3753aa14432d1b35b43ec6409f051fb6aa43a89607",
+  // CurveBuy(buyer, recipient indexed; quoteIn, tokensOut, fee, tax) and CurveSell(seller, recipient indexed; tokensIn, quoteOut, fee, tax)
+  curveBuy: "0xec36bf571f136799e8dc0b0b8bea4b04d8bd3d43de838aab0d5fc21d4cbfc455",
+  curveSell: "0x8113d738abdcb6b38357e9d53a54a7157861a09031b453651f0fe7fe151f59df",
 };
 const ZERO = "0x0000000000000000000000000000000000000000";
 const DEAD = "0x000000000000000000000000000000000000dead";
@@ -593,15 +598,51 @@ export function makeElysium(cfg, store) {
     if (fixed) log(`elysium: labelled ${fixed} coins by contract fingerprint (${[...new Set([...fpPad.values()])].join(", ")})`);
   }
 
+  // Bonding-curve launchpad (cfg.curve = { factory, launchpad }): each coin has its own curve contract that trades it
+  // until it graduates into a Uniswap v4 pool (then addPool takes over). Only coins paired with native ETH are listed.
+  const curveCfg = cfg.curve && cfg.curve.factory ? { factory: lc(cfg.curve.factory), launchpad: cfg.curve.launchpad || "Pons", hook: lc(cfg.curve.hook) } : null;
+  async function addCurve(l) {
+    const token = addrTopic(l.topics[1]);
+    const curve = addrTopic(l.topics[2]);
+    const deployer = addrTopic(l.topics[3]);
+    if (addrWord(l.data, 0) !== ZERO) return; // paired with a token other than ETH: not priced here
+    if (store.tokens().get(token)) return;
+    const info = await tokenInfo(token);
+    const block = Number(l.blockNumber);
+    await store.upsertToken({
+      address: token,
+      ...info,
+      venue: "curve",
+      pool: curve,
+      manager: curve,
+      whype: ZERO,
+      token_is0: false, // not used for a curve; the column can't be empty
+      fee: 100,
+      tick_spacing: null,
+      hooks: null,
+      maker: curveCfg.factory,
+      creator: deployer,
+      launchpad: curveCfg.launchpad,
+      ours: false,
+      created_block: block,
+      created_at: new Date(await timeOf(block)).toISOString(),
+      price_hype: null,
+    });
+    poolIndex.set(curve, token);
+    if (newSink) newSink.push({ token, block });
+  }
+
   async function addPool(p) {
     if (p.hype !== ZERO && !quoteDec.has(p.hype) && !usdQuotes.has(p.hype) && !tokenQuotes.has(p.hype)) quoteDec.set(p.hype, 18); // WHYPE
     // p: { token, hype, venue: 'v3'|'v4', pool, manager, fee, tickSpacing, hooks, tokenIs0, block, tx, sqrt }
     const tokens = store.tokens();
     const known = tokens.get(p.token);
-    if (known && known.pool) return; // first pool wins (the launch pool)
-    const info = await tokenInfo(p.token);
-    const maker = await txField(txTo, p.tx, "to");
-    const creator = await txField(txFrom, p.tx, "from");
+    if (known && known.pool && known.venue !== "curve") return; // first pool wins (the launch pool)
+    // a bonding-curve coin (Pons) that just graduated: its first real pool replaces the curve; name, launchpad, maker and birth stay
+    const fromCurve = !!known && known.venue === "curve";
+    const info = fromCurve ? { name: known.name, symbol: known.symbol, decimals: known.decimals, supply: known.supply, uri: known.uri, image: known.image, description: known.description } : await tokenInfo(p.token);
+    const maker = fromCurve ? known.maker : await txField(txTo, p.tx, "to");
+    const creator = fromCurve ? known.creator : await txField(txFrom, p.tx, "from");
     // learn launchpads from known tokens
     for (const k of KNOWN_TOKENS) {
       if (p.token.startsWith(k.prefix) && p.token.endsWith(k.suffix)) {
@@ -622,15 +663,15 @@ export function makeElysium(cfg, store) {
       hooks: p.hooks || null,
       maker,
       creator,
-      launchpad: launchpadFor(maker, p.manager),
-      ours: isOurs(maker),
-      created_block: p.block,
-      created_at: new Date(await timeOf(p.block)).toISOString(),
+      launchpad: fromCurve ? known.launchpad : curveCfg && curveCfg.hook && p.hooks && lc(p.hooks) === curveCfg.hook ? curveCfg.launchpad : launchpadFor(maker, p.manager),
+      ours: fromCurve ? false : isOurs(maker),
+      created_block: fromCurve ? known.created_block : p.block,
+      created_at: fromCurve ? known.created_at : new Date(await timeOf(p.block)).toISOString(),
       price_hype: p.sqrt ? priceFromSqrt(p.sqrt, p.tokenIs0, info.decimals, p.hype === ZERO ? 18 : await decOf(p.hype)) * (await hypePerQuote(p.hype)) : null,
     };
     poolIndex.set(p.venue === "v3" ? p.pool : `${p.manager}:${p.pool}`, p.token);
     await store.upsertToken(t);
-    if (newSink) newSink.push({ token: p.token, block: p.block });
+    if (newSink && !fromCurve) newSink.push({ token: p.token, block: p.block });
   }
 
   // only: { factory } = just ArkhamPad's own pool factory (the fast lane), else every launchpad
@@ -642,9 +683,12 @@ export function makeElysium(cfg, store) {
       : only
       ? [only.factory ? await rpc("eth_getLogs", [{ ...q, address: only.factory, topics: [T.v3PoolCreated] }]) : [], [], []]
       : await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3PoolCreated] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Initialize] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clInitialize] }]).catch(() => [])]);
+    // bonding-curve launches (address-filtered: cheap)
+    const cv = !only && curveCfg ? await rpc("eth_getLogs", [{ ...q, address: curveCfg.factory, topics: [T.curveLaunched] }]).catch(() => []) : [];
     const pt1 = Date.now();
-    if (!only) { spd.poolLogs += pt1 - pt0; spd.nPools += v3.length + v4.length + cl.length; }
+    if (!only) { spd.poolLogs += pt1 - pt0; spd.nPools += v3.length + v4.length + cl.length + cv.length; }
     const jobs = [];
+    for (const l of cv) jobs.push(() => addCurve(l));
     for (const l of v3) jobs.push(async () => {
       const t0 = addrTopic(l.topics[1]);
       const t1 = addrTopic(l.topics[2]);
@@ -744,6 +788,37 @@ export function makeElysium(cfg, store) {
       const a1 = intAt(l.data, 1);
       jobs.push(() => add(l, token, t.token_is0 ? a0 : a1, t.token_is0 ? a1 : a0, uintAt(l.data, 2), true));
     }
+    // bonding-curve trades: price = what the curve actually received per coin (fee and snipe tax taken off a buy / added to a sell)
+    if (!only && curveCfg) {
+      const cvl = await rpc("eth_getLogs", [{ ...q, topics: [[T.curveBuy, T.curveSell]] }]).catch(() => []);
+      await prefetchLive(cvl.filter((l) => poolIndex.has(lc(l.address))));
+      for (const l of cvl) {
+        const token = poolIndex.get(lc(l.address));
+        if (!token) continue;
+        const t = tokens.get(token);
+        if (!t || t.venue !== "curve") continue;
+        const buy = l.topics[0] === T.curveBuy;
+        // CurveBuy data: quoteIn, tokensOut, fee, tax. CurveSell data: tokensIn, quoteOut, fee, tax.
+        const a = uintAt(l.data, 0), b = uintAt(l.data, 1), fee = uintAt(l.data, 2), tax = uintAt(l.data, 3);
+        const net = buy ? Number(a - fee - tax) / 1e18 : Number(b + fee + tax) / 1e18;
+        const amount = Number(buy ? b : a) / 10 ** (t.decimals ?? 18);
+        if (!(net > 0) || !(amount > 0)) continue;
+        jobs.push(async () => {
+          out.push({
+            token,
+            tx: l.transactionHash,
+            log_index: Number(l.logIndex),
+            block: Number(l.blockNumber),
+            at: new Date(await timeOf(Number(l.blockNumber))).toISOString(),
+            side: buy ? "buy" : "sell",
+            hype: net,
+            amount,
+            price_hype: net / amount,
+            trader: await traderOf(l),
+          });
+        });
+      }
+    }
     await pool(jobs, 16);
     out.sort((a, b) => a.block - b.block || a.log_index - b.log_index);
     if (out.length) await store.addTrades(out);
@@ -824,7 +899,7 @@ export function makeElysium(cfg, store) {
 
   /** One pass: from the saved block to the chain tip (in steps), then stats. Returns blocks done. */
   async function syncOnce() {
-    for (const t of store.tokens().values()) poolIndex.set(t.venue === "v3" ? t.pool : `${t.manager}:${t.pool}`, t.address);
+    for (const t of store.tokens().values()) poolIndex.set(t.venue === "v3" || t.venue === "curve" ? t.pool : `${t.manager}:${t.pool}`, t.address);
     let tip = Number(await rpc("eth_blockNumber"));
     tipNow = tip;
     const liveSince = Date.now();
@@ -962,7 +1037,8 @@ export function makeElysium(cfg, store) {
           await setWin(from, to);
           await scanPools(from, to);
           await scanTrades(from, to);
-          await scanTransfers(from, to);
+          // a history backfill (g.back) overlaps stretches that were already read live: count transfers only for coins found inside it
+          await scanTransfers(from, to, undefined, g.back ? (tk) => newToks.has(tk) || newSink.some((x) => x.token === tk) : undefined);
         } catch (e) {
           newSink = null;
           if (gapSpan > 20) { gapSpan = Math.max(20, Math.floor(gapSpan / 2)); log(`elysium: gap reading ${gapSpan} blocks (${e.message})`); continue; }

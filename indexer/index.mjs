@@ -494,7 +494,24 @@ async function rhLoop() {
         const tip = Number(await (await fetch(rpcs[0], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }) })).json().then((j) => BigInt(j.result)));
         startBlock = tip - Number(process.env.RH_BACK || 400_000); // 100 ms blocks: 400,000 blocks is about 11 hours of history
       }
-      await makeElysium({ rpc: rpcs, startBlock, step: 1000, wrapRe: /^W?ETH$/i, priceFn: price, noGenesis: true, noTokenUri: true, log }, store).loop();
+      // History backfill, once: the scan started ~11 h behind the tip, so older coins were missing. Queue the last RH_BACK_DAYS days
+      // (default 2 = ~1.7M blocks) as a skipped stretch; the gap filler reads it in the background, behind the live scan.
+      if ((await store.getState("rh_back_v1")) == null) {
+        const cur = Number(await store.getState("ely_block"));
+        if (cur > 0) {
+          const tip = Number(await (await fetch(rpcs[0], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }) })).json().then((j) => BigInt(j.result)));
+          const from = Math.max(1, tip - Math.round(Number(process.env.RH_BACK_DAYS || 2) * 860_000));
+          if (from < cur) {
+            let gaps = []; try { gaps = JSON.parse((await store.getState("ely_gaps")) || "[]"); } catch {}
+            gaps.unshift({ from, to: cur, cur: from, back: true });
+            await store.setState("ely_gaps", JSON.stringify(gaps));
+            log(`robinhood: history backfill queued, blocks ${from}-${cur}`);
+          }
+          await store.setState("rh_back_v1", "1");
+        }
+      }
+      const curve = { factory: (process.env.RH_PONS_FACTORY || "0x7ed598bcef8bd9edd8c97a195c6d13f40801ec7e").trim(), launchpad: "Pons", hook: "0xe5e702641ea86f4ae6cc3cdaed2b886f976be044" };
+      await makeElysium({ rpc: rpcs, startBlock, step: 1000, wrapRe: /^W?ETH$/i, priceFn: price, noGenesis: true, noTokenUri: true, curve, log }, store).loop();
     } catch (e) {
       log(`robinhood: ${e.message}; restarting in 30 s`);
       await sleep(30_000);
