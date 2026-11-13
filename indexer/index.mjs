@@ -20,6 +20,7 @@ import { makeFees } from "./fees.mjs";
 import { CLANKER_CHAINS, TOKEN_CREATED, clankerOf, lockersOf, mcAtTick } from "./clanker.mjs";
 import { makeElysium } from "./elysium.mjs";
 import { makePgStore } from "./elysium-pg.mjs";
+import { fourMemeLoop } from "./fourmeme.mjs";
 const relayer = process.env.ONCE || process.env.ELY_ONLY === "1" ? null : makeRelayer();
 // ETH / BNB prices in dollars, for coins paired with the chain's own coin (Clanker launches)
 const prices = makeFees({ log: (...a) => console.log(new Date().toISOString(), ...a) });
@@ -539,6 +540,7 @@ async function bnbLoop() {
         const tip = Number(await (await fetch(rpcs[0], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }) })).json().then((j) => BigInt(j.result)));
         await store.setState("ely_block", tip - Number(process.env.BNB_BACK || 300_000)); // BNB Chain blocks are well under a second: about a day
       }
+      if (process.env.BNB_FOURMEME !== "0") fourMemeLoop({ rpcUrls: rpcs.join(","), store, log, back: Number(process.env.BNB_FM_BACK || 300_000) }).catch((e) => log(`bnb: Four.Meme stopped: ${e.message}`));
       await makeElysium({
         rpc: rpcs, step: 1000, startBlock: 0, wrapRe: /^W?BNB$/i, priceFn: price, noGenesis: true, noTokenUri: true, launcherOnly: true, dexChain: "bsc",
         esLauncher: (process.env.BNB_LAUNCHER || "0x179Cd8A5FA18A75499e5e8a327f0c7E61DF55e25").trim(),
