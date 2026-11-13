@@ -7,7 +7,9 @@ const DEFAULT = ["https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.
 // every public node limits each address to a couple of calls a second; its answer can be a 429 or an error text that names one
 const BUSY = /rate limit|too many|capacity|-32005|-32017|\b429\b|upstreams? unavailable|not available to this site/i;
 // answers that barely change are kept for a few seconds, so a wallet asking again and again does not use up the nodes
-const KEEP = new Map(); const KEEP_FOR = { eth_chainId: 3600e3, eth_gasPrice: 4000, eth_maxPriorityFeePerGas: 4000, net_version: 3600e3 };
+const KEEP = new Map(); const KEEP_FOR = { eth_chainId: 3600e3, eth_gasPrice: 4000, eth_maxPriorityFeePerGas: 4000, net_version: 3600e3, eth_blockNumber: 1500, eth_estimateGas: 1500, eth_feeHistory: 3000, eth_getCode: 20e3, eth_getBalance: 800, eth_call: 800 };
+// the same question asked at the same moment shares one trip to the nodes
+const FLY = new Map();
 const SEND_ALSO = ["https://rpc.ronspad.fun"];
 const ALLOWED = /^(eth_(chainId|blockNumber|getBalance|call|estimateGas|gasPrice|maxPriorityFeePerGas|feeHistory|getCode|getLogs|getBlockByNumber|getBlockByHash|getTransactionByHash|getTransactionReceipt|getTransactionCount|sendRawTransaction|getStorageAt)|net_version|web3_clientVersion)$/;
 const TIMEOUT = 4000;
@@ -26,7 +28,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
   try { calls = JSON.parse(text); } catch { return reply({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
   const list = Array.isArray(calls) ? calls : [calls];
   const keepMs = !Array.isArray(calls) ? KEEP_FOR[calls.method] : 0;
-  if (keepMs) { const k = KEEP.get(calls.method); if (k && Date.now() - k.at < keepMs) return reply({ ...k.j, id: calls.id ?? null }); }
+  const kkey = keepMs ? calls.method + JSON.stringify(calls.params ?? []) : "";
+  if (keepMs) { const k = KEEP.get(kkey); if (k && Date.now() - k.at < keepMs) return reply({ ...k.j, id: calls.id ?? null }); if (KEEP.size > 500) KEEP.clear(); }
   if (!list.length || list.length > 50 || list.some((c) => !ALLOWED.test(String(c?.method)))) {
     return reply({ jsonrpc: "2.0", id: null, error: { code: -32601, message: "method not allowed" } }, 400);
   }
@@ -34,7 +37,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   // Wallets pick the next nonce from eth_getTransactionCount. A node a block behind returns an old count
   // and the wallet's next transaction is rejected ("wrong nonce"). So for that call we ask every node and
   // answer with the highest count, and block-number reads also get the newest head.
-  if (!Array.isArray(calls) && (calls.method === "eth_getTransactionCount" || calls.method === "eth_blockNumber")) {
+  if (!Array.isArray(calls) && (calls.method === "eth_getTransactionCount" || (calls.method === "eth_blockNumber" && !keepMs))) {
     const answers = await Promise.all(upstreams.map(async (url) => {
       try {
         const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(TIMEOUT) });
@@ -84,13 +87,18 @@ export async function onRequestPost({ request, env, waitUntil }) {
   // any other single read: ask every node at once, answer with the first good reply (a busy node used to
   // cost 4 s before the next was tried, and wallets make several of these per transaction)
   if (!sending && !Array.isArray(calls)) {
-    const tries = upstreams.map(async (url) => {
+    // nodes are started 300 ms apart, so a quick first answer uses one node's allowance instead of all three
+    let done = false;
+    const tries = upstreams.map(async (url, i) => {
+      if (i) await new Promise((r) => setTimeout(r, i * 300));
+      if (done) throw Object.assign(new Error("skipped"), { out: "", busy: true });
       const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(6000) });
       const out = await r.text();
       let j = null;
       try { j = JSON.parse(out); } catch {}
       if (!j) throw new Error(`${new URL(url).host} ${r.status}`);
       if (j.error) throw Object.assign(new Error("rpc"), { out, busy: BUSY.test(out) });
+      done = true;
       return out;
     });
     let good = await Promise.any(tries).catch((e) => e);
@@ -99,7 +107,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
       await new Promise((r) => setTimeout(r, 450));
       good = await Promise.any(upstreams.map(async (url) => { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(6000) }); const out = await r.text(); let j = null; try { j = JSON.parse(out); } catch {} if (!j || j.error) throw Object.assign(new Error("busy"), { out: j ? out : "", busy: !j || BUSY.test(out) }); return out; })).catch((e) => e);
     }
-    if (typeof good === "string") { waitUntil?.(Promise.allSettled(tries)); if (keepMs) { try { const j = JSON.parse(good); if (j?.result != null) KEEP.set(calls.method, { at: Date.now(), j }); } catch {} } return reply(good); }
+    if (typeof good === "string") { waitUntil?.(Promise.allSettled(tries)); if (keepMs) { try { const j = JSON.parse(good); if (j?.result != null) KEEP.set(kkey, { at: Date.now(), j }); } catch {} } return reply(good); }
     const real = (good?.errors || []).find((x) => x?.out && !x.busy);
     if (real) return reply(real.out);
   }
