@@ -553,5 +553,36 @@ async function bnbLoop() {
     }
   }
 }
-await Promise.all([...CHAINS.map(loop), elysiumLoop(), rhLoop(), bnbLoop()]);
+async function baseLoop() {
+  const log = (m) => console.log(String(m).replace(/^elysium:/, "base:"));
+   const rpcs = [...String(process.env.BASE_RPC || "").split(","), "https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.llamarpc.com"].map((x) => x.trim()).filter(Boolean);
+  const price = async () => {
+    for (const [url, pick] of [["https://api.coinbase.com/v2/prices/ETH-USD/spot", (j) => j?.data?.amount], ["https://api.kraken.com/0/public/Ticker?pair=ETHUSD", (j) => j?.result?.XETHZUSD?.c?.[0]]]) {
+      try { const v = Number(pick(await (await fetch(url, { signal: AbortSignal.timeout(8000) })).json())); if (v > 0) return v; } catch {}
+    }
+    return null;
+  };
+  for (;;) {
+    try {
+      const ok = (await pool.query("select to_regclass('public.base_tokens') as t")).rows[0]?.t;
+      if (!ok) { await sleep(300_000); continue; } // db/042 not run yet: check again in 5 minutes
+      const store = await makePgStore(pool, "base_");
+      store.saveStats = null;
+      if ((await store.getState("ely_block")) == null) {
+        const tip = Number(await (await fetch(rpcs[0], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }) })).json().then((j) => BigInt(j.result)));
+        await store.setState("ely_block", tip - Number(process.env.BASE_BACK || 43_200)); // Base blocks are 2 s: 43,200 is about a day
+      }
+      await makeElysium({
+        rpc: rpcs, step: 1000, startBlock: 0, wrapRe: /^W?ETH$/i, priceFn: price, noGenesis: true, noTokenUri: true, launcherOnly: true, dexChain: "base",
+        esLauncher: (process.env.BASE_LAUNCHER || "0xd96dbd1e583b0972b6e13f1a8654823088468753").trim(),
+        factory: (process.env.BASE_V3_FACTORY || "0x33128a8fC17869897dcE68Ed026d694621f6FDfD").trim(),
+        log,
+      }, store).loop();
+    } catch (e) {
+      log(`base: ${e.message}; restarting in 30 s`);
+      await sleep(30_000);
+    }
+  }
+}
+await Promise.all([...CHAINS.map(loop), elysiumLoop(), rhLoop(), bnbLoop(), baseLoop()]);
 if (process.env.ONCE) await pool.end();
