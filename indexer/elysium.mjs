@@ -104,9 +104,10 @@ export const OWN_RPC = "https://arkhampad.com/api/ely-rpc";
 // always in the list, whatever ELYSIUM_RPC says
 const EXTRA_RPCS = ["https://rpc-live.elysp.com", "https://rpc-live.boxa.club", "https://rpc.ronspad.fun"];
 
-export function makeRpc(urls, log = console.log) {
+export function makeRpc(urls, log = console.log, plain = false) {
   // our own Cloudflare doorway is always the last backup, so one node blocking us never stops the indexer
-  const list = [...new Set([...String(urls).split(",").map((u) => u.trim()).filter(Boolean), ...EXTRA_RPCS, OWN_RPC])];
+  // plain: other chains (BNB, Base) must never fall back to the Elysium nodes
+  const list = [...new Set([...String(urls).split(",").map((u) => u.trim()).filter(Boolean), ...(plain ? [] : [...EXTRA_RPCS, OWN_RPC])])];
   let id = 0;
   let at = 0;
   let since = Date.now();
@@ -229,7 +230,7 @@ export function priceFromSqrt(sqrtX96, tokenIs0, decToken = 18, decHype = 18) {
  * cfg: { rpc, launcher?, startBlock?, step?, log? }
  */
 export function makeElysium(cfg, store) {
-  const rpc = typeof cfg.rpc === "function" ? cfg.rpc : makeRpc(cfg.rpc);
+  const rpc = typeof cfg.rpc === "function" ? cfg.rpc : makeRpc(cfg.rpc, undefined, !!cfg.launcherOnly);
   const log = cfg.log || console.log;
   const step = cfg.step || 1000; // one public node refuses log reads over 1,000 blocks
   let progressLogAt = 0;
@@ -703,8 +704,9 @@ export function makeElysium(cfg, store) {
     // a bonding-curve coin (Pons) that just graduated: its first real pool replaces the curve; name, launchpad, maker and birth stay
     const fromCurve = !!known && known.venue === "curve";
     const info = fromCurve ? { name: known.name, symbol: known.symbol, decimals: known.decimals, supply: known.supply, uri: known.uri, image: known.image, description: known.description } : await tokenInfo(p.token);
-    const maker = fromCurve ? known.maker : await txField(txTo, p.tx, "to");
-    const creator = fromCurve ? known.creator : await txField(txFrom, p.tx, "from");
+    // p.external: a coin that already trades somewhere (listed from a DEX list, no creation transaction to read)
+    const maker = fromCurve ? known.maker : p.external ? null : await txField(txTo, p.tx, "to");
+    const creator = fromCurve ? known.creator : p.external ? null : await txField(txFrom, p.tx, "from");
     // learn launchpads from known tokens
     for (const k of KNOWN_TOKENS) {
       if (p.token.startsWith(k.prefix) && p.token.endsWith(k.suffix)) {
@@ -725,10 +727,10 @@ export function makeElysium(cfg, store) {
       hooks: p.hooks || null,
       maker,
       creator,
-      launchpad: fromCurve ? known.launchpad : curveCfg && curveCfg.hook && p.hooks && lc(p.hooks) === curveCfg.hook ? curveCfg.launchpad : launchpadFor(maker, p.manager),
+      launchpad: p.launchpad ? p.launchpad : fromCurve ? known.launchpad : curveCfg && curveCfg.hook && p.hooks && lc(p.hooks) === curveCfg.hook ? curveCfg.launchpad : launchpadFor(maker, p.manager),
       ours: fromCurve ? false : isOurs(maker),
       created_block: fromCurve ? known.created_block : p.block,
-      created_at: fromCurve ? known.created_at : new Date(await timeOf(p.block)).toISOString(),
+      created_at: fromCurve ? known.created_at : p.createdAt ? new Date(p.createdAt).toISOString() : new Date(await timeOf(p.block)).toISOString(),
       price_hype: p.sqrt ? priceFromSqrt(p.sqrt, p.tokenIs0, info.decimals, p.hype === ZERO ? 18 : await decOf(p.hype)) * (await hypePerQuote(p.hype)) : null,
     };
     poolIndex.set(p.venue === "v3" ? p.pool : `${p.manager}:${p.pool}`, p.token);
@@ -892,7 +894,8 @@ export function makeElysium(cfg, store) {
   let fastOn = false;
   let newSink = null; // while a skipped stretch is filled in: the coins found there (they were unknown to the live scan)
   // coins the fast lane follows: ArkhamPad's own and ElyScreener-launched ones (not "ours" for stats)
-  const inFast = (t) => !!t && (t.ours || t.launchpad === "ElyScreener");
+  const extPads = new Set(cfg.extLaunchpads || []); // coins listed from outside (Base: Uniswap v3, Aerodrome): trades only, no holder scan
+  const inFast = (t) => !!t && (t.ours || t.launchpad === "ElyScreener" || extPads.has(t.launchpad));
   async function scanTransfers(from, to, only, pick) {
     if (only && !only.tokens.length) return 0;
     const logs = await rpc("eth_getLogs", [{ fromBlock: hex(from), toBlock: hex(to), ...(only ? { address: only.tokens } : {}), topics: [T.transfer] }]);
@@ -1195,7 +1198,7 @@ export function makeElysium(cfg, store) {
         } else await scanPools(last + 1, to, { factory: factoryOf() });
         const ours = [...store.tokens().values()].filter((t) => inFast(t) && t.venue === "v3" && t.pool);
         await scanTrades(last + 1, to, { pools: ours.map((t) => t.pool) });
-        await scanTransfers(last + 1, to, { tokens: ours.map((t) => t.address) });
+        await scanTransfers(last + 1, to, { tokens: ours.filter((t) => !extPads.has(t.launchpad)).map((t) => t.address) });
         // pictures and descriptions of new coins (normally filled after a full scan, which may be lagging)
         backfillMeta().catch(() => {});
       } catch (e) {
@@ -1281,5 +1284,5 @@ export function makeElysium(cfg, store) {
     }
   }
 
-  return { syncOnce, loop, hypeUsd, launchpadOf };
+  return { syncOnce, loop, hypeUsd, launchpadOf, addExternal: (p) => addPool({ ...p, external: true }) };
 }

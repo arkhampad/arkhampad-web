@@ -31,6 +31,12 @@ export async function makePgStore(pool0, prefix = "ely_") {
         vals
       );
     },
+    /** forget a coin completely (Four.Meme coins quoted in a token other than BNB are not listed) */
+    removeToken: async (address) => {
+      tokens.delete(address);
+      for (const t of ["ely_balances", "ely_trades"]) await pool.query(`delete from ${t} where token = $1`, [address]);
+      await pool.query("delete from ely_tokens where address = $1", [address]);
+    },
     addTrades: async (list) => {
       for (let i = 0; i < list.length; i += 500) {
         const part = list.slice(i, i + 500);

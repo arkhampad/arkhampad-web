@@ -12,6 +12,7 @@
 
 import { makeRpc } from "./elysium.mjs";
 
+export const FM_HELPER = "0xF251F83e40a78868FcfA3FA4599Dad6494E46034";
 export const FM_MANAGER = "0x5c952063c7fc8610ffdb798152d69f0b9550762b";
 const T = {
   create: "0x396d5e902b675b032348d3d2e9517ee8f0c4a926603fbc075d3d282ff00cad20",
@@ -34,7 +35,7 @@ const str = (d, i) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function fourMemeLoop({ rpcUrls, store, log = console.log, manager = FM_MANAGER, back = 300_000 }) {
-  const rpc = makeRpc(rpcUrls, () => {});
+  const rpc = makeRpc(rpcUrls, () => {}, true);
   const mgr = manager.toLowerCase();
   const blockTime = new Map();
   const timesOf = async (blocks) => {
@@ -64,6 +65,22 @@ export async function fourMemeLoop({ rpcUrls, store, log = console.log, manager 
       } catch (e) { last = e; }
     }
     throw last;
+  }
+
+  // Four.Meme also has coins whose curve is paid in a BEP20 (USDT ...): their amounts are not BNB, so they are not listed.
+  // Helper3.getTokenInfo(token) -> word 2 is the quote token (zero address = BNB)
+  const skip = new Set();
+  const bnbQuoted = new Map();
+  async function isBnb(token) {
+    if (skip.has(token)) return false;
+    if (bnbQuoted.has(token)) return true;
+    try {
+      const r = await rpc("eth_call", [{ to: FM_HELPER, data: "0x1f69565f" + token.slice(2).padStart(64, "0") }, "latest"]);
+      if (typeof r !== "string" || r.length < 2 + 64 * 3) return true; // unknown: keep, ask again later
+      if (/^0+$/.test(word(r, 2))) { bnbQuoted.set(token, true); return true; }
+      skip.add(token);
+      return false;
+    } catch { return true; }
   }
 
   // coin picture from Four.Meme's own page data (best effort: any failure just leaves the picture to DexScreener)
@@ -97,6 +114,7 @@ export async function fourMemeLoop({ rpcUrls, store, log = console.log, manager 
       if (t0 === T.create) {
         const token = addr(l.data, 1).toLowerCase();
         if (store.tokens().get(token)) continue;
+        if (!(await isBnb(token))) continue;
         const supply = big(l.data, 5);
         await store.upsertToken({
           address: token,
@@ -127,6 +145,8 @@ export async function fourMemeLoop({ rpcUrls, store, log = console.log, manager 
         const amount = big(l.data, 3);
         const cost = big(l.data, 4);
         if (amount === 0n || cost === 0n) continue;
+        if (!store.tokens().get(token) && !(await isBnb(token))) continue;
+        if (skip.has(token)) continue;
         const isBuy = t0 === T.buy;
         const price = Number(cost) / Number(amount); // BNB per token (both 18 decimals)
         trades.push({ token, tx: l.transactionHash, log_index: Number(BigInt(l.logIndex)), block: b, at, side: isBuy ? "buy" : "sell", hype: Number(cost) / 1e18, amount: Number(amount) / 1e18, price_hype: price, trader: account });
@@ -158,6 +178,13 @@ export async function fourMemeLoop({ rpcUrls, store, log = console.log, manager 
     }
     return trades.length;
   }
+
+  // once at start: drop coins listed earlier that turn out to be quoted in another token
+  (async () => {
+    for (const t of [...store.tokens().values()].filter((x) => x.venue === "fourmeme")) {
+      if (!(await isBnb(t.address)) && skip.has(t.address)) { await store.removeToken(t.address).catch(() => {}); log(`bnb: Four.Meme removed ${t.symbol} (not BNB-quoted)`); }
+    }
+  })().catch(() => {});
 
   for (;;) {
     try {

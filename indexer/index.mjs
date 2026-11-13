@@ -20,6 +20,7 @@ import { makeFees } from "./fees.mjs";
 import { CLANKER_CHAINS, TOKEN_CREATED, clankerOf, lockersOf, mcAtTick } from "./clanker.mjs";
 import { makeElysium } from "./elysium.mjs";
 import { makePgStore } from "./elysium-pg.mjs";
+import { baseExternalLoop, EXT_PADS } from "./baseexternal.mjs";
 import { fourMemeLoop } from "./fourmeme.mjs";
 const relayer = process.env.ONCE || process.env.ELY_ONLY === "1" ? null : makeRelayer();
 // ETH / BNB prices in dollars, for coins paired with the chain's own coin (Clanker launches)
@@ -572,12 +573,14 @@ async function baseLoop() {
         const tip = Number(await (await fetch(rpcs[0], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }) })).json().then((j) => BigInt(j.result)));
         await store.setState("ely_block", tip - Number(process.env.BASE_BACK || 43_200)); // Base blocks are 2 s: 43,200 is about a day
       }
-      await makeElysium({
-        rpc: rpcs, step: 1000, startBlock: 0, wrapRe: /^W?ETH$/i, priceFn: price, noGenesis: true, noTokenUri: true, launcherOnly: true, dexChain: "base",
+      const ely = makeElysium({
+        rpc: rpcs, step: 1000, startBlock: 0, wrapRe: /^W?ETH$/i, priceFn: price, noGenesis: true, noTokenUri: true, launcherOnly: true, dexChain: "base", extLaunchpads: EXT_PADS,
         esLauncher: (process.env.BASE_LAUNCHER || "0xd96dbd1e583b0972b6e13f1a8654823088468753").trim(),
         factory: (process.env.BASE_V3_FACTORY || "0x33128a8fC17869897dcE68Ed026d694621f6FDfD").trim(),
         log,
-      }, store).loop();
+      }, store);
+      if (process.env.BASE_EXTERNAL !== "0") baseExternalLoop({ rpcUrls: rpcs.join(","), ely, store, log, minLiq: Number(process.env.BASE_EXT_MIN_LIQ || 10_000), max: Number(process.env.BASE_EXT_MAX || 300) }).catch((e) => log(`base: external stopped: ${e.message}`));
+      await ely.loop();
     } catch (e) {
       log(`base: ${e.message}; restarting in 30 s`);
       await sleep(30_000);
