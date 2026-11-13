@@ -793,12 +793,14 @@ export function makeElysium(cfg, store) {
   }
 
   // only: { pools } = just these v3 pools (ArkhamPad's, the fast lane), else every pool on the chain
+  // public nodes allow only a few addresses per eth_getLogs (Base: 10): read long address lists in small groups
+  const logsIn = async (q, addrs, topics) => { const out = []; for (let i = 0; i < addrs.length; i += 8) out.push(...(await rpc("eth_getLogs", [{ ...q, address: addrs.slice(i, i + 8), topics }]))); return out; };
   async function scanTrades(from, to, only) {
     const q = { fromBlock: hex(from), toBlock: hex(to) };
     if (only && !only.pools.length && !(only.v4 && only.v4.length)) return 0;
     // only.v4: [{ manager, ids }] = just these v4 pools (Base: coins listed from outside)
     const [v3, v4, cl] = only
-      ? [only.pools.length ? await rpc("eth_getLogs", [{ ...q, address: only.pools, topics: [T.v3Swap] }]) : [], (await Promise.all((only.v4 || []).map((g) => rpc("eth_getLogs", [{ ...q, address: g.manager, topics: [T.v4Swap, g.ids] }])))).flat(), []]
+      ? [only.pools.length ? await logsIn(q, only.pools, [T.v3Swap]) : [], (await Promise.all((only.v4 || []).map((g) => rpc("eth_getLogs", [{ ...q, address: g.manager, topics: [T.v4Swap, g.ids] }])))).flat(), []]
       : await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clSwap] }]).catch(() => [])]);
     const tokens = store.tokens();
     await prefetchLive([...v3.filter((l) => poolIndex.has(lc(l.address))), ...v4.concat(cl).filter((l) => l.topics[1] && poolIndex.has(`${lc(l.address)}:${l.topics[1].toLowerCase()}`))]);
@@ -900,7 +902,7 @@ export function makeElysium(cfg, store) {
   const inFast = (t) => !!t && (t.ours || t.launchpad === "ElyScreener" || extPads.has(t.launchpad));
   async function scanTransfers(from, to, only, pick) {
     if (only && !only.tokens.length) return 0;
-    const logs = await rpc("eth_getLogs", [{ fromBlock: hex(from), toBlock: hex(to), ...(only ? { address: only.tokens } : {}), topics: [T.transfer] }]);
+    const logs = only ? await logsIn({ fromBlock: hex(from), toBlock: hex(to) }, only.tokens, [T.transfer]) : await rpc("eth_getLogs", [{ fromBlock: hex(from), toBlock: hex(to), topics: [T.transfer] }]);
     const tokens = store.tokens();
     const list = [];
     for (const l of logs) {

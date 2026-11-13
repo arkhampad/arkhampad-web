@@ -113,7 +113,7 @@ export async function baseExternalLoop({ rpcUrls, ely, store, log = console.log,
     try {
       if (!c.createdAt) return no();
       const blk = await blockAt(Date.parse(c.createdAt) / 1000, tip);
-      const logs = await rpc("eth_getLogs", [{ address: PM, topics: [V4_INIT, c.pool], fromBlock: hex(Math.max(1, blk - 4000)), toBlock: hex(Math.min(tip, blk + 4000)) }]);
+      const logs = await rpc("eth_getLogs", [{ address: PM, topics: [V4_INIT, c.pool], fromBlock: hex(Math.max(1, blk - 600)), toBlock: hex(Math.min(tip, blk + 600)) }]);
       const l = logs[0];
       if (!l) return no();
       const c0 = addrOf(l.topics[2]), c1 = addrOf(l.topics[3]);
