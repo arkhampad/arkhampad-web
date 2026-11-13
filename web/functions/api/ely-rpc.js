@@ -3,9 +3,9 @@
 // next one after a short timeout. Swapping or adding nodes is one Cloudflare variable (ELY_UPSTREAMS,
 // comma-separated), with no site change, and upstream nodes only ever see Cloudflare, not our users.
 // (rpc.ronspad.fun dropped Oct 31: thousands of blocks behind, it answered with old balances)
-const DEFAULT = ["https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.elysp.com", "https://rpc.elysium.kinetiq.xyz", "https://rpc-live.boxa.club"];
+const DEFAULT = ["https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
 // every public node limits each address to a couple of calls a second; its answer can be a 429 or an error text that names one
-const BUSY = /rate limit|too many|capacity|-32005|-32017|\b429\b|upstreams? unavailable/i;
+const BUSY = /rate limit|too many|capacity|-32005|-32017|\b429\b|upstreams? unavailable|not available to this site/i;
 // answers that barely change are kept for a few seconds, so a wallet asking again and again does not use up the nodes
 const KEEP = new Map(); const KEEP_FOR = { eth_chainId: 3600e3, eth_gasPrice: 4000, eth_maxPriorityFeePerGas: 4000, net_version: 3600e3 };
 const SEND_ALSO = ["https://rpc.ronspad.fun"];
@@ -93,7 +93,12 @@ export async function onRequestPost({ request, env, waitUntil }) {
       if (j.error) throw Object.assign(new Error("rpc"), { out, busy: BUSY.test(out) });
       return out;
     });
-    const good = await Promise.any(tries).catch((e) => e);
+    let good = await Promise.any(tries).catch((e) => e);
+    // every node busy at the same moment: wait a beat and ask them all again (their limits refill every second)
+    for (let round = 0; round < 2 && typeof good !== "string" && (good?.errors || []).every((x) => !x?.out || x.busy); round++) {
+      await new Promise((r) => setTimeout(r, 450));
+      good = await Promise.any(upstreams.map(async (url) => { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: text, signal: AbortSignal.timeout(6000) }); const out = await r.text(); let j = null; try { j = JSON.parse(out); } catch {} if (!j || j.error) throw Object.assign(new Error("busy"), { out: j ? out : "", busy: !j || BUSY.test(out) }); return out; })).catch((e) => e);
+    }
     if (typeof good === "string") { waitUntil?.(Promise.allSettled(tries)); if (keepMs) { try { const j = JSON.parse(good); if (j?.result != null) KEEP.set(calls.method, { at: Date.now(), j }); } catch {} } return reply(good); }
     const real = (good?.errors || []).find((x) => x?.out && !x.busy);
     if (real) return reply(real.out);
