@@ -579,7 +579,7 @@ async function baseLoop() {
         factory: (process.env.BASE_V3_FACTORY || "0x33128a8fC17869897dcE68Ed026d694621f6FDfD").trim(),
         log,
       }, store);
-      if (process.env.BASE_EXTERNAL !== "0") baseExternalLoop({ rpcUrls: rpcs.join(","), ely, store, log, minLiq: Number(process.env.BASE_EXT_MIN_LIQ || 10_000), max: Number(process.env.BASE_EXT_MAX || 300) }).catch((e) => log(`base: external stopped: ${e.message}`));
+      if (process.env.BASE_EXTERNAL !== "0") baseExternalLoop({ rpcUrls: rpcs.join(","), ely, store, log, minLiq: Number(process.env.BASE_EXT_MIN_LIQ || 10_000), max: Number(process.env.BASE_EXT_MAX || 500) }).catch((e) => log(`base: external stopped: ${e.message}`));
       await ely.loop();
     } catch (e) {
       log(`base: ${e.message}; restarting in 30 s`);

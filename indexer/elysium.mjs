@@ -794,9 +794,10 @@ export function makeElysium(cfg, store) {
   // only: { pools } = just these v3 pools (ArkhamPad's, the fast lane), else every pool on the chain
   async function scanTrades(from, to, only) {
     const q = { fromBlock: hex(from), toBlock: hex(to) };
-    if (only && !only.pools.length) return 0;
+    if (only && !only.pools.length && !(only.v4 && only.v4.length)) return 0;
+    // only.v4: [{ manager, ids }] = just these v4 pools (Base: coins listed from outside)
     const [v3, v4, cl] = only
-      ? [await rpc("eth_getLogs", [{ ...q, address: only.pools, topics: [T.v3Swap] }]), [], []]
+      ? [only.pools.length ? await rpc("eth_getLogs", [{ ...q, address: only.pools, topics: [T.v3Swap] }]) : [], (await Promise.all((only.v4 || []).map((g) => rpc("eth_getLogs", [{ ...q, address: g.manager, topics: [T.v4Swap, g.ids] }])))).flat(), []]
       : await Promise.all([rpc("eth_getLogs", [{ ...q, topics: [T.v3Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.v4Swap] }]), rpc("eth_getLogs", [{ ...q, topics: [T.clSwap] }]).catch(() => [])]);
     const tokens = store.tokens();
     await prefetchLive([...v3.filter((l) => poolIndex.has(lc(l.address))), ...v4.concat(cl).filter((l) => l.topics[1] && poolIndex.has(`${lc(l.address)}:${l.topics[1].toLowerCase()}`))]);
@@ -1197,7 +1198,9 @@ export function makeElysium(cfg, store) {
           if (v3.length) await scanPools(last + 1, to, { logs: { v3, v4: [], cl: [] } });
         } else await scanPools(last + 1, to, { factory: factoryOf() });
         const ours = [...store.tokens().values()].filter((t) => inFast(t) && t.venue === "v3" && t.pool);
-        await scanTrades(last + 1, to, { pools: ours.map((t) => t.pool) });
+        const v4g = new Map();
+        for (const t of store.tokens().values()) if (inFast(t) && t.venue === "v4" && t.pool && t.manager) (v4g.get(t.manager) || v4g.set(t.manager, []).get(t.manager)).push(t.pool);
+        await scanTrades(last + 1, to, { pools: ours.map((t) => t.pool), v4: [...v4g].map(([manager, ids]) => ({ manager, ids })) });
         await scanTransfers(last + 1, to, { tokens: ours.filter((t) => !extPads.has(t.launchpad)).map((t) => t.address) });
         // pictures and descriptions of new coins (normally filled after a full scan, which may be lagging)
         backfillMeta().catch(() => {});
@@ -1284,5 +1287,5 @@ export function makeElysium(cfg, store) {
     }
   }
 
-  return { syncOnce, loop, hypeUsd, launchpadOf, addExternal: (p) => addPool({ ...p, external: true }) };
+  return { syncOnce, loop, hypeUsd, launchpadOf, addExternal: (p) => addPool({ ...p, external: true }), backfillPool: (t, from, to) => scanTrades(from, to, t.venue === "v4" ? { pools: [], v4: [{ manager: t.manager, ids: [t.pool] }] } : { pools: [t.pool] }), rpc };
 }
