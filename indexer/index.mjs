@@ -524,7 +524,7 @@ async function rhLoop() {
 // Own tables (db/041_bnb_chain.sql). Starts by itself once those tables exist.
 async function bnbLoop() {
   const log = (m) => console.log(String(m).replace(/^elysium:/, "bnb:"));
-  const rpcs = [...String(process.env.BNB_RPC || "").split(","), "https://bsc-dataseed.bnbchain.org", "https://bsc-dataseed1.defibit.io", "https://bsc-dataseed1.ninicoin.io", "https://bsc-rpc.publicnode.com"].map((x) => x.trim()).filter(Boolean);
+  const rpcs = [...String(process.env.BNB_RPC || "").split(","), "https://bsc-dataseed.bnbchain.org", "https://bsc-dataseed1.defibit.io", "https://bsc-dataseed1.ninicoin.io", "https://bsc-rpc.publicnode.com", "https://1rpc.io/bnb", "https://bsc.drpc.org"].map((x) => x.trim()).filter(Boolean);
   const price = async () => {
     for (const [url, pick] of [["https://api.coinbase.com/v2/prices/BNB-USD/spot", (j) => j?.data?.amount], ["https://api.kraken.com/0/public/Ticker?pair=BNBUSD", (j) => Object.values(j?.result || {})[0]?.c?.[0]], ["https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT", (j) => j?.price]]) {
       try { const v = Number(pick(await (await fetch(url, { signal: AbortSignal.timeout(8000) })).json())); if (v > 0) return v; } catch {}
@@ -556,7 +556,7 @@ async function bnbLoop() {
 }
 async function baseLoop() {
   const log = (m) => console.log(String(m).replace(/^elysium:/, "base:"));
-   const rpcs = [...String(process.env.BASE_RPC || "").split(","), "https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.llamarpc.com"].map((x) => x.trim()).filter(Boolean);
+   const rpcs = [...String(process.env.BASE_RPC || "").split(","), "https://mainnet.base.org", "https://base-rpc.publicnode.com", "https://base.llamarpc.com", "https://1rpc.io/base", "https://base.drpc.org"].map((x) => x.trim()).filter(Boolean);
   const price = async () => {
     for (const [url, pick] of [["https://api.coinbase.com/v2/prices/ETH-USD/spot", (j) => j?.data?.amount], ["https://api.kraken.com/0/public/Ticker?pair=ETHUSD", (j) => j?.result?.XETHZUSD?.c?.[0]]]) {
       try { const v = Number(pick(await (await fetch(url, { signal: AbortSignal.timeout(8000) })).json())); if (v > 0) return v; } catch {}

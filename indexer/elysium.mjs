@@ -158,7 +158,8 @@ export function makeRpc(urls, log = console.log, plain = false) {
         // a node that is a few blocks behind says "beyond current head": just ask the next node
         if (/beyond current head|header not found|unknown block/i.test(e.message)) continue;
         // a node that is busy / rate limiting us: the next node (it's not about the range)
-        if (/rate limit|server busy|retry shortly|too many requests|capacity/i.test(e.message)) continue;
+        // (BNB's public nodes answer "limit exceeded" and Base's "request limit reached" when they are busy, whatever the range: the next node)
+        if (/rate limit|server busy|retry shortly|too many requests|capacity|^[a-zA-Z_]+: limit exceeded|request limit/i.test(e.message)) continue;
         // the range is too big for this node: the caller asks again with a smaller one
         if (/range|too many|limit|exceed/i.test(e.message) && method === "eth_getLogs") throw e;
         if (i % list.length === list.length - 1) await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
