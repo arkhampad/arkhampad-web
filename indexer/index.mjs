@@ -544,7 +544,7 @@ async function bnbLoop() {
       }
       if (process.env.BNB_FOURMEME !== "0") fourMemeLoop({ rpcUrls: rpcs.join(","), store, log, back: Number(process.env.BNB_FM_BACK || 300_000) }).catch((e) => log(`bnb: Four.Meme stopped: ${e.message}`));
       await makeElysium({
-        rpc: rpcs, step: 1000, startBlock: 0, wrapRe: /^W?BNB$/i, priceFn: price, noGenesis: true, noTokenUri: true, launcherOnly: true, dexChain: "bsc",
+        rpc: rpcs, step: 1000, startBlock: 0, wrapRe: /^W?BNB$/i, priceFn: price, noGenesis: true, noTokenUri: true, launcherOnly: true, fastMs: Number(process.env.FAST_MS || 6000), dexChain: "bsc",
         esLauncher: (process.env.BNB_LAUNCHER || "0x179Cd8A5FA18A75499e5e8a327f0c7E61DF55e25").trim(),
         factory: (process.env.BNB_V3_FACTORY || "0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7").trim(),
         log,
@@ -575,7 +575,7 @@ async function baseLoop() {
         await store.setState("ely_block", tip - Number(process.env.BASE_BACK || 43_200)); // Base blocks are 2 s: 43,200 is about a day
       }
       const ely = makeElysium({
-        rpc: rpcs, step: 1000, startBlock: 0, wrapRe: /^W?ETH$/i, priceFn: price, noGenesis: true, noTokenUri: true, launcherOnly: true, dexChain: "base", extLaunchpads: EXT_PADS,
+        rpc: rpcs, step: 1000, startBlock: 0, wrapRe: /^W?ETH$/i, priceFn: price, noGenesis: true, noTokenUri: true, launcherOnly: true, fastMs: Number(process.env.FAST_MS || 6000), dexChain: "base", extLaunchpads: EXT_PADS,
         esLauncher: (process.env.BASE_LAUNCHER || "0xd96dbd1e583b0972b6e13f1a8654823088468753").trim(),
         factory: (process.env.BASE_V3_FACTORY || "0x33128a8fC17869897dcE68Ed026d694621f6FDfD").trim(),
         log,

@@ -1230,7 +1230,7 @@ export function makeElysium(cfg, store) {
     log("elysium: fast lane for ArkhamPad coins on");
     for (;;) {
       try { await fastOnce(); } catch (e) { log(`elysium: fast lane ${e.message}`); await new Promise((r) => setTimeout(r, 5000)); }
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, cfg.fastMs || 2000)); // Base / BNB: a slower beat keeps a keyed RPC inside its free quota
     }
   }
   // Watchdog: the saved block must keep moving (or be at the chain tip). If it hasn't for 10 minutes,
