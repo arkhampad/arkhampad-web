@@ -12,6 +12,12 @@ import { PIONEER } from "@/lib/pioneer";
 import { PIONEER_CODE } from "@/lib/pioneer-code";
 import { fetchHypeUsd, fetchOurCoinsVolume, fetchTokensByAddress, money, usePoll, type EOurCoin } from "@/lib/ely";
 
+/** Run a loader at most once every 30 s, however many panels ask (the overview and the detail panels share one read). */
+function memo<T>(fn: () => Promise<T>): () => Promise<T> {
+  let at = 0;
+  let p: Promise<T> | undefined;
+  return () => { if (!p || Date.now() - at > 30_000) { at = Date.now(); p = fn().catch((e) => { at = 0; throw e; }); } return p; };
+}
 const START_BLOCK = 65000n; // just before the mainnet deploy
 const TRADE = parseAbiItem("event Trade(address indexed user, address indexed token, bool isBuy, uint256 hypeAmount, uint256 tokenAmount, uint256 fee)");
 const LAUNCHED = parseAbiItem("event Launched(address indexed coin, address indexed creator, address pool, uint256 tokenId, string name, string symbol, string uri, uint256 startMc, uint256 firstBuyIn, uint256 firstBuyOut)");
@@ -353,11 +359,8 @@ let rhClient: ReturnType<typeof createPublicClient> | null = null;
 const rh = () => (rhClient ??= createPublicClient({ transport: http(RH_RPC) }));
 type RhRow = { tx: string; who: string; token: string; buy: boolean; eth: number; fee: number; block: number; at?: number };
 
-function RobinhoodRevenue() {
-  const ethUsd = usePoll(async () => {
-    try { const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd").then((x) => x.json()); return Number(r?.ethereum?.usd ?? 0); } catch { return 0; }
-  }, 300_000) ?? 0;
-  const data = usePoll(async () => {
+/** Robinhood Chain swaps through our routers (last 7 days); shared by the overview and its own panel. */
+const loadRh = memo(async () => {
     const c = rh();
     const [bal, tip] = await Promise.all([c.getBalance({ address: RH_TREASURY }), c.getBlockNumber()]);
     const from0 = tip > 6_000_000n ? tip - 6_000_000n : 0n; // about 7 days at 100 ms blocks
@@ -381,7 +384,13 @@ function RobinhoodRevenue() {
     const recent = rows.slice(0, 8);
     await Promise.all(recent.map(async (r) => { try { r.at = Number((await c.getBlock({ blockNumber: BigInt(r.block) })).timestamp); } catch {} }));
     return { bal: Number(bal) / 1e18, n: rows.length, fee: rows.reduce((x, r) => x + r.fee, 0), vol: rows.reduce((x, r) => x + r.eth, 0), recent, ok: failed === 0 };
-  }, 120_000);
+});
+
+function RobinhoodRevenue() {
+  const ethUsd = usePoll(async () => {
+    try { const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd").then((x) => x.json()); return Number(r?.ethereum?.usd ?? 0); } catch { return 0; }
+  }, 300_000) ?? 0;
+  const data = usePoll(loadRh, 120_000);
   const u = (n: number) => (ethUsd ? money(n * ethUsd) : "");
   return (
     <section className="e-panel"><div className="e-trade">
@@ -418,10 +427,8 @@ const SCREENER_ROUTER = "0xB1EEcB952D4853EAFCD219c0060218EAc6F2150a";
 type EsOrder = { id: number; plan: string; kind: string; token: string | null; pay_asset: string; usd: number; paid_at: string };
 const PLAN_NAMES: Record<string, string> = { profile: "Verified profile", boost12: "Boost 12h", boost24: "Boost 24h", boost72: "Boost 72h", banner1: "Banner 1 day", banner7: "Banner 7 days" };
 
-/** ElyScreener's income: 0.5% router fee on swaps made on elyscreener.com + paid Verified / Boost / Banner orders. */
-function ScreenerRevenue() {
-  const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
-  const data = usePoll(async () => {
+/** Elysium swaps made on elyscreener.com (hashes the site reported, read from their receipts) and paid promotions. */
+const loadEly = memo(async () => {
     const rv = await fetch("/api/revenue", { cache: "no-store" }).then((r) => r.json()).catch(() => ({}));
     const hashes = ((rv?.swaps as string[]) ?? []).slice(0, 300);
     const router = (ROUTER || SCREENER_ROUTER).toLowerCase();
@@ -448,7 +455,12 @@ function ScreenerRevenue() {
       es: { n: rows.length, fee: rows.reduce((x, r) => x + r.fee, 0), vol: rows.reduce((x, r) => x + r.hype, 0) },
       recent,
     };
-  }, 120_000);
+});
+
+/** ElyScreener's income: 0.5% router fee on swaps made on elyscreener.com + paid Verified / Boost / Banner orders. */
+function ScreenerRevenue() {
+  const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
+  const data = usePoll(loadEly, 120_000);
   const orders = data?.orders ?? [];
   const day = Date.now() - 86400_000;
   const promoAll = orders.reduce((a, o) => a + o.usd, 0);
@@ -508,6 +520,124 @@ function ScreenerRevenue() {
   );
 }
 
+
+/* ---------------------------------------------------------------------------------------------------------------------------
+ * ElyScreener overview: every chain on one screen. Coins listed, what traded in the last 24h, how many swaps were made through
+ * our routers on elyscreener.com and what the 0.5% fee brought in, in the chain's own coin and in dollars.
+ * ------------------------------------------------------------------------------------------------------------------------- */
+const SB_REST = "https://yvdudswzmdziwnfurwir.supabase.co/rest/v1";
+const SB_KEY_PUB = "sb_publishable_S49UWqqXDzSaRbjBsAfYaA_kjfxyRPB";
+const sbHead = { apikey: SB_KEY_PUB, authorization: `Bearer ${SB_KEY_PUB}` };
+/** exact row count of a table query (PostgREST: Content-Range "0-0/1234") */
+async function sbCount(path: string): Promise<number | null> {
+  try {
+    const r = await fetch(`${SB_REST}/${path}`, { headers: { ...sbHead, prefer: "count=exact", range: "0-0" } });
+    const n = Number((r.headers.get("content-range") ?? "").split("/")[1]);
+    return Number.isFinite(n) ? n : null;
+  } catch { return null; }
+}
+async function sbRows<T>(path: string): Promise<T[]> {
+  try { const r = await fetch(`${SB_REST}/${path}`, { headers: sbHead }); const j = await r.json(); return Array.isArray(j) ? (j as T[]) : []; } catch { return []; }
+}
+const TRADE_N = parseAbiItem("event Trade(address indexed user, address indexed token, bool isBuy, uint256 hypeAmount, uint256 tokenAmount, uint256 fee)");
+const TREASURY_ABI = parseAbi(["function treasury() view returns (address)"]);
+type XChain = { key: string; name: string; native: string; cg: string; pfx: string; rpc: string; router: Address; back: bigint; step: bigint; days: number };
+// BNB Chain and Base: our router is new, so the last few days of its Trade events are everything it ever did
+const X_CHAINS: XChain[] = [
+  { key: "bnb", name: "BNB Chain", native: "BNB", cg: "binancecoin", pfx: "bnb_", rpc: "https://bsc-dataseed.bnbchain.org", router: "0x962856ee534d217529E70478651751d2CC02EcbB", back: 150_000n, step: 5_000n, days: 5 },
+  { key: "base", name: "Base", native: "ETH", cg: "ethereum", pfx: "base_", rpc: "https://mainnet.base.org", router: "0xbfdf97855cae452339811a74789bd167238c7a4a", back: 260_000n, step: 20_000n, days: 6 },
+];
+const xMemo = new Map<string, () => Promise<{ n: number; fee: number; vol: number; ok: boolean; treasury: string | null }>>();
+function loadX(c: XChain) {
+  if (!xMemo.has(c.key)) xMemo.set(c.key, memo(async () => {
+    const client = createPublicClient({ transport: http(c.rpc) });
+    const tip = await client.getBlockNumber();
+    const from0 = tip > c.back ? tip - c.back : 0n;
+    let n = 0, fee = 0, vol = 0, failed = 0;
+    const pull = async (a: bigint, b: bigint): Promise<void> => {
+      try {
+        const logs = await client.getLogs({ address: c.router, event: TRADE_N, fromBlock: a, toBlock: b });
+        for (const l of logs) { n++; fee += Number(l.args.fee ?? 0n) / 1e18; vol += Number(l.args.hypeAmount ?? 0n) / 1e18; }
+      } catch { if (b - a < 500n) { failed++; return; } const m = a + (b - a) / 2n; await pull(a, m); await pull(m + 1n, b); }
+    };
+    for (let a = from0; a <= tip; a += c.step) await pull(a, a + c.step - 1n > tip ? tip : a + c.step - 1n);
+    const treasury = await client.readContract({ address: c.router, abi: TREASURY_ABI, functionName: "treasury" }).catch(() => null);
+    return { n, fee, vol, ok: failed === 0, treasury: treasury as string | null };
+  }));
+  return xMemo.get(c.key)!;
+}
+
+type Row = { key: string; name: string; native: string; coins: number | null; traded: number | null; vol24: number; swaps: number | null; fee: number | null; swapVol: number | null; usd: number; period: string; ok: boolean; note?: string };
+
+function ChainsOverview() {
+  const prices = usePoll(async () => {
+    try { const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum,binancecoin&vs_currencies=usd").then((x) => x.json()); return { ETH: Number(r?.ethereum?.usd ?? 0), BNB: Number(r?.binancecoin?.usd ?? 0) }; } catch { return { ETH: 0, BNB: 0 }; }
+  }, 300_000);
+  const hypeUsd = usePoll(fetchHypeUsd, 60_000) ?? 0;
+  const base = usePoll(async () => {
+    const defs: { key: string; pfx: string }[] = [{ key: "elysium", pfx: "ely_" }, { key: "rh", pfx: "rh_" }, { key: "bnb", pfx: "bnb_" }, { key: "base", pfx: "base_" }];
+    return Promise.all(defs.map(async (d) => {
+      const [coins, traded, vols] = await Promise.all([
+        sbCount(`${d.pfx}tokens?select=address`),
+        sbCount(`${d.pfx}tokens?select=address&or=(buys24.gt.0,sells24.gt.0)`),
+        sbRows<{ vol24_hype: number | null }>(`${d.pfx}tokens?select=vol24_hype&vol24_hype=gt.0&limit=5000`),
+      ]);
+      return { key: d.key, coins, traded, vol24: vols.reduce((a, r) => a + Number(r.vol24_hype ?? 0), 0) };
+    }));
+  }, 120_000);
+  const ely = usePoll(loadEly, 120_000);
+  const rhd = usePoll(loadRh, 120_000);
+  const bnb = usePoll(loadX(X_CHAINS[0]), 120_000);
+  const bse = usePoll(loadX(X_CHAINS[1]), 120_000);
+  const px = { HYPE: hypeUsd, ETH: prices?.ETH ?? 0, BNB: prices?.BNB ?? 0 } as Record<string, number>;
+  const b = (k: string) => base?.find((x) => x.key === k);
+  const rows: Row[] = [
+    { key: "elysium", name: "Elysium", native: "HYPE", coins: b("elysium")?.coins ?? null, traded: b("elysium")?.traded ?? null, vol24: b("elysium")?.vol24 ?? 0, swaps: ely ? ely.es.n : null, fee: ely ? ely.es.fee : null, swapVol: ely ? ely.es.vol : null, usd: px.HYPE, period: "all time", ok: ely ? ely.chainOk : true },
+    { key: "rh", name: "Robinhood Chain", native: "ETH", coins: b("rh")?.coins ?? null, traded: b("rh")?.traded ?? null, vol24: b("rh")?.vol24 ?? 0, swaps: rhd ? rhd.n : null, fee: rhd ? rhd.fee : null, swapVol: rhd ? rhd.vol : null, usd: px.ETH, period: "last 7 days", ok: rhd ? rhd.ok : true },
+    { key: "bnb", name: "BNB Chain", native: "BNB", coins: b("bnb")?.coins ?? null, traded: b("bnb")?.traded ?? null, vol24: b("bnb")?.vol24 ?? 0, swaps: bnb ? bnb.n : null, fee: bnb ? bnb.fee : null, swapVol: bnb ? bnb.vol : null, usd: px.BNB, period: `last ${X_CHAINS[0].days} days`, ok: bnb ? bnb.ok : true },
+    { key: "base", name: "Base", native: "ETH", coins: b("base")?.coins ?? null, traded: b("base")?.traded ?? null, vol24: b("base")?.vol24 ?? 0, swaps: bse ? bse.n : null, fee: bse ? bse.fee : null, swapVol: bse ? bse.vol : null, usd: px.ETH, period: `last ${X_CHAINS[1].days} days`, ok: bse ? bse.ok : true },
+  ];
+  const loaded = !!base && !!ely && !!rhd && !!bnb && !!bse;
+  const totalCoins = rows.reduce((a, r) => a + (r.coins ?? 0), 0);
+  const totalSwaps = rows.reduce((a, r) => a + (r.swaps ?? 0), 0);
+  const feeUsd = (r: Row) => (r.fee ?? 0) * r.usd;
+  const swapFees = rows.reduce((a, r) => a + feeUsd(r), 0);
+  const promo = ((ely?.orders ?? []) as EsOrder[]).reduce((a, o) => a + o.usd, 0);
+  const active = rows.filter((r) => (r.swaps ?? 0) > 0);
+  const nf = (n: number, d = 4) => n.toLocaleString("en-US", { maximumFractionDigits: n >= 100 ? 1 : d });
+  return (
+    <section className="e-panel"><div className="e-trade">
+      <h3 className="e-ph" style={{ margin: 0 }}>ElyScreener overview <span className="dim" style={{ fontSize: 12.5, fontWeight: 600 }}>all chains in one place</span></h3>
+      {!loaded ? <p className="dim">Loading every chain…</p> : null}
+      <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", padding: 0, border: 0 }}>
+        <div><span>Total income</span><b>{money(swapFees + promo)}</b><small className="dim">swap fees + promotions</small></div>
+        <div><span>Swap fees (0.5%)</span><b>{money(swapFees)}</b><small className="dim">{totalSwaps} swaps made on the site</small></div>
+        <div><span>Promotions</span><b>{money(promo)}</b><small className="dim">Verified, Boost, Banner</small></div>
+        <div><span>Coins listed</span><b>{totalCoins.toLocaleString("en-US")}</b><small className="dim">on {rows.length} chains</small></div>
+        <div><span>Chains with swaps</span><b>{active.length} of {rows.length}</b><small className="dim">{active.length ? active.map((r) => r.name).join(", ") : "none yet"}</small></div>
+      </div>
+      <div style={{ display: "grid", gap: 10 }}>
+        {rows.map((r) => (
+          <div key={r.key} style={{ border: "1px solid var(--e-line)", borderRadius: 12, padding: "12px 14px", display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
+              <b style={{ fontSize: 16 }}>{r.name}</b>
+              <span className="dim" style={{ fontSize: 12.5 }}>paid in {r.native} · swaps counted {r.period}</span>
+            </div>
+            <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", padding: 0, border: 0 }}>
+              <div><span>Coins listed</span><b>{r.coins == null ? "…" : r.coins.toLocaleString("en-US")}</b><small className="dim">{r.traded == null ? "" : `${r.traded.toLocaleString("en-US")} traded in 24h`}</small></div>
+              <div><span>24h volume</span><b>{r.vol24 ? `${nf(r.vol24, 2)} ${r.native}` : "—"}</b><small className="dim">{r.vol24 && r.usd ? money(r.vol24 * r.usd) : "all coins on the chain"}</small></div>
+              <div><span>Site swaps</span><b>{r.swaps == null ? "…" : r.swaps}</b><small className="dim">{r.swapVol ? `${nf(r.swapVol, 3)} ${r.native} traded` : "buy / sell on elyscreener.com"}</small></div>
+              <div><span>Fees earned</span><b>{r.fee == null ? "…" : `${nf(r.fee, 5)} ${r.native}`}</b><small className="dim">{r.fee && r.usd ? money(feeUsd(r)) : r.swaps === 0 ? "no swaps yet" : ""}</small></div>
+            </div>
+            {!r.ok && <span className="dim" style={{ fontSize: 12.5 }}>Part of this chain's history could not be read right now. Reload in a minute.</span>}
+          </div>
+        ))}
+      </div>
+      <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Coins listed counts every coin the site knows on that chain. Fees are the 0.5% our router takes on swaps made on elyscreener.com; trades made on other sites do not count. Four.Meme coins on BNB Chain are traded directly on Four.Meme, so they bring no fee. Numbers refresh every two minutes.</p>
+    </div></section>
+  );
+}
+
 export function OpsPage() {
   const w = useWallet();
   const [s, setS] = useState<S | null>(null);
@@ -563,6 +693,7 @@ export function OpsPage() {
   return (
     <main className="e-in e-page">
       <section className="e-hero"><div><span className="e-eyebrow">Ops</span><h1>ArkhamPad ops</h1></div></section>
+      <ChainsOverview />
       <Funnel />
       <ScreenerRevenue />
       <RobinhoodRevenue />
