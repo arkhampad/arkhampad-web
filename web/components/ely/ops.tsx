@@ -86,7 +86,7 @@ function Earnings() {
   const toCreators = vol * 0.003;
   const h = (x: number) => `${x.toFixed(4)} HYPE`;
   const u = (x: number) => (usd ? money(x * usd) : "");
-  const cols = "1.4fr .8fr .9fr .9fr .9fr";
+  const cols = "minmax(120px,1.4fr) 76px 70px minmax(100px,1fr) 84px";
   return (
     <section className="e-panel"><div className="e-trade">
       <h3 className="e-ph" style={{ margin: 0 }}>Earnings <span className="dim" style={{ fontSize: 12.5, fontWeight: 600 }}>coins launched on ArkhamPad: 1% fee per trade, 70% ArkhamPad · 30% creator</span></h3>
@@ -99,12 +99,12 @@ function Earnings() {
         <div><span>Volume, our coins</span><b>{coins ? h(vol) : "…"}</b><small className="dim">{coins ? u(vol) : ""}</small></div>
       </div>
       <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Earned = 0.7% of every trade on our coins. Fees sit in each pool until the keeper collects them (every 30 min); sell-side fees arrive in the coin itself. Router fees on other launchpads' coins are in Site activity.</p>
-      <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
-        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, fontWeight: 700 }} className="dim">
+      <div style={{ display: "grid", gap: 2, fontSize: 13.5, overflowX: "auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8, fontWeight: 700, minWidth: 540 }} className="dim">
           <span>Coin · creator</span><span>Trades</span><span>Volume</span><span>ArkhamPad earned</span><span>Collected</span>
         </div>
         {list.map((c) => (
-          <a key={c.address} href={`/t/?a=${c.address}`} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, padding: "8px 0", borderTop: "1px solid var(--e-line)", alignItems: "center" }}>
+          <a key={c.address} href={`/t/?a=${c.address}`} style={{ display: "grid", gridTemplateColumns: cols, gap: 8, minWidth: 540, padding: "8px 0", borderTop: "1px solid var(--e-line)", alignItems: "center" }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><b>${c.symbol}</b> <span className="dim num">{c.creator ? short(c.creator) : ""}</span></span>
             <span className="num">{c.trades} <span className="dim">({c.buys}/{c.sells})</span></span>
             <span className="num">{c.vol.toFixed(3)}</span>
@@ -408,9 +408,9 @@ function RobinhoodRevenue() {
             <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
               <div className="dim" style={{ fontWeight: 700 }}>Latest swaps</div>
               {data.recent.map((r) => (
-                <div key={r.tx + r.block} style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 8, padding: "6px 0", borderTop: "1px solid var(--e-line)" }}>
+                <div key={r.tx + r.block} style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", padding: "6px 0", borderTop: "1px solid var(--e-line)" }}>
                   <b className={r.buy ? "up" : "down"}>{r.buy ? "buy" : "sell"}</b>
-                  <span className="num dim" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{short(r.who)} · {r.eth.toFixed(5)} ETH</span>
+                  <span className="num dim" style={{ flex: "1 1 150px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{short(r.who)} · {r.eth.toFixed(5)} ETH</span>
                   <span className="num">{r.fee.toFixed(6)} ETH{r.at ? ` · ${new Date(r.at * 1000).toLocaleString()}` : ""}</span>
                 </div>
               ))}
@@ -495,9 +495,9 @@ function ScreenerRevenue() {
             <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
               <div className="dim" style={{ fontWeight: 700 }}>Latest swaps on ElyScreener</div>
               {data.recent.map((r) => (
-                <div key={r.tx} style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 8, padding: "6px 0", borderTop: "1px solid var(--e-line)" }}>
+                <div key={r.tx} style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", padding: "6px 0", borderTop: "1px solid var(--e-line)" }}>
                   <b className={r.buy ? "up" : "down"}>{r.buy ? "buy" : "sell"}</b>
-                  <span className="num dim" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{short(r.who)} · {r.hype.toFixed(3)} HYPE</span>
+                  <span className="num dim" style={{ flex: "1 1 150px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{short(r.who)} · {r.hype.toFixed(3)} HYPE</span>
                   <span className="num">{r.fee.toFixed(4)} HYPE{r.at ? ` · ${new Date(r.at * 1000).toLocaleString()}` : ""}</span>
                 </div>
               ))}
@@ -580,7 +580,7 @@ function ChainsOverview() {
       const [coins, traded, vols] = await Promise.all([
         sbCount(`${d.pfx}tokens?select=address`),
         sbCount(`${d.pfx}tokens?select=address&or=(buys24.gt.0,sells24.gt.0)`),
-        sbRows<{ vol24_hype: number | null; mcap_hype: number | null }>(`${d.pfx}tokens?select=vol24_hype,mcap_hype&vol24_hype=gt.0&limit=5000`),
+        sbRows<{ vol24_hype: number | null; mcap_hype: number | null; mcap_usd: number | null; holders: number | null; launchpad: string | null }>(`${d.pfx}tokens?select=vol24_hype,mcap_hype,mcap_usd,holders,launchpad&vol24_hype=gt.0&limit=5000`),
       ]);
       return { key: d.key, coins, traded, vols };
     }));
@@ -592,7 +592,8 @@ function ChainsOverview() {
   const px = { HYPE: hypeUsd, ETH: prices?.ETH ?? 0, BNB: prices?.BNB ?? 0 } as Record<string, number>;
   const b = (k: string) => base?.find((x) => x.key === k);
   // like the lists on the site: a coin under $1K market cap counts no volume, and volume above 20x market cap is wash trading
-  const vol24Of = (k: string, native: string) => { const usd = px[native] || 0; return (b(k)?.vols ?? []).reduce((a, r) => { const mc = Number(r.mcap_hype ?? 0), v = Number(r.vol24_hype ?? 0); return mc * usd >= 1000 || !usd ? a + Math.min(v, 20 * mc) : a; }, 0); };
+  const EXT_PADS_OPS = ["Uniswap v3", "Aerodrome", "Uniswap v4", "Clanker"];
+  const vol24Of = (k: string, native: string) => { const usd = px[native] || 0; if (!usd) return 0; return (b(k)?.vols ?? []).reduce((a, r) => { const mc = Number(r.mcap_usd ?? Number(r.mcap_hype ?? 0) * usd), v = Number(r.vol24_hype ?? 0) * usd; const fake = !EXT_PADS_OPS.includes(String(r.launchpad)) && Number(r.holders ?? 0) < 10 && mc > 100_000; return mc >= 1000 && !fake ? a + Math.min(v, 20 * mc) / usd : a; }, 0); };
   const rows: Row[] = [
     { key: "elysium", name: "Elysium", native: "HYPE", coins: b("elysium")?.coins ?? null, traded: b("elysium")?.traded ?? null, vol24: vol24Of("elysium", "HYPE"), swaps: ely ? ely.es.n : null, fee: ely ? ely.es.fee : null, swapVol: ely ? ely.es.vol : null, usd: px.HYPE, period: "all time", ok: ely ? ely.chainOk : true },
     { key: "rh", name: "Robinhood Chain", native: "ETH", coins: b("rh")?.coins ?? null, traded: b("rh")?.traded ?? null, vol24: vol24Of("rh", "ETH"), swaps: rhd ? rhd.n : null, fee: rhd ? rhd.fee : null, swapVol: rhd ? rhd.vol : null, usd: px.ETH, period: "last 7 days", ok: rhd ? rhd.ok : true },
