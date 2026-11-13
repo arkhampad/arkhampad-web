@@ -3,7 +3,11 @@
 // next one after a short timeout. Swapping or adding nodes is one Cloudflare variable (ELY_UPSTREAMS,
 // comma-separated), with no site change, and upstream nodes only ever see Cloudflare, not our users.
 // (rpc.ronspad.fun dropped Oct 31: thousands of blocks behind, it answered with old balances)
-const DEFAULT = ["https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.elysp.com", "https://rpc-live.boxa.club"];
+const DEFAULT = ["https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.elysp.com", "https://rpc.elysium.kinetiq.xyz", "https://rpc-live.boxa.club"];
+// every public node limits each address to a couple of calls a second; its answer can be a 429 or an error text that names one
+const BUSY = /rate limit|too many|capacity|-32005|-32017|\b429\b|upstreams? unavailable/i;
+// answers that barely change are kept for a few seconds, so a wallet asking again and again does not use up the nodes
+const KEEP = new Map(); const KEEP_FOR = { eth_chainId: 3600e3, eth_gasPrice: 4000, eth_maxPriorityFeePerGas: 4000, net_version: 3600e3 };
 const SEND_ALSO = ["https://rpc.ronspad.fun"];
 const ALLOWED = /^(eth_(chainId|blockNumber|getBalance|call|estimateGas|gasPrice|maxPriorityFeePerGas|feeHistory|getCode|getLogs|getBlockByNumber|getBlockByHash|getTransactionByHash|getTransactionReceipt|getTransactionCount|sendRawTransaction|getStorageAt)|net_version|web3_clientVersion)$/;
 const TIMEOUT = 4000;
@@ -21,6 +25,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
   let calls;
   try { calls = JSON.parse(text); } catch { return reply({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400); }
   const list = Array.isArray(calls) ? calls : [calls];
+  const keepMs = !Array.isArray(calls) ? KEEP_FOR[calls.method] : 0;
+  if (keepMs) { const k = KEEP.get(calls.method); if (k && Date.now() - k.at < keepMs) return reply({ ...k.j, id: calls.id ?? null }); }
   if (!list.length || list.length > 50 || list.some((c) => !ALLOWED.test(String(c?.method)))) {
     return reply({ jsonrpc: "2.0", id: null, error: { code: -32601, message: "method not allowed" } }, 400);
   }
@@ -84,11 +90,11 @@ export async function onRequestPost({ request, env, waitUntil }) {
       let j = null;
       try { j = JSON.parse(out); } catch {}
       if (!j) throw new Error(`${new URL(url).host} ${r.status}`);
-      if (j.error) throw Object.assign(new Error("rpc"), { out, busy: /rate limit|too many|capacity|-32005/i.test(out) });
+      if (j.error) throw Object.assign(new Error("rpc"), { out, busy: BUSY.test(out) });
       return out;
     });
     const good = await Promise.any(tries).catch((e) => e);
-    if (typeof good === "string") { waitUntil?.(Promise.allSettled(tries)); return reply(good); }
+    if (typeof good === "string") { waitUntil?.(Promise.allSettled(tries)); if (keepMs) { try { const j = JSON.parse(good); if (j?.result != null) KEEP.set(calls.method, { at: Date.now(), j }); } catch {} } return reply(good); }
     const real = (good?.errors || []).find((x) => x?.out && !x.busy);
     if (real) return reply(real.out);
   }
@@ -101,11 +107,11 @@ export async function onRequestPost({ request, env, waitUntil }) {
       if (!r.ok) {
         why.push(`${new URL(url).host} ${r.status}`);
         // a node that refused with a proper JSON-RPC error (e.g. "execution reverted") still answered
-        if (/"error"\s*:/.test(out) && !/rate limit|too many|capacity|-32005/i.test(out)) rpcError ??= out;
+        if (/"error"\s*:/.test(out) && !BUSY.test(out)) rpcError ??= out;
         continue;
       }
       // a node that answers with a rate-limit / server error for every call: try the next one
-      if (!sending && /"code":\s*-32(005|603)|rate limit|too many requests/i.test(out)) continue;
+      if (!sending && (/"code":\s*-32(005|603)/.test(out) || BUSY.test(out))) continue;
       return reply(out);
     } catch (e) { why.push(`${new URL(url).host} ${e?.name === "TimeoutError" ? "timeout" : "down"}`); }
   }
