@@ -54,6 +54,7 @@ export async function baseExternalLoop({ rpcUrls, ely, store, log = console.log,
     const out = new Map();
     const pages = [];
     for (let p = 1; p <= 10; p++) pages.push(`/pools?page=${p}&sort=h24_volume_usd_desc`);
+    for (const dex of ["uniswap-v3-base", "aerodrome-slipstream", "uniswap-v4-base"]) for (let p = 1; p <= 10; p++) pages.push(`/dexes/${dex}/pools?page=${p}&sort=h24_volume_usd_desc`);
     for (let p = 1; p <= 3; p++) pages.push(`/trending_pools?page=${p}`, `/new_pools?page=${p}`);
     for (const path of pages) {
       try {
