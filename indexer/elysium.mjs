@@ -1238,7 +1238,18 @@ export function makeElysium(cfg, store) {
   let movedAt = Date.now();
   let seen = -1;
   const STUCK_MS = 10 * 60_000;
+  // Nov 14: the full scan stood still for 3 hours while the fast lane kept moving, so the check below never fired and every
+  // other launchpad's coins (Montra, fomo...) showed old prices and flat charts. The full scan gets its own check.
+  let scanSeen = -1, scanMovedAt = Date.now();
   const startWatch = () => { const watch = setInterval(async () => {
+    try {
+      const sb = Number((await store.getState("ely_block")) ?? -1);
+      if (sb !== scanSeen) { scanSeen = sb; scanMovedAt = Date.now(); }
+      else if (tipNow && tipNow - sb > 600 && Date.now() - scanMovedAt > 8 * 60_000) {
+        log(`elysium: WATCHDOG full scan stuck at block ${sb} for ${Math.round((Date.now() - scanMovedAt) / 60_000)} min (tip ${tipNow}); restarting`);
+        clearInterval(watch); setTimeout(() => process.exit(1), 500); return;
+      }
+    } catch {}
     try {
       // either lane moving counts (the full scan may crawl on a busy chain while ours keeps up)
       const at = Number((await store.getState("ely_block")) ?? -1) + Number((await store.getState("ely_fast_block")) ?? 0) * 1e9;
