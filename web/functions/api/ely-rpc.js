@@ -11,7 +11,8 @@ const TIMEOUT = 4000;
 // the nodes throttle by address, so we ask them once and share the answer for a moment.
 const MEM = new Map();
 const TTL = { eth_chainId: 3600e3, net_version: 3600e3, eth_gasPrice: 3e3, eth_maxPriorityFeePerGas: 3e3, eth_blockNumber: 1.5e3, eth_feeHistory: 3e3, eth_getBalance: 2e3, eth_call: 2e3, eth_estimateGas: 2e3, eth_getCode: 60e3 };
-const memGet = (k) => { const e = MEM.get(k); if (e && e.t > Date.now()) return e.v; MEM.delete(k); return null; };
+const STALE_OK = new Set(["eth_chainId", "net_version", "eth_gasPrice", "eth_maxPriorityFeePerGas", "eth_feeHistory", "eth_blockNumber"]); // when every node is throttled these may be answered a little late
+const memGet = (k, stale) => { const e = MEM.get(k); if (e && (e.t > Date.now() || (stale && e.t + 10 * 60e3 > Date.now()))) return e.v; if (e && e.t + 10 * 60e3 <= Date.now()) MEM.delete(k); return null; };
 const memSet = (k, v, ttl) => { if (MEM.size > 500) MEM.clear(); MEM.set(k, { v, t: Date.now() + ttl }); };
 
 
@@ -127,14 +128,15 @@ export async function onRequestPost(ctx) {
   if (ttl) { key = one.method + JSON.stringify(one.params ?? []); const hit = memGet(key); if (hit) return reply({ ...hit, id: one.id ?? null }); }
   // busy nodes answer "rate limit" for a moment: try again a few times before telling the wallet anything
   let res;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 5; i++) {
     res = await handle(ctx, text);
     const out = await res.clone().text();
     if (!/network is busy|upstreams unavailable|rate limit|too many requests/i.test(out)) {
       if (ttl && /"result"/.test(out) && !/"error"/.test(out)) { try { memSet(key, JSON.parse(out), ttl); } catch {} }
       return res;
     }
-    await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    await new Promise((r) => setTimeout(r, 300 * (i + 1) + Math.random() * 300));
   }
+  if (key && STALE_OK.has(String(one.method))) { const old = memGet(key, true); if (old) return reply({ ...old, id: one.id ?? null }); }
   return res;
 }
