@@ -574,7 +574,7 @@ function loadX(c: XChain) {
   return xMemo.get(c.key)!;
 }
 
-type Row = { key: string; name: string; native: string; coins: number | null; traded: number | null; vol24: number; swaps: number | null; fee: number | null; swapVol: number | null; usd: number; period: string; ok: boolean; note?: string };
+type Row = { key: string; name: string; native: string; coins: number | null; traded: number | null; vol24: number; swaps: number | null; fee: number | null; swapVol: number | null; usd: number; period: string; ok: boolean; note?: string; live?: boolean };
 
 // every other chain trades through the best-price route (fee paid straight to the ElyScreener wallet in the coin of that chain); the site reports each swap in dollars
 const OTHER = [
@@ -582,6 +582,7 @@ const OTHER = [
   { key: "avax", name: "Avalanche", pfx: "avax_" }, { key: "linea", name: "Linea", pfx: "linea_" }, { key: "sonic", name: "Sonic", pfx: "sonic_" }, { key: "bera", name: "Berachain", pfx: "bera_" }, { key: "uni", name: "Unichain", pfx: "uni_" },
   { key: "mon", name: "Monad", pfx: "mon_" }, { key: "arc", name: "Arc", pfx: "arc_" }, { key: "hyp", name: "HyperEVM", pfx: "hyp_" },
 ];
+type ErrSum = { chains: { chain: string; tries: number; errs: number; cancels: number; quotes: number }[]; recent: { chain: string; stage: string; msg: string; at: string }[] };
 type XSum = { chains: { chain: string; n: number; vol: number }[]; recent: { chain: string; tx: string; usd: number; side: string; at: string }[] };
 function ChainsOverview() {
   const prices = usePoll(async () => {
@@ -604,6 +605,7 @@ function ChainsOverview() {
   const bnb = usePoll(loadX(X_CHAINS[0]), 120_000);
   const bse = usePoll(loadX(X_CHAINS[1]), 120_000);
   const xs = usePoll(async () => { try { const r = await fetch(`${SB_REST}/rpc/es_xswaps_summary`, { method: "POST", headers: { ...sbHead, "content-type": "application/json" }, body: "{}" }); const j = await r.json(); return (j?.chains ? j : { chains: [], recent: [] }) as XSum; } catch { return { chains: [], recent: [] } as XSum; } }, 120_000);
+  const errs = usePoll(async () => { try { const r = await fetch(`${SB_REST}/rpc/es_err_summary`, { method: "POST", headers: { ...sbHead, "content-type": "application/json" }, body: "{}" }); const j = await r.json(); return (j?.chains ? j : { chains: [], recent: [] }) as ErrSum; } catch { return { chains: [], recent: [] } as ErrSum; } }, 120_000);
   const px = { HYPE: hypeUsd, ETH: prices?.ETH ?? 0, BNB: prices?.BNB ?? 0 } as Record<string, number>;
   const b = (k: string) => base?.find((x) => x.key === k);
   // like the lists on the site: a coin under $1K market cap counts no volume, and volume above 20x market cap is wash trading
@@ -614,7 +616,7 @@ function ChainsOverview() {
     { key: "rh", name: "Robinhood Chain", native: "ETH", coins: b("rh")?.coins ?? null, traded: b("rh")?.traded ?? null, vol24: vol24Of("rh", "ETH"), swaps: rhd ? rhd.n : null, fee: rhd ? rhd.fee : null, swapVol: rhd ? rhd.vol : null, usd: px.ETH, period: "last 7 days", ok: rhd ? rhd.ok : true },
     { key: "bnb", name: "BNB Chain", native: "BNB", coins: b("bnb")?.coins ?? null, traded: b("bnb")?.traded ?? null, vol24: vol24Of("bnb", "BNB"), swaps: bnb ? bnb.n : null, fee: bnb ? bnb.fee : null, swapVol: bnb ? bnb.vol : null, usd: px.BNB, period: `last ${X_CHAINS[0].days} days`, ok: bnb ? bnb.ok : true },
     { key: "base", name: "Base", native: "ETH", coins: b("base")?.coins ?? null, traded: b("base")?.traded ?? null, vol24: vol24Of("base", "ETH"), swaps: bse ? bse.n : null, fee: bse ? bse.fee : null, swapVol: bse ? bse.vol : null, usd: px.ETH, period: `last ${X_CHAINS[1].days} days`, ok: bse ? bse.ok : true },
-    ...OTHER.map((o): Row => { const x = xs?.chains.find((c) => c.chain === o.key); const vol = Number(x?.vol ?? 0); return { key: o.key, name: o.name, native: "USD", coins: b(o.key)?.coins ?? null, traded: b(o.key)?.traded ?? null, vol24: 0, swaps: xs ? Number(x?.n ?? 0) : null, fee: xs ? (o.key === "sol" ? 0 : vol * 0.005) : null, swapVol: xs ? vol : null, usd: 1, period: "all time, sizes reported by the site", ok: true, note: o.key === "sol" ? "Jupiter · no fee yet (needs the ElyScreener Solana wallet address)" : undefined }; }),
+    ...OTHER.map((o): Row => { const x = xs?.chains.find((c) => c.chain === o.key); const vol = Number(x?.vol ?? 0); return { key: o.key, name: o.name, native: "USD", coins: b(o.key)?.coins ?? null, traded: b(o.key)?.traded ?? null, vol24: 0, swaps: xs ? Number(x?.n ?? 0) : null, fee: xs ? (o.key === "sol" ? 0 : vol * 0.005) : null, swapVol: xs ? vol : null, usd: 1, period: "all time, sizes reported by the site", ok: true, live: true, note: o.key === "sol" ? "Jupiter · no fee yet (needs the ElyScreener Solana wallet address)" : undefined }; }),
   ];
   const loaded = !!base && !!ely && !!rhd && !!bnb && !!bse;
   const totalCoins = rows.reduce((a, r) => a + (r.coins ?? 0), 0);
@@ -643,16 +645,23 @@ function ChainsOverview() {
               <span className="dim" style={{ fontSize: 12.5 }}>paid in {r.native} · swaps counted {r.period}</span>
             </div>
             <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", padding: 0, border: 0 }}>
-              <div><span>Coins listed</span><b>{r.coins == null ? "…" : r.coins.toLocaleString("en-US")}</b><small className="dim" style={{ display: "block" }}>{r.traded == null ? "" : `${r.traded.toLocaleString("en-US")} traded in 24h`}</small></div>
+              <div><span>Coins listed</span><b>{r.live ? "Live" : r.coins == null ? "…" : r.coins.toLocaleString("en-US")}</b><small className="dim" style={{ display: "block" }}>{r.live ? "every coin, read live" : r.traded == null ? "" : `${r.traded.toLocaleString("en-US")} traded in 24h`}</small></div>
               <div><span>24h volume</span><b>{r.vol24 ? `${nf(r.vol24, 2)} ${r.native}` : "—"}</b><small className="dim" style={{ display: "block" }}>{r.vol24 && r.usd ? money(r.vol24 * r.usd) : "all coins on the chain"}</small></div>
               <div><span>Site swaps</span><b>{r.swaps == null ? "…" : r.swaps}</b><small className="dim" style={{ display: "block" }}>{r.swapVol ? `${nf(r.swapVol, 3)} ${r.native} traded` : "buy / sell on elyscreener.com"}</small></div>
               <div><span>Fees earned</span><b>{r.fee == null ? "…" : `${nf(r.fee, 5)} ${r.native}`}</b><small className="dim" style={{ display: "block" }}>{r.fee && r.usd ? money(feeUsd(r)) : r.swaps === 0 ? "no swaps yet" : ""}</small></div>
             </div>
+            {(() => { const e = errs?.chains.find((c) => c.chain === (r.key === "elysium" ? "ely" : r.key)); return <span className="dim" style={{ fontSize: 12.5 }}>{errs ? (e ? `Last 24h on the site: ${e.tries} trade tries · ${e.errs} errors · ${e.cancels} cancelled · ${e.quotes} price lookups failed` : "Last 24h on the site: no trade tries yet") : "Last 24h on the site: …"}</span>; })()}
             {r.note && <span className="dim" style={{ fontSize: 12.5 }}>{r.note}</span>}
             {!r.ok && <span className="dim" style={{ fontSize: 12.5 }}>Part of this chain's history could not be read right now. Reload in a minute.</span>}
           </div>
         ))}
       </div>
+      {errs && errs.recent.length > 0 && (
+        <div style={{ display: "grid", gap: 4 }}>
+          <b style={{ fontSize: 14 }}>Latest trade errors on the site</b>
+          {errs.recent.map((x, i) => <span key={i} className="dim" style={{ fontSize: 12.5 }}>{x.chain} · {x.stage === "quote" ? "price lookup" : "trade"} · {x.msg || "no message"} · {new Date(x.at).toLocaleString("en-GB")}</span>)}
+        </div>
+      )}
       <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Coins listed counts every coin the site knows on that chain. Fees are the 0.5% our router takes on swaps made on elyscreener.com; trades made on other sites do not count. Four.Meme coins on BNB Chain are traded directly on Four.Meme, so they bring no fee. Numbers refresh every two minutes.</p>
     </div></section>
   );
