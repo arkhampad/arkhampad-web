@@ -56,30 +56,37 @@ function Earnings() {
     const [treasury, keeper] = await Promise.all([ely().getBalance({ address: TREASURY_ADDR }), ely().getBalance({ address: KEEPER_ADDR })]);
     return { treasury: Number(treasury) / 1e18, keeper: Number(keeper) / 1e18 };
   }, 30_000);
+  // The public Elysium nodes throttle big scans, so read in small steps, keep the progress in this browser and
+  // resume from there on every poll; whatever is known so far is shown right away.
   const chain = usePoll(async () => {
-    const collected = new Map<string, number>();
-    let collectedAll = 0;
+    const KEY = "ops-fees-v1";
+    type St = { next: Record<string, string>; coll: Record<string, number> };
+    let st: St = { next: {}, coll: {} };
+    try { const r = JSON.parse(localStorage.getItem(KEY) || "null"); if (r?.next && r?.coll) st = r; } catch {}
+    const latest = await ely().getBlockNumber().catch(() => 0n);
+    const STEP = 9_000n;
+    let budget = 40; // windows per poll
+    const add = (coin: unknown, v: number) => { const k = String(coin).toLowerCase(); st.coll[k] = (st.coll[k] ?? 0) + v; };
     for (const L of [LAUNCHER, LAUNCHER2]) {
-      if (!L) continue;
-      const logs = await logsFrom((fromBlock, toBlock) => ely().getLogs({ address: L as Address, event: FEES, fromBlock, toBlock }));
-      for (const l of logs) {
-        const v = Number(l.args.nativeToTreasury ?? 0n) / 1e18;
-        collectedAll += v;
-        const k = String(l.args.coin).toLowerCase();
-        collected.set(k, (collected.get(k) ?? 0) + v);
-      }
-      if (L === LAUNCHER2) {
-        const held = await logsFrom((fromBlock, toBlock) => ely().getLogs({ address: L as Address, event: HELD_TO_TREASURY, fromBlock, toBlock }));
-        for (const l of held) {
-          const v = Number(l.args.nativeAmount ?? 0n) / 1e18;
-          collectedAll += v;
-          const k = String(l.args.coin).toLowerCase();
-          collected.set(k, (collected.get(k) ?? 0) + v);
-        }
+      if (!L || latest === 0n) continue;
+      let from = BigInt(st.next[L] ?? START_BLOCK.toString());
+      while (from <= latest && budget > 0) {
+        const to = from + STEP - 1n > latest ? latest : from + STEP - 1n;
+        try {
+          const logs = await ely().getLogs({ address: L as Address, event: FEES, fromBlock: from, toBlock: to });
+          const held = L === LAUNCHER2 ? await ely().getLogs({ address: L as Address, event: HELD_TO_TREASURY, fromBlock: from, toBlock: to }) : [];
+          for (const l of logs) add(l.args.coin, Number(l.args.nativeToTreasury ?? 0n) / 1e18);
+          for (const l of held) add(l.args.coin, Number(l.args.nativeAmount ?? 0n) / 1e18);
+        } catch { budget = 0; break; }
+        from = to + 1n; budget--;
+        st.next[L] = from.toString();
+        try { localStorage.setItem(KEY, JSON.stringify(st)); } catch {}
       }
     }
+    const collected = new Map<string, number>(Object.entries(st.coll));
+    let collectedAll = 0; for (const v of collected.values()) collectedAll += v;
     return { collected, collectedAll };
-  }, 120_000);
+  }, 20_000);
   const list: EOurCoin[] = coins ?? [];
   const vol = list.reduce((s, c) => s + c.vol, 0);
   const ours = vol * 0.007; // 1% pool fee, 70% to ArkhamPad
