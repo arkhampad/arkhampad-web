@@ -79,7 +79,7 @@ async function handle({ request, env, waitUntil }, text) {
     const known = outs.find((o) => o && /already known|known transaction/i.test(o));
     if (known) return reply(known);
     const first = outs.find((o) => o && !/rate limit|too many|429|capacity|-32005|upstreams unavailable/i.test(o)) || outs.find(Boolean);
-    if (first) return reply(first);
+    if (first) { const dbg = outs.map((o, n) => new URL(sendTo[n]).host + " " + String(o).replace(/\s+/g, " ").slice(0, 110)).join(" ; "); return reply({ jsonrpc: "2.0", id: calls.id ?? null, error: { code: -32000, message: "send failed " + dbg } }); }
   }
   // any other single read: ask every node at once, answer with the first good reply (a busy node used to
   // cost 4 s before the next was tried, and wallets make several of these per transaction)
