@@ -667,6 +667,79 @@ function ChainsOverview() {
   );
 }
 
+/** Bot router (0.1% fee, paid to the "elyscreener" wallet): how many bots bought and sold, their volume and what it earned. */
+const BOT_ROUTER = "0xc7024e2Ce1929d6972c6B7493805502Dc6d9f7E7" as Address;
+const BOT_START = 6992789n;
+type BotTrade = { user: string; buy: boolean; hype: number; fee: number; block: bigint; tx: Hex };
+const botCache: { upTo: bigint; rows: BotTrade[] } = { upTo: BOT_START - 1n, rows: [] };
+const loadBots = memo(async () => {
+  const latest = await ely().getBlockNumber();
+  const wins: [bigint, bigint][] = [];
+  for (let from = botCache.upTo + 1n; from <= latest; from += 9_000n) wins.push([from, from + 8_999n > latest ? latest : from + 8_999n]);
+  let ok = true;
+  for (let i = 0; i < wins.length; i += 4) {
+    try {
+      const part = await Promise.all(wins.slice(i, i + 4).map(([a, b]) => ely().getLogs({ address: BOT_ROUTER, event: TRADE, fromBlock: a, toBlock: b })));
+      for (const lg of part.flat()) botCache.rows.push({ user: String(lg.args.user), buy: !!lg.args.isBuy, hype: Number(lg.args.hypeAmount ?? 0n) / 1e18, fee: Number(lg.args.fee ?? 0n) / 1e18, block: lg.blockNumber, tx: lg.transactionHash });
+      botCache.upTo = wins[Math.min(i + 3, wins.length - 1)][1];
+    } catch { ok = false; break; }
+  }
+  const rows = botCache.rows;
+  // blocks per day, from two block timestamps, to split out the last 24 hours
+  let perDay = 0;
+  try {
+    const [a, b] = await Promise.all([ely().getBlock({ blockNumber: latest }), ely().getBlock({ blockNumber: latest - 20_000n })]);
+    perDay = (20_000 / Math.max(1, Number(a.timestamp - b.timestamp))) * 86400;
+  } catch { perDay = 0; }
+  const since = perDay ? latest - BigInt(Math.floor(perDay)) : 0n;
+  const d1 = rows.filter((r) => r.block >= since);
+  const recent = [...rows].sort((x, y) => (y.block > x.block ? 1 : -1)).slice(0, 8);
+  const stamp = new Map<string, number>();
+  await Promise.all(recent.map(async (r) => { try { stamp.set(r.tx, Number((await ely().getBlock({ blockNumber: r.block })).timestamp)); } catch { /* shown without a time */ } }));
+  const sum = (l: BotTrade[], k: "hype" | "fee") => l.reduce((x, r) => x + r[k], 0);
+  return {
+    ok,
+    all: { buys: rows.filter((r) => r.buy).length, sells: rows.filter((r) => !r.buy).length, bots: new Set(rows.map((r) => r.user)).size, vol: sum(rows, "hype"), fee: sum(rows, "fee") },
+    d1: { buys: d1.filter((r) => r.buy).length, sells: d1.filter((r) => !r.buy).length, bots: new Set(d1.map((r) => r.user)).size, vol: sum(d1, "hype"), fee: sum(d1, "fee") },
+    recent: recent.map((r) => ({ ...r, at: stamp.get(r.tx) })),
+  };
+});
+
+function BotRouterRevenue() {
+  const usd = usePoll(fetchHypeUsd, 60_000) ?? 0;
+  const data = usePoll(loadBots, 120_000);
+  return (
+    <section className="e-panel"><div className="e-trade">
+      <h3 className="e-ph" style={{ margin: 0 }}>Bot router income <span className="dim" style={{ fontSize: 12.5, fontWeight: 600 }}>0.1% fee on trades made by bots through elyscreener.com/bots, paid to the elyscreener wallet</span></h3>
+      {!data ? <p className="dim">Loading…</p> : (
+        <>
+          {!data.ok && <div className="e-msg bad">Part of the history could not be read from Elysium right now. Numbers may be a little low; reload in a minute.</div>}
+          <div className="e-prev-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", padding: 0, border: 0 }}>
+            <div><span>Bot buys</span><b>{data.all.buys}</b><small className="dim">last 24h {data.d1.buys}</small></div>
+            <div><span>Bot sells</span><b>{data.all.sells}</b><small className="dim">last 24h {data.d1.sells}</small></div>
+            <div><span>Different bots</span><b>{data.all.bots}</b><small className="dim">last 24h {data.d1.bots}</small></div>
+            <div><span>Volume</span><b>{data.all.vol.toFixed(2)} HYPE</b><small className="dim">{usd ? money(data.all.vol * usd) : ""} · last 24h {data.d1.vol.toFixed(2)} HYPE</small></div>
+            <div><span>ElyScreener income</span><b>{data.all.fee.toFixed(4)} HYPE</b><small className="dim">{usd ? money(data.all.fee * usd) : ""} · last 24h {data.d1.fee.toFixed(4)} HYPE</small></div>
+          </div>
+          <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>Router {BOT_ROUTER}. Counted from its first block; the fee goes straight to the elyscreener wallet. Separate from the 0.5% swaps made on the site.</p>
+          {data.recent.length > 0 && (
+            <div style={{ display: "grid", gap: 2, fontSize: 13.5 }}>
+              <div className="dim" style={{ fontWeight: 700 }}>Latest bot trades</div>
+              {data.recent.map((r) => (
+                <div key={r.tx} style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", padding: "6px 0", borderTop: "1px solid var(--e-line)" }}>
+                  <b className={r.buy ? "up" : "down"}>{r.buy ? "buy" : "sell"}</b>
+                  <span className="num dim" style={{ flex: "1 1 150px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{short(r.user)} · {r.hype.toFixed(3)} HYPE</span>
+                  <span className="num">{r.fee.toFixed(4)} HYPE{r.at ? " · " + new Date(r.at * 1000).toLocaleString() : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div></section>
+  );
+}
+
 export function OpsPage() {
   const w = useWallet();
   const [s, setS] = useState<S | null>(null);
@@ -725,6 +798,7 @@ export function OpsPage() {
       <ChainsOverview />
       <Funnel />
       <ScreenerRevenue />
+      <BotRouterRevenue />
       <RobinhoodRevenue />
       <Earnings />
       <Activity />
