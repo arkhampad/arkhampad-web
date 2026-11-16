@@ -105,9 +105,9 @@ function AddMoneyHelp({ me }: { me: string }) {
         )}
         {how === "out" && (
           <ol className="e-steps big">
-            <li><Link href="/bridge/?tab=out">{tr("Open Bridge → Withdraw, enter the HYPE amount and start the withdrawal.")}</Link></li>
-            <li>{tr("Elysium's official bridge holds it for about 5.5 days (a safety period every rollup has).")}</li>
-            <li>{tr("Then tap Claim and your HYPE is on HyperEVM, ready to send to an exchange.")}</li>
+            <li><Link href="/bridge/?tab=out">{tr("Open Bridge → Withdraw, enter the HYPE amount and pick HYPE or USDC.")}</Link></li>
+            <li>{tr("Tap Withdraw now. It arrives in seconds, for a small fee.")}</li>
+            <li>{tr("Prefer no fee? The free official route takes about 5.5 days, then you tap Claim.")}</li>
           </ol>
         )}
       </div>
