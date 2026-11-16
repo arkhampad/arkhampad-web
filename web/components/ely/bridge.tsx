@@ -489,7 +489,7 @@ balanceChanged();
 const m = String((e as Error)?.message ?? "");
 setMsg({ ok: false, text: /reject|denied|cancel/i.test(m) ? "Cancelled." : /insufficient|gas|fund/i.test(m) ? "Not enough HYPE left for gas. Try a slightly smaller amount." : "Withdrawal failed. Nothing was moved. Please try again." });
 console.warn("fast withdraw failed:", m.slice(0, 300));
-setMsg((x) => (x && !x.ok && /Withdrawal failed/.test(x.text) ? { ok: false, text: x.text + " (" + m.replace(/\s+/g, " ").slice(0, 110) + ")" } : x));
+setMsg((x) => (x && !x.ok && /Withdrawal failed/.test(x.text) ? { ok: false, text: x.text + " (" + String((e as { details?: string }).details || (e as { cause?: { details?: string } }).cause?.details || "").slice(0, 160) || m.replace(/\s+/g, " ").slice(-160) + ")" } : x));
 } finally {
 setStep(null);
 }
