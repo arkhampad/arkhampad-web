@@ -474,7 +474,8 @@ if (s.kind !== "transaction") throw new Error("unsupported");
 for (const it of s.items) {
 if (it.status === "complete") continue;
 setStep("Confirm in your wallet…");
-const hash = await w.signer.sendTx(it.data.chainId, { to: it.data.to, data: it.data.data, value: it.data.value ? BigInt(it.data.value) : undefined });
+const gas = (it.data as { gas?: string }).gas;
+const hash = await w.signer.sendTx(it.data.chainId, { to: it.data.to, data: it.data.data, value: it.data.value ? BigInt(it.data.value) : undefined, ...(gas ? { gas: BigInt(gas) } : {}) });
 setStep("Sending…");
 const r = await ely().waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
 if (r.status !== "success") throw new Error("failed");
@@ -488,6 +489,7 @@ balanceChanged();
 const m = String((e as Error)?.message ?? "");
 setMsg({ ok: false, text: /reject|denied|cancel/i.test(m) ? "Cancelled." : /insufficient|gas|fund/i.test(m) ? "Not enough HYPE left for gas. Try a slightly smaller amount." : "Withdrawal failed. Nothing was moved. Please try again." });
 console.warn("fast withdraw failed:", m.slice(0, 300));
+setMsg((x) => (x && !x.ok && /Withdrawal failed/.test(x.text) ? { ok: false, text: x.text + " (" + m.replace(/\s+/g, " ").slice(0, 110) + ")" } : x));
 } finally {
 setStep(null);
 }
