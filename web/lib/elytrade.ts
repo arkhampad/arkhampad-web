@@ -68,7 +68,8 @@ async function raceCall(method: string, params: unknown) {
     return await Promise.any(DIRECT.map(ask));
   } catch (e) {
     const errs = (e as AggregateError).errors ?? [e];
-    const real = errs.find((x: { rpc?: boolean }) => x?.rpc);
+    // a node that answers with the revert data (our quote answers by reverting) beats one that only says "rate limit"
+const real = errs.find((x: { rpc?: boolean; data?: unknown }) => x?.rpc && typeof x.data === "string" && x.data.startsWith("0x")) ?? errs.find((x: { rpc?: boolean }) => x?.rpc);
     if (real) throw real; // a node answered with a real error (e.g. "execution reverted")
     return ask(OWN_RPC); // no node reachable directly: through our doorway
   }
