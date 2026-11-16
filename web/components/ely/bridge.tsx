@@ -1,7 +1,7 @@
 "use client";
 // Bridge: get HYPE onto Elysium. HYPE from HyperEVM through Elysium's official bridge (arrives in about a
 // minute), or USDC from Base (converted to HYPE on HyperEVM by Relay, then bridged). Withdrawals go back
-// through the official bridge and take about 5.5 days.
+// through Relay in seconds (small fee), or the free official bridge in about 5.5 days.
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -420,13 +420,128 @@ function WdRow({ w: x, confirmed, me, onDone }: { w: Wd; confirmed: bigint | nul
   );
 }
 
+// ---------------------------------------------------------------- instant withdrawals (Relay)
+// Relay supports Elysium as an origin chain: HYPE leaves Elysium and arrives on HyperEVM, Base or Arbitrum in seconds.
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+const FAST_TO = [
+{ id: "hype", label: "HYPE on HyperEVM", chain: HYPEREVM, cur: ZERO_ADDR, dec: 18, sym: "HYPE" },
+{ id: "base", label: "USDC on Base", chain: BASE, cur: USDC_BASE as string, dec: 6, sym: "USDC" },
+{ id: "arb", label: "USDC on Arbitrum", chain: 42161, cur: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", dec: 6, sym: "USDC" },
+];
+
+function WithdrawFast({ me, onSent }: { me: Address; onSent: () => void }) {
+const tr = useT();
+const w = useWallet();
+const bal = usePoll(() => ely().getBalance({ address: me }), 5000, [me]);
+const [dest, setDest] = useState("hype");
+const d = FAST_TO.find((x) => x.id === dest) ?? FAST_TO[0];
+const [val, setVal] = useState("");
+const [quote, setQuote] = useState<{ out: bigint; fee: number | null; steps: RelayStep[] } | null>(null);
+const [quoteErr, setQuoteErr] = useState(false);
+const [step, setStep] = useState<string | null>(null);
+const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+const amount = toWei(val);
+const max = bal != null && bal > W_GAS_KEEP ? bal - W_GAS_KEEP : 0n;
+useEffect(() => {
+setQuote(null);
+setQuoteErr(false);
+if (amount < 10n ** 16n || amount > max) return;
+let live = true;
+const id = setTimeout(async () => {
+try {
+const res = await fetch(`${RELAY}/quote/v2`, {
+method: "POST",
+headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) },
+body: JSON.stringify({ user: me, recipient: me, originChainId: ELY_CHAIN_ID, destinationChainId: d.chain, originCurrency: ZERO_ADDR, destinationCurrency: d.cur, amount: amount.toString(), tradeType: "EXACT_INPUT" }),
+});
+const j = await res.json();
+if (!live) return;
+if (j?.details?.currencyOut?.amount) {
+const p = Math.abs(Number(j?.details?.totalImpact?.percent));
+setQuote({ out: BigInt(j.details.currencyOut.amount), fee: Number.isFinite(p) ? p : null, steps: j.steps });
+} else setQuoteErr(true);
+} catch { if (live) setQuoteErr(true); }
+}, 400);
+return () => { live = false; clearTimeout(id); };
+}, [amount, max, me, d.chain, d.cur]);
+async function go() {
+if (!w.signer?.sendTx) return w.login();
+if (!quote) return;
+setMsg(null);
+try {
+for (const s of quote.steps) {
+if (s.kind !== "transaction") throw new Error("unsupported");
+for (const it of s.items) {
+if (it.status === "complete") continue;
+setStep("Confirm in your wallet…");
+const hash = await w.signer.sendTx(it.data.chainId, { to: it.data.to, data: it.data.data, value: it.data.value ? BigInt(it.data.value) : undefined });
+setStep("Sending…");
+const r = await ely().waitForTransactionReceipt({ hash: hash as Hex, timeout: 90_000 });
+if (r.status !== "success") throw new Error("failed");
+}
+}
+setMsg({ ok: true, text: tr("Done. It arrives in a few seconds.") });
+setVal("");
+onSent();
+balanceChanged();
+} catch (e) {
+const m = String((e as Error)?.message ?? "");
+setMsg({ ok: false, text: /reject|denied|cancel/i.test(m) ? "Cancelled." : /insufficient|gas|fund/i.test(m) ? "Not enough HYPE left for gas. Try a slightly smaller amount." : "Withdrawal failed. Nothing was moved. Please try again." });
+console.warn("fast withdraw failed:", m.slice(0, 300));
+} finally {
+setStep(null);
+}
+}
+return (
+<div className="e-trade">
+<p className="e-wnote"><b>{tr("Instant withdrawals.")}</b> {tr("Your HYPE leaves Elysium and arrives in seconds, no waiting. A small fee applies.")}</p>
+<div className="e-via" role="group" aria-label={tr("Receive")}>
+<span className="dim">{tr("Receive")}</span>
+{FAST_TO.map((x) => (
+<button key={x.id} type="button" aria-pressed={dest === x.id} className={dest === x.id ? "on" : ""} onClick={() => { setDest(x.id); setMsg(null); }}>{tr(x.label)}</button>
+))}
+</div>
+<label className="e-amt">
+<span className="e-amt-top"><span>{tr("You withdraw")}</span><span className="dim">Elysium: {fmt(bal)} HYPE</span></span>
+<span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="HYPE amount" /><b>HYPE</b></span>
+</label>
+<div className="e-quick">
+{[25, 50, 75].map((p) => <button key={p} type="button" disabled={!max} onClick={() => setVal(formatUnits((max * BigInt(p)) / 100n, 18))}>{p}%</button>)}
+<button type="button" disabled={!max} onClick={() => setVal(formatUnits(max, 18))}>{tr("Max")}</button>
+</div>
+<div className="e-recv"><span className="muted">{tr("You get")}</span><b className="num">{quote ? `≈ ${fmt(quote.out, d.dec, d.dec === 6 ? 2 : 4)} ${d.sym}` : "—"}</b></div>
+{quote && quote.fee != null && <p className="e-note" style={{ margin: 0 }}>{tr("Fee included: about {p}%.", { p: quote.fee.toFixed(1) })}</p>}
+{quoteErr && <p className="e-note" style={{ margin: 0 }}>{tr("Couldn't get a price right now. Try again in a moment, or use the free route below.")}</p>}
+<button type="button" className="e-go" disabled={!!step || !quote || amount <= 0n || amount > max} onClick={go}>
+{step ? tr(step) : amount > max && amount > 0n ? tr("Not enough HYPE on Elysium") : tr("Withdraw now")}
+</button>
+{msg && <div className={`e-msg ${msg.ok ? "ok" : "bad"}`} role="status">{tr(msg.text)}</div>}
+</div>
+);
+}
+
 function Withdraw({ me, onSent }: { me: Address; onSent: () => void }) {
+const tr = useT();
+const [slowOpen, setSlowOpen] = useState(false);
+return (
+<>
+<WithdrawFast me={me} onSent={onSent} />
+<details className="e-trade" open={slowOpen} onToggle={(e) => setSlowOpen((e.currentTarget as HTMLDetailsElement).open)}>
+<summary style={{ cursor: "pointer" }}>{tr("Free route: official bridge, about 5.5 days")}</summary>
+<WithdrawSlow me={me} onSent={onSent} onHasList={(n) => { if (n > 0) setSlowOpen(true); }} />
+</details>
+</>
+);
+}
+
+function WithdrawSlow({ me, onSent, onHasList }: { me: Address; onSent: () => void; onHasList?: (n: number) => void }) {
   const tr = useT();
   const w = useWallet();
   const [tick, setTick] = useState(0);
   useEffect(() => { funnel(me, "deposit_page"); }, [me]);
   const bal = usePoll(() => ely().getBalance({ address: me }), 5000, [me, tick]);
   const list = usePoll(() => myWithdrawals(me), 20_000, [me, tick]);
+useEffect(() => { onHasList?.(list?.length ?? 0); }, [list?.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const confirmed = usePoll(() => confirmedCount(), 120_000, [tick]);
   const [val, setVal] = useState("");
   const [agree, setAgree] = useState(false);
@@ -595,7 +710,7 @@ export function BridgePage() {
             <li>{tr("Your address is the same on HyperEVM, Base and Elysium.")}</li>
             <li>{tr("Deposits through the official bridge arrive in about a minute.")}</li>
             <li>{tr("Network fees on Elysium are paid in HYPE. Keep a little for gas.")}</li>
-            <li>{tr("Withdrawing back to HyperEVM takes about 5.5 days.")}</li>
+            <li>{tr("Withdrawals are instant through Relay for a small fee. The free official route takes about 5.5 days.")}</li>
           </ul>
           <Link href="/learn/bridge-hype-to-elysium/" className="e-more" style={{ display: "grid", placeItems: "center", textDecoration: "none" }}>{tr("Bridge guide")}</Link>
         </aside>
