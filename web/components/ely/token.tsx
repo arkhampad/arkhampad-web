@@ -24,7 +24,7 @@ import { pendingTrade } from "@/lib/holdings";
 import { ago, compact, fetchClusters, fetchHolders, fetchHypeUsd, fetchMyCoinTrades, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
 import { hookGated } from "@/lib/hookguard";
 import { ascendBuy, ascendQuote, ascendSell, isAscend, quoteToken, type QuoteToken } from "@/lib/ascend";
-import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, Reverted, chainToken, pendingToken, SlowTx, taxedTokens, sellable, USER_NO } from "@/lib/elytrade";
+import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, Reverted, chainToken, pendingToken, SlowTx, taxedTokens, sellable, USER_NO, prepareSell } from "@/lib/elytrade";
 
 const GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays for gas on "Max"
 const supplyOf = (t: EToken) => Number(BigInt(t.supply || "0")) / 10 ** (t.decimals ?? 18);
@@ -79,6 +79,12 @@ function TradeBox({ t, usd, side: side0 = "buy", onDone, compact: cmp, preset }:
   const qNative = qt.native;
   const hypeRead = usePoll(async () => (addr ? (qNative ? hypeBalance(addr) : tokenBalance(qt.address, addr)) : null), 6000, [addr, tick, qt.address]) ?? (qNative ? cachedHype(addr) : undefined);
   const balRead = usePoll(async () => (addr ? tokenBalance(t.address as Address, addr) : null), 6000, [addr, t.address, tick]);
+// built-in (email / Google) wallet holding this coin: give the router permission to sell it now, in the
+// background, so the sale later is one transaction and doesn't wait on an approval first
+useEffect(() => {
+if (w.signer?.embedded && addr && balRead != null && balRead > 0n && !asc && ROUTER) prepareSell(w.signer, t.address as Address);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [addr, t.address, balRead != null && balRead > 0n]);
   // right after a trade the nodes still show the old balances for a while: show the expected ones until then
   const [after, setAfter] = useState<{ hype: bigint; bal: bigint; until: number } | null>(null);
   const live = after && Date.now() < after.until;
