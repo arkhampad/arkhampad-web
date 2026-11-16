@@ -71,7 +71,7 @@ const robinhood = defineChain({
 export const elysium = defineChain({
   id: 99901, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
   // wallets (MetaMask etc.) add Elysium with our own doorway first: it always reports the newest nonce
-  rpcUrls: { default: { http: ["https://arkhampad.com/api/ely-rpc", ...ELY_RPC_LIST.filter((u) => !u.includes("arkhampad.com"))] } },
+  rpcUrls: { default: { http: ["https://rpc-live.elysp.com", "https://arkhampad.com/api/ely-rpc", ...ELY_RPC_LIST.filter((u) => !u.includes("arkhampad.com"))] } },
 });
 const elysiumTestnet = defineChain({
   id: 99801, name: "Elysium Testnet", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
