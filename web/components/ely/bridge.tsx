@@ -661,6 +661,122 @@ function CashOut({ me }: { me: Address }) {
   );
 }
 
+
+// ---------------------------------------------------------------- send USDC to another wallet (Relay)
+// Moves USDC you hold on Base, Arbitrum etc. to any address: SOL or USDC on Solana (Phantom), or USDC on an EVM chain.
+const SEND_TO = [
+{ id: "sol", label: "SOL on Solana", chain: 792703809, cur: "11111111111111111111111111111111", dec: 9, sym: "SOL", sol: true },
+{ id: "solusdc", label: "USDC on Solana", chain: 792703809, cur: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", dec: 6, sym: "USDC", sol: true },
+{ id: "base", label: "USDC on Base", chain: BASE, cur: USDC_BASE as string, dec: 6, sym: "USDC", sol: false },
+];
+function SendOut({ me }: { me: Address }) {
+const tr = useT();
+const w = useWallet();
+const all = usePoll(() => usdcEverywhere(me), 8000, [me]);
+const best = all?.slice().sort((x, y) => y.usd - x.usd)[0];
+const origin = best?.o ?? ORIGINS[0];
+const usdc = best?.usdc;
+const [dest, setDest] = useState("sol");
+const d = SEND_TO.find((x) => x.id === dest) ?? SEND_TO[0];
+const [to, setTo] = useState("");
+const [val, setVal] = useState("");
+const [quote, setQuote] = useState<{ out: bigint; steps: RelayStep[] } | null>(null);
+const [quoteErr, setQuoteErr] = useState(false);
+const [step, setStep] = useState<string | null>(null);
+const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+const amount = toWei(val, origin.dec);
+const addr = to.trim();
+const addrOk = d.sol ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) : /^0x[0-9a-fA-F]{40}$/.test(addr);
+useEffect(() => {
+setQuote(null);
+setQuoteErr(false);
+if (!addrOk || amount < 10n ** BigInt(origin.dec)) return;
+let live = true;
+const id = setTimeout(async () => {
+try {
+const res = await fetch(RELAY + "/quote/v2", {
+method: "POST",
+headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) },
+body: JSON.stringify({ user: me, recipient: addr, originChainId: origin.id, destinationChainId: d.chain, originCurrency: origin.usdc, destinationCurrency: d.cur, amount: amount.toString(), tradeType: "EXACT_INPUT", usePermit: true }),
+});
+const j = await res.json();
+if (!live) return;
+if (j?.details?.currencyOut?.amount) setQuote({ out: BigInt(j.details.currencyOut.amount), steps: j.steps });
+else setQuoteErr(true);
+} catch { if (live) setQuoteErr(true); }
+}, 500);
+return () => { live = false; clearTimeout(id); };
+}, [amount, me, addr, addrOk, origin.id, origin.usdc, d.chain, d.cur]);
+async function go() {
+if (!w.signer?.sendTx) return w.login();
+if (!quote) return;
+setMsg(null);
+try {
+for (const s of quote.steps) {
+for (const it of s.items) {
+if (it.status === "complete") continue;
+if (s.kind === "signature") {
+const sign = it.data.sign, post = it.data.post;
+if (!sign || sign.signatureKind !== "eip712" || !post || !w.signer.signTypedData) throw new Error("unsupported step");
+setStep("Confirm in your wallet…");
+const types = { ...sign.types };
+delete types.EIP712Domain;
+const signature = await w.signer.signTypedData(Number(sign.domain.chainId ?? origin.id), { domain: sign.domain, types, primaryType: sign.primaryType, message: sign.value } as never);
+setStep("Sending…");
+const r = await fetch(RELAY + post.endpoint + "?signature=" + signature, { method: post.method || "POST", headers: { "content-type": "application/json", ...(RELAY_KEY ? { "x-api-key": RELAY_KEY } : {}) }, body: JSON.stringify(post.body) });
+if (!r.ok) throw new Error("relay post failed");
+continue;
+}
+if (s.kind !== "transaction") throw new Error("unsupported step");
+setStep(s.id === "approve" ? "Approving USDC…" : "Sending…");
+const hash = await w.signer.sendTx(it.data.chainId, { to: it.data.to, data: it.data.data, value: it.data.value ? BigInt(it.data.value) : undefined });
+const r = await originClient(origin).waitForTransactionReceipt({ hash: hash as Hex, timeout: 120_000 });
+if (r.status !== "success") throw new Error("failed");
+}
+}
+setMsg({ ok: true, text: tr("Sent. It arrives in about a minute.") });
+setVal("");
+} catch (e) {
+const m = String((e as Error)?.message ?? "");
+setMsg({ ok: false, text: /reject|denied|cancel/i.test(m) ? "Cancelled." : /insufficient|gas|fund/i.test(m) ? "Not enough gas on " + origin.name + " for this transfer." : "Couldn't send. Please try again. If USDC left your wallet, it will still arrive." });
+} finally {
+setStep(null);
+}
+}
+if (!best || best.usd < 1) return null;
+return (
+<div className="e-trade" style={{ borderTop: "1px solid var(--e-line)" }}>
+<h3 className="e-ph" style={{ margin: 0 }}>{tr("Send USDC to another wallet")}</h3>
+<p className="e-note" style={{ margin: 0 }}>{tr("Send the USDC you hold on {c} to Phantom or any wallet. Choose SOL or USDC on Solana, or USDC on Base.", { c: origin.name })}</p>
+<div className="e-via" role="group" aria-label={tr("Receive")}>
+<span className="dim">{tr("Receive")}</span>
+{SEND_TO.map((x) => (
+<button key={x.id} type="button" aria-pressed={dest === x.id} className={dest === x.id ? "on" : ""} onClick={() => { setDest(x.id); setTo(""); setMsg(null); }}>{tr(x.label)}</button>
+))}
+</div>
+<label className="e-amt">
+<span className="e-amt-top"><span>{tr(d.sol ? "Solana address (Phantom)" : "Wallet address (0x…)")}</span></span>
+<span className="e-amt-row"><input placeholder={d.sol ? "Paste your Phantom address" : "0x…"} value={to} onChange={(e) => setTo(e.target.value)} aria-label="Recipient address" autoCapitalize="off" autoCorrect="off" spellCheck={false} style={{ fontSize: 14 }} /></span>
+</label>
+<label className="e-amt">
+<span className="e-amt-top"><span>{tr("You send")}</span><span className="dim">{origin.name}: {fmt(usdc, origin.dec, 2)} USDC</span></span>
+<span className="e-amt-row"><input inputMode="decimal" placeholder="0" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label="USDC amount" /><b>USDC</b></span>
+</label>
+<div className="e-quick">
+<button type="button" disabled={!usdc} onClick={() => usdc && setVal(formatUnits(usdc, origin.dec))}>{tr("Max")}</button>
+</div>
+<div className="e-recv"><span className="muted">{tr("They receive")}</span><b className="num">{quote ? "≈ " + fmt(quote.out, d.dec, d.dec === 6 ? 2 : 4) + " " + d.sym : "—"}</b></div>
+{addr && !addrOk && <p className="e-note" style={{ margin: 0 }}>{tr("That address doesn't look right.")}</p>}
+{quoteErr && <p className="e-note" style={{ margin: 0 }}>{tr("Couldn't get a price right now. Check the address and amount, then try again.")}</p>}
+<button type="button" className="e-go" disabled={!!step || !quote || (usdc != null && amount > usdc)} onClick={go}>
+{step ? tr(step) : usdc != null && amount > usdc ? tr("Not enough USDC on {c}", { c: origin.name }) : tr("Send")}
+</button>
+{msg && <div className={"e-msg " + (msg.ok ? "ok" : "bad")} role="status">{tr(msg.text)}</div>}
+<p className="e-note">{tr("Check the address carefully. Transfers can't be undone.")}</p>
+</div>
+);
+}
+
 export function BridgePage() {
   const tr = useT();
   const w = useWallet();
@@ -703,6 +819,7 @@ export function BridgePage() {
             <>
               <Withdraw me={me} onSent={() => setTick((x) => x + 1)} />
               <CashOut me={me} />
+<SendOut me={me} />
             </>
           ) : via === "hype" ? <HypeIn me={me} onSent={() => setTick((x) => x + 1)} /> : <UsdcIn me={me} onSent={() => setTick((x) => x + 1)} />}
         </section>
