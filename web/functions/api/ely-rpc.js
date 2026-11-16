@@ -3,7 +3,7 @@
 // next one after a short timeout. Swapping or adding nodes is one Cloudflare variable (ELY_UPSTREAMS,
 // comma-separated), with no site change, and upstream nodes only ever see Cloudflare, not our users.
 // (rpc.ronspad.fun dropped Oct 31: thousands of blocks behind, it answered with old balances)
-const DEFAULT = ["https://rpc-live.elysp.com", "https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.boxa.club", "https://elyspump-live-rpc.fly.dev"];
+const DEFAULT = ["https://rpc-live.elysp.com", "https://rpc-elysium-mainnet.t.conduit.xyz", "https://rpc-live.boxa.club", "https://elyspump-live-rpc.fly.dev", "https://rpc.elysium.kinetiq.xyz"];
 const SEND_ALSO = ["https://rpc.ronspad.fun"];
 const ALLOWED = /^(eth_(chainId|blockNumber|getBalance|call|estimateGas|gasPrice|maxPriorityFeePerGas|feeHistory|getCode|getLogs|getBlockByNumber|getBlockByHash|getTransactionByHash|getTransactionReceipt|getTransactionCount|sendRawTransaction|getStorageAt)|net_version|web3_clientVersion)$/;
 const TIMEOUT = 4000;
@@ -78,7 +78,7 @@ async function handle({ request, env, waitUntil }, text) {
     const outs = await Promise.all(tries);
     const known = outs.find((o) => o && /already known|known transaction/i.test(o));
     if (known) return reply(known);
-    const first = outs.find(Boolean);
+    const first = outs.find((o) => o && !/rate limit|too many|429|capacity|-32005|upstreams unavailable/i.test(o)) || outs.find(Boolean);
     if (first) return reply(first);
   }
   // any other single read: ask every node at once, answer with the first good reply (a busy node used to
