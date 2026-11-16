@@ -33,13 +33,16 @@ const chg = (t: EToken, w: Win) => (w === "5m" ? t.change5m : w === "1h" ? t.cha
 const volOf = (t: EToken, w: Win) => (w === "5m" ? t.vol5m_hype : w === "1h" ? t.vol1h_hype : w === "6h" ? t.vol6h_hype : undefined) ?? t.vol24_hype ?? 0;
 const MIN_VOL: Record<Win, number> = { "5m": 0.2, "1h": 1, "6h": 2, "24h": 5 };
 
-/** Trending: real money moving now, more buys than sells, not only one old whale. */
+/** Trending: real money moving now, more buys than sells, not only one old whale, and not a coin that is crashing. */
 function trendScore(t: EToken) {
   const vol = t.vol24_hype || 0;
   const tx = (t.buys24 || 0) + (t.sells24 || 0);
   const buyShare = tx ? (t.buys24 || 0) / tx : 0.5;
   const fresh = t.last_trade_at ? Math.max(0.2, 1 - (Date.now() - Date.parse(t.last_trade_at)) / 86_400_000) : 0.2;
-  return Math.log10(1 + vol) * 2 + Math.log10(1 + tx) + buyShare + fresh;
+  const c = t.change24 ?? 0;
+// price momentum: a coin that is up gets a lift, a coin that is crashing sinks (heavy dumping is volume, not a trend)
+const mom = c >= 0 ? Math.min(c, 200) / 100 : Math.max(c, -90) / 15;
+return Math.log10(1 + vol) * 2 + Math.log10(1 + tx) + buyShare * 2 + fresh + mom;
 }
 function sortTokens(list: EToken[], sort: Sort, w: Win) {
   const r = sortBase(list, sort, w);
@@ -52,7 +55,7 @@ function sortBase(list: EToken[], sort: Sort, w: Win) {
   if (w !== "24h" && sort !== "new" && sort !== "top" && sort !== "ours") {
     if (sort === "gainers") return l.filter((t) => volOf(t, w) >= MIN_VOL[w] && (chg(t, w) ?? 0) > 0).sort((a, b) => (chg(b, w) ?? -1e9) - (chg(a, w) ?? -1e9));
     if (sort === "losers") return l.filter((t) => volOf(t, w) >= MIN_VOL[w] && (chg(t, w) ?? 0) < 0).sort((a, b) => (chg(a, w) ?? 1e9) - (chg(b, w) ?? 1e9));
-    return l.filter((t) => volOf(t, w) > 0).sort((a, b) => volOf(b, w) - volOf(a, w));
+    return l.filter((t) => volOf(t, w) > 0 && (chg(t, w) ?? 0) > -20).sort((a, b) => volOf(b, w) - volOf(a, w));
   }
   if (sort === "ours") return l.filter((t) => t.ours).sort((a, b) => (b.vol24_hype || 0) - (a.vol24_hype || 0) || Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0"));
   if (sort === "new") return l.sort((a, b) => Date.parse(b.created_at || "0") - Date.parse(a.created_at || "0"));
@@ -60,7 +63,7 @@ function sortBase(list: EToken[], sort: Sort, w: Win) {
   if (sort === "top") return l.filter((t) => (t.vol24_hype || 0) > 0 && (t.holders || 0) >= 5 && Date.parse(t.created_at || "") > Date.parse("2025-01-01")).sort((a, b) => (b.mcap_hype || 0) - (a.mcap_hype || 0));
   if (sort === "gainers") return l.filter((t) => (t.vol24_hype || 0) >= 5 && (t.change24 ?? 0) > 0).sort((a, b) => (b.change24 ?? -1e9) - (a.change24 ?? -1e9));
   if (sort === "losers") return l.filter((t) => (t.vol24_hype || 0) >= 5 && (t.change24 ?? 0) < 0).sort((a, b) => (a.change24 ?? 1e9) - (b.change24 ?? 1e9));
-  return l.filter((t) => (t.vol24_hype || 0) > 0).sort((a, b) => trendScore(b) - trendScore(a));
+  return l.filter((t) => (t.vol24_hype || 0) > 0 && (t.change24 ?? 0) > -40).sort((a, b) => trendScore(b) - trendScore(a));
 }
 /** Broken numbers (a fake pool or a bad price feed) never get a place on the board: absurd market caps stay out of the lists. Search still finds them. */
 const sane = (t: EToken) => {
