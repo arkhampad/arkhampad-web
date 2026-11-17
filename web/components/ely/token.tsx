@@ -108,7 +108,7 @@ if (w.signer?.embedded && addr && balRead != null && balRead > 0n && !asc && ROU
       const q = await getQuote(side === "buy", inWei).catch(() => null);
       if (!on) return;
       setOut(q);
-      setNoRoute(q === null);
+      setNoRoute(q === null && !(side === "sell" && !asc && (t.price_hype ?? 0) > 0));
     }, 250);
     return () => { on = false; clearTimeout(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,7 +141,11 @@ if (w.signer?.embedded && addr && balRead != null && balRead > 0n && !asc && ROU
     const id = setTimeout(() => setTick((x) => x + 1), Math.max(1000, 180_000 - (Date.now() - Math.min(...open.map((x) => x.at)))));
     return () => clearTimeout(id);
   }, [txs]);
-  async function go() {
+  // No exact quote for a sale (the pool refuses a plain quote and the wallet has no permission yet to dry-run):
+// still let the holder sell. The amount to expect comes from the coin's price, less 15%, and the on-chain
+// minimum below still protects them: if the pool pays less, the trade stops and only a tiny fee is used.
+const sellGuess = (a: bigint): bigint | null => (side === "sell" && !asc && qNative && (t.price_hype ?? 0) > 0 ? BigInt(Math.floor(Number(formatUnits(a, dec)) * (t.price_hype as number) * 0.85 * 1e18)) : null);
+async function go() {
     if (!w.signedIn || !w.signer) return w.login();
     if (going.current || waitingLast) return;
     if (gated) { setMsg({ ok: false, text: tr("Trading is turned off for this coin: its contract can keep a seller's payout (whitelist hook).") }); return; }
@@ -150,7 +154,8 @@ if (w.signer?.embedded && addr && balRead != null && balRead > 0n && !asc && ROU
     setMsg(null);
     setBusy(tr(side === "buy" ? "Buying…" : "Selling…"));
     try {
-      const q = out ?? (await getQuote(side === "buy", inWei));
+      const q0 = out ?? (await getQuote(side === "buy", inWei));
+const q = q0 ?? sellGuess(inWei);
       if (q === null) throw new TradeFail("This token can't be traded here right now.");
       const min = (q * BigInt(100 - slip)) / 100n;
       const amountIn = inWei;
@@ -187,7 +192,7 @@ if (w.signer?.embedded && addr && balRead != null && balRead > 0n && !asc && ROU
       }
       setTxState(addr, sent.hash, "ok");
       funnel(addr, "trade");
-      const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : qNative ? tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) }) : `${tr("Sold for")} ${fromWei(q, qDec).toFixed(qt.usd ? 2 : 4)} ${qSym}`;
+      const done = side === "buy" ? tr("Bought {n} {sym}", { n: amt(fromWei(q, dec)), sym }) : qNative && q0 === null ? "Sold" : qNative ? tr("Sold for {n} HYPE", { n: fromWei(q).toFixed(4) }) : `${tr("Sold for")} ${fromWei(q, qDec).toFixed(qt.usd ? 2 : 4)} ${qSym}`;
       // confirmed: some nodes still show the old balances for a few seconds, so show the new ones meanwhile
       const nextHype = side === "buy" ? (h0 > amountIn ? h0 - amountIn : 0n) : h0 + q;
       const nextBal = side === "buy" ? b0 + q : b0 > amountIn ? b0 - amountIn : 0n;
