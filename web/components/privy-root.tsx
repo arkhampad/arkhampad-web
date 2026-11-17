@@ -1,6 +1,6 @@
 "use client";
 // Loaded after the page is on screen, so sign-in code never slows the first paint.
-import { PrivyProvider, usePrivy, useSendTransaction, useSignTypedData, useWallets, type ConnectedWallet } from "@privy-io/react-auth";
+import { PrivyProvider, useLogin, usePrivy, useSendTransaction, useSignTypedData, useWallets, type ConnectedWallet } from "@privy-io/react-auth";
 import { useEffect, useMemo, useRef } from "react";
 import type { Address, Hex } from "viem";
 import { defineChain } from "viem";
@@ -95,7 +95,14 @@ function domainFields(d: Record<string, unknown>) {
 }
 
 function Bridge({ onState, wantLogin }: { onState: (s: AuthState) => void; wantLogin: number }) {
-  const { ready, authenticated, login, logout, user, exportWallet } = usePrivy();
+  const { ready, authenticated, logout, user, exportWallet } = usePrivy();
+// Nov 17: ArkhamPad is closed to new users (email, Google and wallet alike). Anyone who already had an account
+// logs in as before; a brand-new account is signed straight back out with a short notice.
+const { login } = useLogin({
+onComplete: ({ isNewUser }) => {
+if (isNewUser) setTimeout(() => { logoutRef.current(); try { window.alert("ArkhamPad is closed to new users right now. Existing accounts can still log in."); } catch {} }, 300);
+},
+});
   const email = authenticated ? (user?.email?.address ?? user?.google?.email ?? null) : null;
   const { wallets } = useWallets();
   const { signTypedData } = useSignTypedData();
