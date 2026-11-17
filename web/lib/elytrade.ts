@@ -171,6 +171,8 @@ export async function tokenBalance(token: Address, addr: Address) {
 /** Expected output (wei of the other side) for `amountIn`; null when this pool can't be traded here. */
 /** Tokens whose quote only worked as a dry run of the real trade (taxed / fee-on-transfer coins). */
 export const taxedTokens = new Set<string>();
+/** Coins whose pool refused a sale with PriceLimitAlreadyExceeded (nothing left to sell into): no sale is attempted, it would only burn gas. */
+export const deadPools = new Set<string>();
 export async function quote(t: EToken, isBuy: boolean, amountIn: bigint, from?: Address | null): Promise<bigint | null> {
   const p = poolArg(t);
   if (!ROUTER || !p || amountIn <= 0n) return null;
@@ -180,6 +182,7 @@ export async function quote(t: EToken, isBuy: boolean, amountIn: bigint, from?: 
   } catch (e) {
     // the router answers a quote by reverting with Quote(amountOut)
     const data = findRevertData(e);
+if (/7c9c6e8f/i.test(String(data ?? "") + String((e as Error)?.message ?? ""))) deadPools.add(t.address.toLowerCase());
     if (data) {
       try {
         const d = decodeErrorResult({ abi: ROUTER_ABI, data });
