@@ -24,7 +24,7 @@ import { pendingTrade } from "@/lib/holdings";
 import { ago, compact, fetchClusters, fetchHolders, fetchHypeUsd, fetchMyCoinTrades, fetchToken, fetchTrades, money, pct, short, tinyPrice, usePoll, type EHolder, type EToken, type ETrade } from "@/lib/ely";
 import { hookGated } from "@/lib/hookguard";
 import { ascendBuy, ascendQuote, ascendSell, isAscend, quoteToken, type QuoteToken } from "@/lib/ascend";
-import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, Reverted, chainToken, pendingToken, SlowTx, taxedTokens, sellable, USER_NO, prepareSell } from "@/lib/elytrade";
+import { ELY_EXPLORER, ROUTER, buy, canTrade, fromWei, hypeBalance, cachedHype, quote, sell, toWei, tokenBalance, TradeFail, Reverted, chainToken, pendingToken, SlowTx, taxedTokens, sellable, USER_NO, prepareSell, deadPools } from "@/lib/elytrade";
 
 const GAS_KEEP = 2_000_000_000_000_000n; // 0.002 HYPE stays for gas on "Max"
 const supplyOf = (t: EToken) => Number(BigInt(t.supply || "0")) / 10 ** (t.decimals ?? 18);
@@ -108,7 +108,7 @@ if (w.signer?.embedded && addr && balRead != null && balRead > 0n && !asc && ROU
       const q = await getQuote(side === "buy", inWei).catch(() => null);
       if (!on) return;
       setOut(q);
-      setNoRoute(q === null && !(side === "sell" && !asc && (t.price_hype ?? 0) > 0));
+      setNoRoute(q === null && (deadPools.has(t.address.toLowerCase()) || !(side === "sell" && !asc && (t.price_hype ?? 0) > 0)));
     }, 250);
     return () => { on = false; clearTimeout(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,7 +144,7 @@ if (w.signer?.embedded && addr && balRead != null && balRead > 0n && !asc && ROU
   // No exact quote for a sale (the pool refuses a plain quote and the wallet has no permission yet to dry-run):
 // still let the holder sell. The amount to expect comes from the coin's price, less 15%, and the on-chain
 // minimum below still protects them: if the pool pays less, the trade stops and only a tiny fee is used.
-const sellGuess = (a: bigint): bigint | null => (side === "sell" && !asc && qNative && (t.price_hype ?? 0) > 0 ? BigInt(Math.floor(Number(formatUnits(a, dec)) * (t.price_hype as number) * 0.85 * 1e18)) : null);
+const sellGuess = (a: bigint): bigint | null => (side === "sell" && !asc && qNative && !deadPools.has(t.address.toLowerCase()) && (t.price_hype ?? 0) > 0 ? BigInt(Math.floor(Number(formatUnits(a, dec)) * (t.price_hype as number) * 0.85 * 1e18)) : null);
 async function go() {
     if (!w.signedIn || !w.signer) return w.login();
     if (going.current || waitingLast) return;
@@ -156,7 +156,7 @@ async function go() {
     try {
       const q0 = out ?? (await getQuote(side === "buy", inWei));
 const q = q0 ?? sellGuess(inWei);
-      if (q === null) throw new TradeFail("This token can't be traded here right now.");
+      if (q === null) throw new TradeFail(deadPools.has(t.address.toLowerCase()) ? "This coin's pool can't take sales right now: there is no room left to sell into. Nothing was sent." : "This token can't be traded here right now.");
       const min = (q * BigInt(100 - slip)) / 100n;
       const amountIn = inWei;
       const step = (x: string) => setBusy(tr(x));
