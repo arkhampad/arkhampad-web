@@ -129,7 +129,7 @@ export function ArenaMarket() {
   }, []);
 
   const [open, setOpen] = useState<string>("");
-  const [srv, setSrv] = useState<{ n: number; ok: number; l: number; lok: number } | null>(null);
+  const [srv, setSrv] = useState<{ n: number; ok: number; l: number; lok: number; sn: number; sok: number } | null>(null);
   useEffect(() => {
     let dead = false;
     const K = process.env.NEXT_PUBLIC_SUPABASE_KEY || "sb_publishable_S49UWqqXDzSaRbjBsAfYaA_kjfxyRPB";
@@ -137,7 +137,7 @@ export function ArenaMarket() {
       try {
         const r = await fetch("https://yvdudswzmdziwnfurwir.supabase.co/rest/v1/rpc/arena_report", { method: "POST", headers: { apikey: K, authorization: `Bearer ${K}`, "content-type": "application/json" }, body: "{}" });
         const j = await r.json();
-        if (!dead && j?.all?.n) setSrv({ n: j.all.n, ok: j.all.ok, l: j.last100?.n ?? 0, lok: j.last100?.ok ?? 0 });
+        if (!dead && j?.all?.n) setSrv({ n: j.all.n, ok: j.all.ok, l: j.last100?.n ?? 0, lok: j.last100?.ok ?? 0, sn: j.strong?.n ?? 0, sok: j.strong?.ok ?? 0 });
       } catch { /* keep the page working without it */ }
     };
     load();
@@ -146,6 +146,7 @@ export function ArenaMarket() {
   }, []);
   const list = ctx.length ? ctx : Object.keys(rows).filter((k) => k.endsWith(`|${frame}`)).map((k) => ({ name: k.split("|")[0], px: 0, funding: 0, premium: 0, oi: 0, day: 0, vol: 0 }));
   const shown = list.map((c) => ({ c, r: rows[`${c.name}|${frame}`] })).sort((a, b) => Math.abs((b.r?.p ?? 0.5) - 0.5) - Math.abs((a.r?.p ?? 0.5) - 0.5));
+  const trusted = !!srv && frame === "15m" ? srv.sn >= 100 && srv.sok / srv.sn >= 0.6 : false;
   const f = FRAMES.find((x) => x.id === frame)!;
   const word = frame === "15m" ? "15 minutes" : "hour";
 
@@ -178,15 +179,15 @@ export function ArenaMarket() {
           const strong = r ? Math.abs(r.p - 0.5) >= STRONG : false;
           const up = r ? r.p >= 0.5 : true;
           const chance = r ? Math.round((up ? r.p : 1 - r.p) * 100) : 0;
-          const head = !r ? "Reading…" : !strong ? "Unclear" : up ? "Likely UP" : "Likely DOWN";
-          const sub = !r ? "" : !strong ? "No clear direction. Better to wait." : up ? (mode === "spot" ? "Good time to look at buying" : "Long side looks better") : (mode === "spot" ? "Not a good time to buy" : "Short side looks better");
+          const head = !r ? "Reading…" : !strong ? "Unclear" : trusted ? (up ? "Likely UP" : "Likely DOWN") : up ? "Leans UP" : "Leans DOWN";
+          const sub = !r ? "" : !strong ? "No clear direction. Better to wait." : !trusted ? "Only a slight lean. Our live record is still close to a coin flip, so do not rely on it." : up ? (mode === "spot" ? "Good time to look at buying" : "Long side looks better") : (mode === "spot" ? "Not a good time to buy" : "Short side looks better");
           const t = r?.test;
           const key = `${c.name}|${frame}`;
           return (
             <button type="button" key={c.name} className={`am-card ${strong ? (up ? "up" : "down") : ""}`} onClick={() => setOpen(open === key ? "" : key)}>
               <div className="am-top">
                 <div className="am-coin"><b>{c.name}</b>{c.px > 0 && <span className="num dim">${fmtPx(c.px)}</span>}</div>
-                <div className="am-verdict"><b className={strong ? (up ? "up" : "down") : "dim"}>{head}</b>{strong && <span className="num">{chance}% chance</span>}</div>
+                <div className="am-verdict"><b className={strong ? (up ? "up" : "down") : "dim"}>{head}</b>{strong && trusted && <span className="num">{chance}% chance</span>}</div>
               </div>
               <div className="am-sub dim">{sub}</div>
               {t && t.n > 0 && <div className="am-track dim">Track record: {pct(t.ok / t.n)} right on {t.n} past candles{t.sn ? ` · ${pct(t.sok / t.sn)} when it was this sure` : ""}</div>}
