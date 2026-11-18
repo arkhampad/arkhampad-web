@@ -129,6 +129,21 @@ export function ArenaMarket() {
   }, []);
 
   const [open, setOpen] = useState<string>("");
+  const [srv, setSrv] = useState<{ n: number; ok: number; l: number; lok: number } | null>(null);
+  useEffect(() => {
+    let dead = false;
+    const K = process.env.NEXT_PUBLIC_SUPABASE_KEY || "sb_publishable_S49UWqqXDzSaRbjBsAfYaA_kjfxyRPB";
+    const load = async () => {
+      try {
+        const r = await fetch("https://yvdudswzmdziwnfurwir.supabase.co/rest/v1/rpc/arena_report", { method: "POST", headers: { apikey: K, authorization: `Bearer ${K}`, "content-type": "application/json" }, body: "{}" });
+        const j = await r.json();
+        if (!dead && j?.all?.n) setSrv({ n: j.all.n, ok: j.all.ok, l: j.last100?.n ?? 0, lok: j.last100?.ok ?? 0 });
+      } catch { /* keep the page working without it */ }
+    };
+    load();
+    const t = setInterval(load, 120_000);
+    return () => { dead = true; clearInterval(t); };
+  }, []);
   const list = ctx.length ? ctx : Object.keys(rows).filter((k) => k.endsWith(`|${frame}`)).map((k) => ({ name: k.split("|")[0], px: 0, funding: 0, premium: 0, oi: 0, day: 0, vol: 0 }));
   const shown = list.map((c) => ({ c, r: rows[`${c.name}|${frame}`] })).sort((a, b) => Math.abs((b.r?.p ?? 0.5) - 0.5) - Math.abs((a.r?.p ?? 0.5) - 0.5));
   const f = FRAMES.find((x) => x.id === frame)!;
@@ -151,6 +166,12 @@ export function ArenaMarket() {
           <button type="button" className={mode === "lev" ? "on" : ""} onClick={() => setMode("lev")}>Leverage</button>
         </div>
       </div>
+      {srv && frame === "15m" && (
+        <div className="ar-card am-srv">
+          <b>Live track record: {pct(srv.ok / srv.n)} right</b>
+          <span className="dim"> on {srv.n} real 15-minute calls made and checked by our server, not backtested{srv.l >= 50 ? ` · last ${srv.l}: ${pct(srv.lok / srv.l)}` : ""}. It keeps learning from every miss.</span>
+        </div>
+      )}
       {prog && <div className="ar-card"><span className="dim">{prog}</span><div className="ar-bar"><i style={{ width: "40%" }} /></div></div>}
       <div className="am-list">
         {shown.map(({ c, r }) => {
