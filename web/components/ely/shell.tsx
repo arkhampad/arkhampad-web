@@ -18,6 +18,7 @@ import { ScoutTab, ScoutToast, ScoutFab } from "./scout";
 const NAV = [
   { href: "/", label: "Discover", icon: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm3.5 5.5-2 5-5 2 2-5 5-2Z" /> },
   { href: "/create/", label: "Create", icon: <path d="M12 7v10M7 12h10M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /> },
+  { href: "/arena/", label: "Arena", icon: <path d="M3 17l5-6 4 3 5-8 4 5M3 21h18" /> },
   { href: "/bridge/", label: "Bridge", icon: <path d="M7 7h12l-3-3M17 17H5l3 3" /> },
   { href: "/you/", label: "You", icon: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 9a7 7 0 0 1 14 0" /> },
 ];
@@ -230,7 +231,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
       </footer>
-      <nav className="e-bottom e-bottom-5" aria-label="Main">
+      <nav className="e-bottom e-bottom-5 e-bottom-6" aria-label="Main">
         {NAV.map((n) => (
           <Link key={n.href} href={n.href} className={`e-tabnav ${on(n.href) ? "on" : ""}`}>
             <Icon d={n.icon} />

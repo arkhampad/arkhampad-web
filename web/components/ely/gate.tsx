@@ -9,7 +9,7 @@ import { ElyShell } from "./shell";
 import { Soon } from "@/components/soon";
 
 const LIVE = process.env.NEXT_PUBLIC_ELY_LIVE === "1";
-const PAGES = ["/ops", "/genesis", "/pioneer", "/testnet", "/t", "/radar", "/dev", "/create", "/bridge", "/you", "/airdrop", "/stats", "/learn", "/terms", "/privacy"];
+const PAGES = ["/ops", "/arena", "/genesis", "/pioneer", "/testnet", "/t", "/radar", "/dev", "/create", "/bridge", "/you", "/airdrop", "/stats", "/learn", "/terms", "/privacy"];
 const known = (p: string) => p === "/" || PAGES.some((x) => p === x || p.startsWith(`${x}/`));
 
 function Away() {
@@ -36,7 +36,7 @@ export function Gate({ children }: { children: React.ReactNode }) {
   const path = usePathname() || "/";
   const preview = usePreview();
   // Learn guides and the testnet page are public before the site opens
-  if (path.startsWith("/learn") || path.startsWith("/testnet")) return <ElyShell>{children}</ElyShell>;
+  if (path.startsWith("/learn") || path.startsWith("/testnet") || path.startsWith("/arena")) return <ElyShell>{children}</ElyShell>;
   if (!LIVE && !preview) return <Soon />;
   if (!known(path)) return <ElyShell><Away /></ElyShell>;
   return <ElyShell>{children}</ElyShell>;
