@@ -128,16 +128,18 @@ export function ArenaMarket() {
     return () => { dead = true; clearInterval(tick); };
   }, []);
 
+  const [open, setOpen] = useState<string>("");
   const list = ctx.length ? ctx : Object.keys(rows).filter((k) => k.endsWith(`|${frame}`)).map((k) => ({ name: k.split("|")[0], px: 0, funding: 0, premium: 0, oi: 0, day: 0, vol: 0 }));
   const shown = list.map((c) => ({ c, r: rows[`${c.name}|${frame}`] })).sort((a, b) => Math.abs((b.r?.p ?? 0.5) - 0.5) - Math.abs((a.r?.p ?? 0.5) - 0.5));
   const f = FRAMES.find((x) => x.id === frame)!;
+  const word = frame === "15m" ? "15 minutes" : "hour";
 
   return (
     <div className="ar-wrap">
       <div className="ar-head">
         <div>
-          <h1>Market reports</h1>
-          <p className="dim">The same {AG.length} agents, trained separately on each of the {TOP} biggest markets, now reading {f.label} candles. For every coin you get the Brain&apos;s call, the agents behind it, and how often it was right on past candles it had never seen.</p>
+          <h1>Will it go up in the next {word}?</h1>
+          <p className="dim">{AG.length} agents watch each coin in the background: price, indicators, volume and who is buying or selling. Their Brain turns that into one call per coin. Strongest calls are on top.</p>
         </div>
       </div>
       <div className="ar-pick">
@@ -150,30 +152,34 @@ export function ArenaMarket() {
         </div>
       </div>
       {prog && <div className="ar-card"><span className="dim">{prog}</span><div className="ar-bar"><i style={{ width: "40%" }} /></div></div>}
-      <div className="ar-card">
-        <div className="ar-sh"><b>{f.label} calls · strongest first</b><span className="dim">{mode === "spot" ? "Spot: buy or stay out" : "Leverage: long or short"}</span></div>
-        <div className="am-list">
-          {shown.map(({ c, r }) => {
-            const strong = r ? Math.abs(r.p - 0.5) >= STRONG : false;
-            const up = r ? r.p >= 0.5 : true;
-            const label = !r ? "…" : !strong ? "No clear edge" : mode === "spot" ? (up ? "Lean BUY" : "Stay out") : (up ? "LONG" : "SHORT");
-            const t = r?.test;
-            return (
-              <div key={c.name} className={`am-row ${strong ? (up ? "up" : "down") : ""}`}>
-                <div className="am-coin"><b>{c.name}</b>{c.px > 0 && <span className="num dim">${fmtPx(c.px)} <span className={c.day >= 0 ? "up" : "down"}>{c.day >= 0 ? "+" : ""}{(c.day * 100).toFixed(1)}%</span></span>}</div>
-                <div className="am-call"><b className={strong ? (up ? "up" : "down") : "dim"}>{label}</b>{r && <span className="num dim">{pct(r.p)} up · {pct(1 - r.p)} down</span>}</div>
-                <div className="am-why">{r?.why.length ? r.why.map((w) => <span key={w.name} className={`am-chip ${w.up ? "up" : "down"}`}>{w.up ? "▲" : "▼"} {w.name}</span>) : <span className="dim">—</span>}</div>
-                <div className="am-test num">{t && t.n ? <><span>{pct(t.ok / t.n)} right</span><span className="dim">{t.sn ? `${pct(t.sok / t.sn)} when sure (${t.sn})` : "no strong calls"} · {t.n} tests</span></> : <span className="dim">testing…</span>}</div>
+      <div className="am-list">
+        {shown.map(({ c, r }) => {
+          const strong = r ? Math.abs(r.p - 0.5) >= STRONG : false;
+          const up = r ? r.p >= 0.5 : true;
+          const chance = r ? Math.round((up ? r.p : 1 - r.p) * 100) : 0;
+          const head = !r ? "Reading…" : !strong ? "Unclear" : up ? "Likely UP" : "Likely DOWN";
+          const sub = !r ? "" : !strong ? "No clear direction. Better to wait." : up ? (mode === "spot" ? "Good time to look at buying" : "Long side looks better") : (mode === "spot" ? "Not a good time to buy" : "Short side looks better");
+          const t = r?.test;
+          const key = `${c.name}|${frame}`;
+          return (
+            <button type="button" key={c.name} className={`am-card ${strong ? (up ? "up" : "down") : ""}`} onClick={() => setOpen(open === key ? "" : key)}>
+              <div className="am-top">
+                <div className="am-coin"><b>{c.name}</b>{c.px > 0 && <span className="num dim">${fmtPx(c.px)}</span>}</div>
+                <div className="am-verdict"><b className={strong ? (up ? "up" : "down") : "dim"}>{head}</b>{strong && <span className="num">{chance}% chance</span>}</div>
               </div>
-            );
-          })}
-        </div>
+              <div className="am-sub dim">{sub}</div>
+              {t && t.n > 0 && <div className="am-track dim">Track record: {pct(t.ok / t.n)} right on {t.n} past candles{t.sn ? ` · ${pct(t.sok / t.sn)} when it was this sure` : ""}</div>}
+              {open === key && r && (
+                <div className="am-more">
+                  <span className="dim">What the agents are saying</span>
+                  <div className="am-why">{r.why.length ? r.why.map((w) => <span key={w.name} className={`am-chip ${w.up ? "up" : "down"}`}>{w.up ? "▲" : "▼"} {w.name}</span>) : <span className="dim">Nothing stands out.</span>}</div>
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
-      <div className="ar-card">
-        <b>How to read this</b>
-        <span className="ar-fine dim">Each Brain was trained on the earlier part of the coin&apos;s history and then judged on the later part it had not seen; that is the &ldquo;right&rdquo; column. Across the biggest markets this lands close to a coin flip, roughly 51 to 54%, and a bit higher when the Brain is sure, on fewer calls. A call is information, not advice. {mode === "lev" ? "Leverage multiplies both gains and losses, and fees plus funding cost more than a small edge is worth, so a thin edge can still lose money." : "Spot has no liquidation, but a thin edge is still small after fees."}</span>
-        <span className="ar-fine dim">The Brain keeps learning: every new candle teaches it, and the agents it keeps getting wrong are the ones it trusts less. Prices and candles are Hyperliquid&apos;s public data. Simulation and information only.</span>
-      </div>
+      <p className="ar-fine dim">Honest note: nobody predicts the market perfectly. These calls are right a little more than half the time on average, and the track record above is measured on past candles the Brain had not seen. Information only, not advice.{mode === "lev" ? " Leverage multiplies both gains and losses." : ""}</p>
     </div>
   );
 }

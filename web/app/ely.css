@@ -1218,3 +1218,17 @@ html { overscroll-behavior-y: none; }
 .am-chip { font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 8px; background: var(--e-raise); }
 .am-chip.up { color: var(--e-up); } .am-chip.down { color: var(--e-down); }
 @media (max-width: 760px) { .am-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .am-why { grid-column: 1 / -1; } .am-test { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; flex-wrap: wrap; } }
+
+/* Arena signals: simple cards */
+.arena .am-list{display:flex;flex-direction:column;gap:10px}
+.arena .am-card{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:14px 16px;border:1px solid var(--e-line,rgba(255,255,255,.1));border-radius:14px;background:var(--e-card,rgba(255,255,255,.03));cursor:pointer;width:100%}
+.arena .am-card.up{border-color:rgba(46,204,113,.45)}
+.arena .am-card.down{border-color:rgba(255,92,92,.45)}
+.arena .am-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.arena .am-card .am-coin{display:flex;flex-direction:column;gap:2px}
+.arena .am-card .am-coin b{font-size:18px}
+.arena .am-verdict{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.arena .am-verdict b{font-size:18px}
+.arena .am-sub{font-size:13px}
+.arena .am-track{font-size:12px}
+.arena .am-more{display:flex;flex-direction:column;gap:6px;padding-top:6px;border-top:1px solid var(--e-line,rgba(255,255,255,.1))}

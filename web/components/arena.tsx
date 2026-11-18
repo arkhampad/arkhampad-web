@@ -461,14 +461,14 @@ function ArenaRounds() {
 
 /** Two views: the live rounds game, and the market reports for the biggest coins. */
 export function ArenaScreen() {
-  const [tab, setTab] = useState<"rounds" | "market">("rounds");
-  useEffect(() => { try { if (location.hash === "#market") setTab("market"); } catch {} }, []);
+  const [tab, setTab] = useState<"rounds" | "market">("market");
+  useEffect(() => { try { if (location.hash === "#rounds") setTab("rounds"); } catch {} }, []);
   const go = (t: "rounds" | "market") => { setTab(t); try { history.replaceState(null, "", t === "market" ? "#market" : "#rounds"); } catch {} };
   return (
     <main className="e-in e-page arena">
       <div className="ar-seg ar-tabs" role="tablist" aria-label="Arena view">
-        <button type="button" role="tab" aria-selected={tab === "rounds"} className={tab === "rounds" ? "on" : ""} onClick={() => go("rounds")}>Live rounds</button>
-        <button type="button" role="tab" aria-selected={tab === "market"} className={tab === "market" ? "on" : ""} onClick={() => go("market")}>Market reports</button>
+        <button type="button" role="tab" aria-selected={tab === "market"} className={tab === "market" ? "on" : ""} onClick={() => go("market")}>Signals</button>
+        <button type="button" role="tab" aria-selected={tab === "rounds"} className={tab === "rounds" ? "on" : ""} onClick={() => go("rounds")}>Practice game</button>
       </div>
       {tab === "rounds" ? <ArenaRounds /> : <ArenaMarket />}
     </main>
