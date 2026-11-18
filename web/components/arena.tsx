@@ -10,6 +10,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { info, fetchPerpCandles } from "@/lib/hl";
 import { ArenaBrain } from "@/lib/arenabrain";
+import { LIVE_AGENTS, fetchCtxs, fetchImbalance, liveScores, type LiveCtx } from "@/lib/arenalive";
+import { ArenaMarket } from "./arenamarket";
 
 const ASSETS = ["BTC", "ETH", "SOL"] as const;
 type Asset = (typeof ASSETS)[number];
@@ -24,8 +26,10 @@ const FEE = 0.04; // taken from winnings, like a prediction market's spread
 const START_BAL = 1000;
 const LOCK = 0.8; // you can call until 80% of the round has passed
 const SIGNAL = 0.1; // the Brain only says "signal" when it is at least 60% sure
-const AG = ArenaBrain.AGENTS as { id: string; name: string; group: string }[];
+const CAND = ArenaBrain.AGENTS as { id: string; name: string; group: string }[];
+const AG: { id: string; name: string; group: string }[] = [...CAND, ...LIVE_AGENTS];
 const N = AG.length;
+const NL = LIVE_AGENTS.length;
 const BRAIN = { id: "brain", name: "Brain", group: "All agents" };
 const BRAIN_SIG = { id: "brainSig", name: "Brain, strong signals only", group: "All agents" };
 const NAME: Record<string, string> = Object.fromEntries([...AG, BRAIN, BRAIN_SIG].map((a) => [a.id, a.name]));
@@ -51,7 +55,7 @@ const px = (a: Asset, v: number) => v.toLocaleString("en-US", { minimumFractionD
 const tone = (v: number) => (v > 0 ? "up" : v < 0 ? "down" : "dim");
 const at = (s: Pt[], t: number) => { for (let i = s.length - 1; i >= 0; i--) if (s[i].t <= t) return s[i].p; return s[0]?.p ?? 0; };
 
-export function ArenaScreen() {
+function ArenaRounds() {
   const [asset, setAsset] = useState<Asset>("BTC");
   const [frame, setFrame] = useState<Frame>("30s");
   const [, setBeat] = useState(0);
@@ -67,6 +71,7 @@ export function ArenaScreen() {
   const bal = useRef(START_BAL);
   const youStats = useRef<Record<string, Stat>>({});
   const lastOk = useRef(0);
+  const liveRef = useRef<Record<string, LiveCtx>>({});
 
   const brainFor = (a: Asset, f: Frame) => (brains.current[`${a}|${f}`] ??= new (ArenaBrain.Brain as any)(N, 0.01, 0.002));
 
@@ -94,7 +99,7 @@ export function ArenaScreen() {
   const predict = useCallback((a: Asset, f: Frame, h: number, now: number) => {
     const c = closed(a, now).slice(-151);
     if (c.length < 100) return null;
-    const x: number[] = ArenaBrain.features(c, h);
+    const x: number[] = [...ArenaBrain.features(c, h), ...liveScores(liveRef.current[a])];
     const p: number = brainFor(a, f).p(x);
     const calls: Record<string, Call> = {};
     AG.forEach((ag, i) => { calls[ag.id] = { dir: x[i] >= 0 ? "UP" : "DOWN", conf: Math.min(1, Math.abs(x[i])) }; });
@@ -159,7 +164,7 @@ export function ArenaScreen() {
             const b = brainFor(a, f.id);
             const X: number[][] = [];
             for (let i = 150; i < c.length - f.h; i++) {
-              X[i] = ArenaBrain.features(c.slice(i - 150, i + 1), f.h);
+              X[i] = [...ArenaBrain.features(c.slice(i - 150, i + 1), f.h), ...new Array(NL).fill(0)];
               const j = i - f.h;
               if (j >= 150) b.learn(X[j], c[j + f.h].c > c[j].c);
               if (i % 150 === 0) await new Promise((r) => setTimeout(r, 0));
@@ -171,6 +176,30 @@ export function ArenaScreen() {
       }
     })();
     return () => { dead = true; };
+  }, []);
+
+  // order book, funding, premium and open interest, every 10 seconds
+  useEffect(() => {
+    let dead = false;
+    const pull = async () => {
+      if (document.hidden) return;
+      try {
+        const ctx = await fetchCtxs();
+        for (const a of ASSETS) {
+          const c = ctx.find((x) => x.name === a);
+          if (!c) continue;
+          let book = liveRef.current[a]?.book ?? 0;
+          try { book = await fetchImbalance(a); } catch {}
+          const old = liveRef.current[a];
+          const keep = old && Date.now() - old.t > 45_000 ? old : undefined; // compare with about a minute ago
+          liveRef.current[a] = { book, fund: c.funding, prem: c.premium, oi: c.oi, oiPrev: keep?.oi ?? old?.oiPrev ?? c.oi, px: c.px, pxPrev: keep?.px ?? old?.pxPrev ?? c.px, day: c.day, vol: c.vol, t: keep ? Date.now() : (old?.t ?? Date.now()) };
+        }
+      } catch {}
+      if (dead) return;
+    };
+    pull();
+    const t = setInterval(pull, 10_000);
+    return () => { dead = true; clearInterval(t); };
   }, []);
 
   // live prices, and the newest candles every 15 seconds
@@ -276,10 +305,10 @@ export function ArenaScreen() {
   const Y = (p: number) => H - pad - ((p - lo) / rng) * (H - pad * 2);
   const path = pts.length > 1 ? pts.map((x, i) => `${i ? "L" : "M"}${X(x.t).toFixed(1)},${Y(x.p).toFixed(1)}`).join("") : "";
   const upNow = round ? price >= round.open : true;
-  const groups = ["Price", "Indicators", "Volume", "Flow", "Structure"];
+  const groups = ["Price", "Indicators", "Volume", "Flow", "Structure", "Live"];
 
   return (
-    <main className="e-in e-page arena">
+    <div className="ar-wrap">
       <div className="ar-head">
         <div>
           <h1>Arena</h1>
@@ -426,6 +455,22 @@ export function ArenaScreen() {
           <button type="button" className="e-btn" onClick={reset}>Reset scores</button>
         </div>
       </section>
+    </div>
+  );
+}
+
+/** Two views: the live rounds game, and the market reports for the biggest coins. */
+export function ArenaScreen() {
+  const [tab, setTab] = useState<"rounds" | "market">("rounds");
+  useEffect(() => { try { if (location.hash === "#market") setTab("market"); } catch {} }, []);
+  const go = (t: "rounds" | "market") => { setTab(t); try { history.replaceState(null, "", t === "market" ? "#market" : "#rounds"); } catch {} };
+  return (
+    <main className="e-in e-page arena">
+      <div className="ar-seg ar-tabs" role="tablist" aria-label="Arena view">
+        <button type="button" role="tab" aria-selected={tab === "rounds"} className={tab === "rounds" ? "on" : ""} onClick={() => go("rounds")}>Live rounds</button>
+        <button type="button" role="tab" aria-selected={tab === "market"} className={tab === "market" ? "on" : ""} onClick={() => go("market")}>Market reports</button>
+      </div>
+      {tab === "rounds" ? <ArenaRounds /> : <ArenaMarket />}
     </main>
   );
 }
