@@ -26,7 +26,6 @@ const fmtPx = (v: number) => (v >= 1000 ? v.toLocaleString("en-US", { maximumFra
 
 export function ArenaMarket() {
   const [frame, setFrame] = useState<Frame>("15m");
-  const [mode, setMode] = useState<"spot" | "lev">("spot");
   const [ctx, setCtx] = useState<Ctx[]>([]);
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [prog, setProg] = useState("Loading the biggest markets…");
@@ -162,10 +161,6 @@ export function ArenaMarket() {
         <div className="ar-seg" role="tablist" aria-label="Period">
           {FRAMES.map((x) => <button key={x.id} type="button" className={x.id === frame ? "on" : ""} onClick={() => setFrame(x.id)}>{x.label}</button>)}
         </div>
-        <div className="ar-seg" role="tablist" aria-label="Market type">
-          <button type="button" className={mode === "spot" ? "on" : ""} onClick={() => setMode("spot")}>Spot</button>
-          <button type="button" className={mode === "lev" ? "on" : ""} onClick={() => setMode("lev")}>Leverage</button>
-        </div>
       </div>
       {srv && frame === "15m" && (
         <div className="ar-card am-srv">
@@ -180,7 +175,7 @@ export function ArenaMarket() {
           const up = r ? r.p >= 0.5 : true;
           const chance = r ? Math.round((up ? r.p : 1 - r.p) * 100) : 0;
           const head = !r ? "Reading…" : !strong ? "Unclear" : trusted ? (up ? "Likely UP" : "Likely DOWN") : up ? "Leans UP" : "Leans DOWN";
-          const sub = !r ? "" : !strong ? "No clear direction. Better to wait." : !trusted ? "Only a slight lean. Our live record is still close to a coin flip, so do not rely on it." : up ? (mode === "spot" ? "Good time to look at buying" : "Long side looks better") : (mode === "spot" ? "Not a good time to buy" : "Short side looks better");
+          const sub = !r ? "" : !strong ? "No clear direction. Better to wait." : !trusted ? "Only a slight lean. Our live record is still close to a coin flip, so do not rely on it." : up ? "The agents lean towards a rise" : "The agents lean towards a fall";
           const t = r?.test;
           const key = `${c.name}|${frame}`;
           return (
@@ -201,7 +196,7 @@ export function ArenaMarket() {
           );
         })}
       </div>
-      <p className="ar-fine dim">Honest note: nobody predicts the market perfectly. These calls are right a little more than half the time on average, and the track record above is measured on past candles the Brain had not seen. Information only, not advice.{mode === "lev" ? " Leverage multiplies both gains and losses." : ""}</p>
+      <p className="ar-fine dim">Honest note: nobody predicts the market perfectly. These calls are right a little more than half the time on average, and the track record above is measured on past candles the Brain had not seen. Information only, not advice.</p>
     </div>
   );
 }
