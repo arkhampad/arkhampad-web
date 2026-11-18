@@ -1190,3 +1190,19 @@ html { overscroll-behavior-y: none; }
 .ar-foot > span { flex: 1; min-width: 220px; }
 @media (max-width: 900px) { .ar-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) { .arena h1 { font-size: 24px; } .ar-big { font-size: 26px; } .ar-chart { height: 180px; } .ar-seg { width: 100%; } .ar-seg button { flex: 1; padding: 0 6px; } .ar-card { padding: 14px; } .ar-table th:nth-child(1), .ar-table td:nth-child(1), .ar-table th:nth-child(4), .ar-table td:nth-child(4) { display: none; } .ar-table th, .ar-table td { padding: 9px 6px; } .e-bottom-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); } .e-bottom-6 .e-tabnav { font-size: 10px; } }
+/* Arena brain */
+.ar-brain { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; background: var(--e-card2); border: 1px solid var(--e-line); }
+.ar-brain.strong { border-color: var(--e-teal); }
+.ar-pct { display: flex; justify-content: space-between; font-size: 22px; font-weight: 800; }
+.ar-meter { position: relative; height: 10px; border-radius: 99px; background: var(--e-down); overflow: hidden; }
+.ar-meter i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--e-up); transition: width .3s; }
+.ar-meter b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--e-text); opacity: .5; }
+.ar-verdict { font-size: 17px; }
+.ar-bt, .ar-miss { display: flex; flex-direction: column; gap: 6px; }
+.ar-agrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+.ar-grp { display: flex; flex-direction: column; gap: 2px; }
+.ar-gname { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding-bottom: 4px; }
+.ar-ag { display: grid; grid-template-columns: minmax(0, 1fr) auto 14px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--e-line); font-size: 13px; }
+.ar-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-table tr.ar-me td { background: var(--e-glow); }
+.ar-tablewrap { overflow: auto; }
