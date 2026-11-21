@@ -128,9 +128,10 @@ function slotsFor(dayTR) {
 const trDay = (ms) => new Date(ms + TR).toISOString().slice(0, 10);
 /** The day's slots, thinned evenly when a daily cap is set (keeps the morning/evening shape). */
 function plan(day) {
-  const all = slotsFor(day), cap = Number(env("ES_X_DAILY_MAX")) || 14; // Nov 11: 14 single posts a day (10 market posts + 4 Auto Trade / trading posts) plus 10 threads = 24
-  if (!cap || cap >= all.length) return all;
-  return Array.from({ length: cap }, (_, i) => all[Math.floor(((i + 0.5) * all.length) / cap)]);
+  // Nov 21: three single posts a day at fixed Türkiye times (minutes vary by day); threads are in threadTimes
+  const [y, m, d] = day.split("-").map(Number);
+  const r = rng(y * 10000 + m * 100 + d + 3);
+  return [[10, 30], [17, 15], [22, 30]].map(([h, mi]) => Date.UTC(y, m - 1, d, h, mi + Math.floor(r() * 20)) - TR);
 }
 /** Threads: through THREAD_BUSY_UNTIL (TR days) ten a day spread over the day, after that one at 20:40 TR. */
 const THREAD_BUSY_UNTIL = "2026-11-15";
@@ -140,7 +141,8 @@ function threadTimes(day) {
   const r = rng(y * 10000 + m * 100 + d + 7);
   if (env("ES_X_THREADS") === "0") return []; // threads off
   // Nov 11: ten threads a day, spread from late morning to late evening TR, between the single posts; minutes differ each day
-  return [[9, 40], [11, 10], [12, 50], [14, 20], [15, 50], [17, 20], [18, 50], [20, 20], [21, 40], [23, 0]].map(([h, mi]) => at(h, mi + Math.floor(r() * 20)));
+  return [[14, 0], [19, 20], [21, 10]].map( // Nov 21: three threads a day, two in the hours US users are awake
+   ([h, mi]) => at(h, mi + Math.floor(r() * 20)));
 }
 /** Which theme a thread time gets: each day every theme once, the order shifts from day to day. */
 function themeFor(at) {
@@ -541,7 +543,7 @@ async function compose(slotIdx, r) {
 async function postOne(slotIdx, asThread = false, themeIdx = 0) {
   await loadHype();
   const r = rng(Date.now() & 0xffffffff);
-  const p = (asThread && !GENERAL && (await thread(themeIdx).catch((e) => { log("thread:", e.message); return null; }))) || (await compose(slotIdx, r));
+  const p = (asThread && (await thread(themeIdx).catch((e) => { log("thread:", e.message); return null; }))) || (await compose(slotIdx, r));
   if (!p) { log("nothing worth posting, slot skipped"); return; }
   const recent = (await q(`select text from es_x_posts order by at desc limit 6`).catch(() => [])).map((x) => x.text);
   if (p.kind === "thread") return postThread(p, r, recent);
